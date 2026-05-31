@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:math';
 
+import 'backend.dart';
 import '../models/location_model.dart';
 import '../models/user_model.dart';
 
-class MockBackend {
+class MockBackend implements Backend {
   static final MockBackend _instance = MockBackend._internal();
   factory MockBackend() => _instance;
 
@@ -51,11 +52,22 @@ class MockBackend {
     _schedulePeerUpdates();
   }
 
+  @override
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
 
+  @override
   Future<bool> sendLocation(UserProfile profile) async {
     await Future.delayed(const Duration(milliseconds: 250));
     return true;
+  }
+
+  @override
+  Future<void> initialize() async {}
+
+  @override
+  Future<void> dispose() async {
+    _updateTimer?.cancel();
+    _peerController.close();
   }
 
   void _schedulePeerUpdates() {
@@ -86,10 +98,5 @@ class MockBackend {
       _peerController.add(List.unmodifiable(_peers));
     });
     _peerController.add(List.unmodifiable(_peers));
-  }
-
-  void dispose() {
-    _updateTimer?.cancel();
-    _peerController.close();
   }
 }

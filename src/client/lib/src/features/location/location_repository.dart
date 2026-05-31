@@ -1,11 +1,11 @@
 import '../../data/models/user_model.dart';
-import '../../data/network/mock_backend.dart';
 import '../../data/models/location_model.dart';
+import '../../data/network/backend.dart';
 import 'location_service.dart';
 
 class LocationRepository {
   final LocationService locationService;
-  final MockBackend backend;
+  final Backend backend;
 
   LocationRepository({required this.locationService, required this.backend});
 

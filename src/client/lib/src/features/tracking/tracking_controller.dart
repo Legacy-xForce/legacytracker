@@ -5,12 +5,12 @@ import 'package:latlong2/latlong.dart';
 
 import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
-import '../../data/network/mock_backend.dart';
+import '../../data/network/backend.dart';
 import '../location/location_repository.dart';
 
 class TrackingController extends ChangeNotifier {
   final LocationRepository locationRepository;
-  final MockBackend backend;
+  final Backend backend;
 
   TrackingController({
     required this.locationRepository,
@@ -66,6 +66,8 @@ class TrackingController extends ChangeNotifier {
       return;
     }
 
+    await backend.initialize();
+
     _locationSubscription = locationRepository.locationStream.listen((point) {
       if (!point.latitude.isFinite || !point.longitude.isFinite) {
         return;
@@ -113,6 +115,7 @@ class TrackingController extends ChangeNotifier {
     _locationSubscription?.cancel();
     _peerSubscription?.cancel();
     locationRepository.dispose();
+    backend.dispose();
     super.dispose();
   }
 }

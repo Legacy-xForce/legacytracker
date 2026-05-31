@@ -3,7 +3,7 @@ import 'package:legacytracker/app.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const App());
+  runApp(App());
 }
 
 class MyApp extends StatelessWidget {

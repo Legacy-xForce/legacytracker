@@ -1,13 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'src/data/network/mock_backend.dart';
+import 'src/data/network/remote_backend.dart';
 import 'src/features/location/location_repository.dart';
 import 'src/features/location/location_service.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
 
 class App extends StatelessWidget {
-  const App({super.key});
+  App({super.key});
+
+  final RemoteBackend backend = RemoteBackend(
+    baseUrl: 'http://10.0.2.2:3000',
+    userId: 'me',
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -17,9 +22,9 @@ class App extends StatelessWidget {
           create: (_) => TrackingController(
             locationRepository: LocationRepository(
               locationService: GeolocatorLocationService(),
-              backend: MockBackend(),
+              backend: backend,
             ),
-            backend: MockBackend(),
+            backend: backend,
           ),
         ),
       ],
