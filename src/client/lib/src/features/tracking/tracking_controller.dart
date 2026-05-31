@@ -12,7 +12,10 @@ class TrackingController extends ChangeNotifier {
   final LocationRepository locationRepository;
   final MockBackend backend;
 
-  TrackingController({required this.locationRepository, required this.backend}) {
+  TrackingController({
+    required this.locationRepository,
+    required this.backend,
+  }) {
     _peerSubscription = backend.peerStream.listen((data) {
       peers = data;
       notifyListeners();
@@ -22,7 +25,7 @@ class TrackingController extends ChangeNotifier {
   final UserProfile selfProfile = UserProfile(
     id: 'me',
     name: 'You',
-    avatarUrl: 'https://i.pravatar.cc/150?img=66',
+    avatarUrl: 'https://avatars.githubusercontent.com/u/38632219?v=4',
   );
 
   bool isTracking = false;
@@ -44,7 +47,9 @@ class TrackingController extends ChangeNotifier {
   }
 
   LatLng get mapCenter {
-    if (lastLocation != null) {
+    if (lastLocation != null &&
+        lastLocation!.latitude.isFinite &&
+        lastLocation!.longitude.isFinite) {
       return LatLng(lastLocation!.latitude, lastLocation!.longitude);
     }
     return const LatLng(37.7749, -122.4194);
@@ -61,13 +66,17 @@ class TrackingController extends ChangeNotifier {
       return;
     }
 
-    _locationSubscription = locationRepository.locationStream.listen((point) async {
+    _locationSubscription = locationRepository.locationStream.listen((point) {
+      if (!point.latitude.isFinite || !point.longitude.isFinite) {
+        return;
+      }
+
       lastLocation = point;
       history = [point, ...history].take(40).toList();
       selfProfile.lastLocation = point;
       selfProfile.history = history;
-      await locationRepository.uploadLocation(selfProfile);
       notifyListeners();
+      unawaited(_uploadLocation(selfProfile));
     });
 
     isTracking = true;
@@ -89,6 +98,14 @@ class TrackingController extends ChangeNotifier {
     selfProfile.name = name;
     selfProfile.avatarUrl = avatarUrl;
     notifyListeners();
+  }
+
+  Future<void> _uploadLocation(UserProfile profile) async {
+    try {
+      await locationRepository.uploadLocation(profile);
+    } catch (_) {
+      // Ignore upload failures here so live tracking stays responsive.
+    }
   }
 
   @override

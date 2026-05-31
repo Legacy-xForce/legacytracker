@@ -15,7 +15,7 @@ abstract class LocationService {
 class GeolocatorLocationService implements LocationService {
   final LocationSettings _settings = const LocationSettings(
     accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 15,
+    distanceFilter: 1,
   );
 
   Stream<LocationPoint>? _locationStream;
@@ -31,13 +31,15 @@ class GeolocatorLocationService implements LocationService {
 
   @override
   Stream<LocationPoint> get locationStream {
-    _locationStream ??= Geolocator.getPositionStream(locationSettings: _settings).map(
-      (position) => LocationPoint(
-        latitude: position.latitude,
-        longitude: position.longitude,
-        speed: position.speed,
-      ),
-    );
+    _locationStream ??=
+        Geolocator.getPositionStream(locationSettings: _settings).map(
+          (position) => LocationPoint(
+            latitude: position.latitude,
+            longitude: position.longitude,
+            speed: position.speed,
+            heading: position.heading.isFinite ? position.heading : null,
+          ),
+        );
     return _locationStream!;
   }
 

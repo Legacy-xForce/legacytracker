@@ -14,19 +14,34 @@ class MockBackend {
       id: 'alice',
       name: 'Alice',
       avatarUrl: 'https://i.pravatar.cc/150?img=32',
-      lastLocation: LocationPoint(latitude: 37.7764, longitude: -122.4241, speed: 0.8),
+      lastLocation: LocationPoint(
+        latitude: 37.7764,
+        longitude: -122.4241,
+        speed: 0.8,
+        heading: 24.0,
+      ),
     ),
     UserProfile(
       id: 'bobby',
       name: 'Bobby',
       avatarUrl: 'https://i.pravatar.cc/150?img=12',
-      lastLocation: LocationPoint(latitude: 37.7721, longitude: -122.4173, speed: 1.8),
+      lastLocation: LocationPoint(
+        latitude: 37.7721,
+        longitude: -122.4173,
+        speed: 1.8,
+        heading: 198.0,
+      ),
     ),
     UserProfile(
       id: 'carla',
       name: 'Carla',
       avatarUrl: 'https://i.pravatar.cc/150?img=47',
-      lastLocation: LocationPoint(latitude: 37.7785, longitude: -122.4149, speed: 0.4),
+      lastLocation: LocationPoint(
+        latitude: 37.7785,
+        longitude: -122.4149,
+        speed: 0.4,
+        heading: 312.0,
+      ),
     ),
   ];
 
@@ -53,12 +68,17 @@ class MockBackend {
             latitude: 37.7749 + random.nextDouble() * 0.01 - 0.005,
             longitude: -122.4194 + random.nextDouble() * 0.01 - 0.005,
             speed: random.nextDouble() * 2.4,
+            heading: random.nextDouble() * 360,
           );
         } else {
+          final nextHeading = (oldLocation.heading ?? random.nextDouble() * 360) +
+              random.nextDouble() * 40 -
+              20;
           peer.lastLocation = LocationPoint(
             latitude: oldLocation.latitude + random.nextDouble() * 0.0008 - 0.0004,
             longitude: oldLocation.longitude + random.nextDouble() * 0.0008 - 0.0004,
             speed: random.nextDouble() * 3.2,
+            heading: (nextHeading + 360) % 360,
           );
           peer.history = [peer.lastLocation!, ...peer.history].take(20).toList();
         }
