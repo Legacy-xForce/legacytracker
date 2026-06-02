@@ -53,6 +53,10 @@
 	<string>LaunchScreen</string>
 	<key>UIMainStoryboardFile</key>
 	<string>Main</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>Legacytracker needs your location to show your position on the map.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Legacytracker needs local network access to communicate with the tracking backend.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

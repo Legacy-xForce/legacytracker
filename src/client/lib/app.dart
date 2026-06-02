@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'src/data/network/remote_backend.dart';
@@ -9,8 +11,20 @@ import 'src/features/tracking/tracking_screen.dart';
 class App extends StatelessWidget {
   App({super.key});
 
+  static String _defaultBackendBaseUrl() {
+    if (Platform.isAndroid) {
+      return 'http://10.0.2.2:3000';
+    }
+    if (Platform.isIOS) {
+      // Use the iOS simulator loopback address here.
+      // For a physical device, point this to the host machine's LAN address.
+      return 'http://127.0.0.1:3000';
+    }
+    return 'http://127.0.0.1:3000';
+  }
+
   final RemoteBackend backend = RemoteBackend(
-    baseUrl: 'http://10.0.2.2:3000',
+    baseUrl: _defaultBackendBaseUrl(),
     userId: 'me',
   );
 
