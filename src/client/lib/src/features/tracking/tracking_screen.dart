@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../features/auth/auth_provider.dart';
 import '../../features/tracking/tracking_controller.dart';
 import 'widgets/tracking_map_layer.dart';
 import 'widgets/tracking_map_tab.dart';
@@ -54,8 +55,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
+    final title = auth.profile?.name ?? auth.username ?? 'Legacy Tracker';
+
     return Scaffold(
-      appBar: AppBar(title: const Text('Legacy Tracker'), centerTitle: true),
+      appBar: AppBar(title: Text('Legacy Tracker · $title'), centerTitle: true),
       body: Consumer<TrackingController>(
         builder: (context, controller, child) {
           return IndexedStack(
@@ -75,13 +79,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 controller: controller,
                 nameController: _nameController,
                 avatarController: _avatarController,
-                onSaveProfile: () {
-                  controller.updateProfile(
-                    name: _nameController.text.trim().isEmpty
-                        ? 'You'
-                        : _nameController.text.trim(),
-                    avatarUrl: _avatarController.text.trim(),
-                  );
+                onSaveProfile: () async {
+                  final updatedName = _nameController.text.trim().isEmpty
+                      ? 'You'
+                      : _nameController.text.trim();
+                  final updatedAvatar = _avatarController.text.trim();
+
+                  controller.updateProfile(name: updatedName, avatarUrl: updatedAvatar);
+                  await auth.updateProfile(name: updatedName, avatarUrl: updatedAvatar);
                 },
               ),
             ],

@@ -1,6 +1,6 @@
 import 'dotenv/config';
 import crypto from 'crypto';
-import Fastify from 'fastify';
+import Fastify, { FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
 import pool from './config/db';
@@ -74,6 +74,28 @@ function normalizeNumber(value: unknown): number | null {
   return value;
 }
 
+function getUserIdFromRequest(request: FastifyRequest): string | null {
+  const userId = String(request.headers['x-user-id'] || '').trim();
+  return userId.length > 0 ? userId : null;
+}
+
+async function ensureBackendSchema(): Promise<void> {
+  try {
+    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id bigserial PRIMARY KEY,
+        user_id text NOT NULL REFERENCES users(id),
+        content text NOT NULL,
+        read boolean NOT NULL DEFAULT false,
+        created_at timestamptz NOT NULL DEFAULT now()
+      )`,
+    );
+  } catch (error) {
+    app.log.warn({ error }, 'Unable to ensure backend schema is present');
+  }
+}
+
 function parseLocationItem(item: unknown): KnownLocation | null {
   if (item == null || typeof item !== 'object') {
     return null;
@@ -112,10 +134,138 @@ async function ensureUserExists(userId: string): Promise<void> {
     'INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
     [userId, userId],
   );
+
+  await pool.query(
+    `INSERT INTO notifications (user_id, content)
+     SELECT $1, 'Welcome to Legacy Tracker. Manage your notifications from the profile page.'
+     WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE user_id = $1)`,
+    [userId],
+  );
 }
 
+app.get('/api/v1/profile', async (request, reply) => {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) {
+    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+  }
+
+  await ensureUserExists(userId);
+
+  const result = await pool.query(
+    'SELECT id, name, avatar_url, role FROM users WHERE id = $1',
+    [userId],
+  );
+
+  if (result.rowCount === 0) {
+    return reply.code(404).send({ error: 'User not found' });
+  }
+
+  const user = result.rows[0];
+  return reply.send({
+    id: user.id,
+    name: user.name,
+    avatar_url: user.avatar_url ?? '',
+    role: user.role ?? 'user',
+  });
+});
+
+app.patch('/api/v1/profile', async (request, reply) => {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) {
+    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+  }
+
+  const body = request.body as Record<string, unknown> | null;
+  if (body == null) {
+    return reply.code(400).send({ error: 'Missing profile payload' });
+  }
+
+  const name = typeof body.name === 'string' ? body.name.trim() : null;
+  const avatarUrl = typeof body.avatar_url === 'string' ? body.avatar_url.trim() : null;
+
+  if (name == null && avatarUrl == null) {
+    return reply.code(400).send({ error: 'Missing profile update fields' });
+  }
+
+  await ensureUserExists(userId);
+
+  const updates = [] as string[];
+  const params: Array<unknown> = [userId];
+
+  if (name != null) {
+    updates.push(`name = $${params.length + 1}`);
+    params.push(name);
+  }
+  if (avatarUrl != null) {
+    updates.push(`avatar_url = $${params.length + 1}`);
+    params.push(avatarUrl);
+  }
+
+  await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $1`, params);
+
+  const result = await pool.query(
+    'SELECT id, name, avatar_url, role FROM users WHERE id = $1',
+    [userId],
+  );
+
+  const user = result.rows[0];
+  return reply.send({
+    id: user.id,
+    name: user.name,
+    avatar_url: user.avatar_url ?? '',
+    role: user.role ?? 'user',
+  });
+});
+
+app.get('/api/v1/notifications', async (request, reply) => {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) {
+    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+  }
+
+  await ensureUserExists(userId);
+
+  const result = await pool.query(
+    'SELECT id, content, read, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
+    [userId],
+  );
+
+  return reply.send({
+    notifications: result.rows.map((notification) => ({
+      'id': notification.id,
+      'content': notification.content,
+      'read': notification.read,
+      'created_at': notification.created_at,
+    })),
+  });
+});
+
+app.post('/api/v1/notifications/read', async (request, reply) => {
+  const userId = getUserIdFromRequest(request);
+  if (!userId) {
+    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+  }
+
+  const body = request.body as Record<string, unknown> | null;
+  if (body == null || body.notification_id == null) {
+    return reply.code(400).send({ error: 'Missing notification_id' });
+  }
+
+  const notificationId = Number(body.notification_id);
+  if (!Number.isInteger(notificationId) || notificationId <= 0) {
+    return reply.code(400).send({ error: 'Invalid notification_id' });
+  }
+
+  await pool.query(
+    'UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2',
+    [notificationId, userId],
+  );
+
+  return reply.send({ success: true });
+});
+
 app.post('/api/v1/streams/ticket', async (request, reply) => {
-  const userId = String(request.headers['x-user-id'] || '').trim();
+  const userId = getUserIdFromRequest(request);
   if (!userId) {
     return reply.code(401).send({ error: 'Missing X-User-Id header' });
   }
@@ -212,6 +362,7 @@ const port = Number(process.env.PORT || 3000);
 
 const start = async (): Promise<void> => {
   try {
+    await ensureBackendSchema();
     await app.listen({ port, host: '0.0.0.0' });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
   } catch (error) {

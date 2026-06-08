@@ -4,6 +4,15 @@ CREATE TABLE IF NOT EXISTS users (
   id text PRIMARY KEY,
   name text NOT NULL,
   avatar_url text,
+  role text NOT NULL DEFAULT 'user',
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS notifications (
+  id bigserial PRIMARY KEY,
+  user_id text NOT NULL REFERENCES users(id),
+  content text NOT NULL,
+  read boolean NOT NULL DEFAULT false,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

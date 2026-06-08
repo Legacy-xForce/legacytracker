@@ -15,18 +15,19 @@ class TrackingController extends ChangeNotifier {
   TrackingController({
     required this.locationRepository,
     required this.backend,
-  }) {
+    UserProfile? initialProfile,
+  }) : selfProfile = initialProfile ?? UserProfile(
+          id: 'me',
+          name: 'You',
+          avatarUrl: 'https://avatars.githubusercontent.com/u/38632219?v=4',
+        ) {
     _peerSubscription = backend.peerStream.listen((data) {
       peers = data;
       notifyListeners();
     });
   }
 
-  final UserProfile selfProfile = UserProfile(
-    id: 'me',
-    name: 'You',
-    avatarUrl: 'https://avatars.githubusercontent.com/u/38632219?v=4',
-  );
+  final UserProfile selfProfile;
 
   bool isTracking = false;
   bool permissionGranted = false;
@@ -99,6 +100,13 @@ class TrackingController extends ChangeNotifier {
   void updateProfile({required String name, required String avatarUrl}) {
     selfProfile.name = name;
     selfProfile.avatarUrl = avatarUrl;
+    notifyListeners();
+  }
+
+  void setSelfProfile(UserProfile profile) {
+    selfProfile.name = profile.name;
+    selfProfile.avatarUrl = profile.avatarUrl;
+    selfProfile.role = profile.role;
     notifyListeners();
   }
 
