@@ -3,8 +3,13 @@ import crypto from 'crypto';
 import Fastify, { FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
+import { createRemoteJWKSet, jwtVerify } from 'jose';
 import pool from './config/db';
 import ConnectionManager from './services/connection-manager';
+
+const JWKS = createRemoteJWKSet(new URL('https://auth.legacy-group.tech/.well-known/jwks.json'), {
+  timeoutDuration: 5000,
+});
 
 const app = Fastify({ logger: true });
 const connectionManager = new ConnectionManager();
@@ -74,9 +79,17 @@ function normalizeNumber(value: unknown): number | null {
   return value;
 }
 
-function getUserIdFromRequest(request: FastifyRequest): string | null {
-  const userId = String(request.headers['x-user-id'] || '').trim();
-  return userId.length > 0 ? userId : null;
+async function getUserIdFromRequest(request: FastifyRequest): Promise<string | null> {
+  const authHeader = request.headers['authorization'] ?? '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, JWKS, { algorithms: ['ES256'] });
+    const sub = payload.sub;
+    return typeof sub === 'string' && sub.length > 0 ? sub : null;
+  } catch {
+    return null;
+  }
 }
 
 async function ensureBackendSchema(): Promise<void> {
@@ -144,9 +157,9 @@ async function ensureUserExists(userId: string): Promise<void> {
 }
 
 app.get('/api/v1/profile', async (request, reply) => {
-  const userId = getUserIdFromRequest(request);
+  const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   await ensureUserExists(userId);
@@ -170,9 +183,9 @@ app.get('/api/v1/profile', async (request, reply) => {
 });
 
 app.patch('/api/v1/profile', async (request, reply) => {
-  const userId = getUserIdFromRequest(request);
+  const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   const body = request.body as Record<string, unknown> | null;
@@ -218,9 +231,9 @@ app.patch('/api/v1/profile', async (request, reply) => {
 });
 
 app.get('/api/v1/notifications', async (request, reply) => {
-  const userId = getUserIdFromRequest(request);
+  const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   await ensureUserExists(userId);
@@ -241,9 +254,9 @@ app.get('/api/v1/notifications', async (request, reply) => {
 });
 
 app.post('/api/v1/notifications/read', async (request, reply) => {
-  const userId = getUserIdFromRequest(request);
+  const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   const body = request.body as Record<string, unknown> | null;
@@ -265,9 +278,9 @@ app.post('/api/v1/notifications/read', async (request, reply) => {
 });
 
 app.post('/api/v1/streams/ticket', async (request, reply) => {
-  const userId = getUserIdFromRequest(request);
+  const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   const ticket = crypto.randomUUID();
@@ -283,9 +296,9 @@ app.post('/api/v1/streams/ticket', async (request, reply) => {
 });
 
 app.post('/api/v1/location', async (request, reply) => {
-  const userId = String(request.headers['x-user-id'] || '').trim();
+  const userId = await getUserIdFromRequest(request);
   if (!userId) {
-    return reply.code(401).send({ error: 'Missing X-User-Id header' });
+    return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   const body = request.body;

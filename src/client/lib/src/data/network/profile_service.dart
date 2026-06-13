@@ -13,11 +13,12 @@ class ProfileService {
   final Uri _baseUri;
   final http.Client _httpClient;
 
-  Future<UserProfile> fetchProfile(String userId) async {
-    final response = await _httpClient.get(
-      _apiUri('/api/v1/profile'),
-      headers: _userHeaders(userId),
-    );
+  Future<UserProfile> fetchProfile(String accessToken) async {
+    final response = await _httpClient
+        .get(_apiUri('/api/v1/profile'), headers: _bearerHeaders(accessToken))
+        .timeout(const Duration(seconds: 10), onTimeout: () {
+      throw Exception('Unable to reach the server. Check your connection and try again.');
+    });
 
     if (response.statusCode != 200) {
       throw Exception('Unable to fetch profile: ${response.body}');
@@ -33,7 +34,7 @@ class ProfileService {
   }
 
   Future<UserProfile> updateProfile(
-    String userId, {
+    String accessToken, {
     String? name,
     String? avatarUrl,
   }) async {
@@ -53,7 +54,7 @@ class ProfileService {
       _apiUri('/api/v1/profile'),
       headers: {
         'content-type': 'application/json',
-        ..._userHeaders(userId),
+        ..._bearerHeaders(accessToken),
       },
       body: jsonEncode(body),
     );
@@ -71,11 +72,12 @@ class ProfileService {
     );
   }
 
-  Future<List<NotificationItem>> fetchNotifications(String userId) async {
-    final response = await _httpClient.get(
-      _apiUri('/api/v1/notifications'),
-      headers: _userHeaders(userId),
-    );
+  Future<List<NotificationItem>> fetchNotifications(String accessToken) async {
+    final response = await _httpClient
+        .get(_apiUri('/api/v1/notifications'), headers: _bearerHeaders(accessToken))
+        .timeout(const Duration(seconds: 10), onTimeout: () {
+      throw Exception('Unable to reach the server. Check your connection and try again.');
+    });
 
     if (response.statusCode != 200) {
       throw Exception('Unable to load notifications: ${response.body}');
@@ -86,12 +88,12 @@ class ProfileService {
     return list.map(NotificationItem.fromJson).toList();
   }
 
-  Future<void> markNotificationRead(String userId, int notificationId) async {
+  Future<void> markNotificationRead(String accessToken, int notificationId) async {
     final response = await _httpClient.post(
       _apiUri('/api/v1/notifications/read'),
       headers: {
         'content-type': 'application/json',
-        ..._userHeaders(userId),
+        ..._bearerHeaders(accessToken),
       },
       body: jsonEncode({'notification_id': notificationId}),
     );
@@ -105,7 +107,7 @@ class ProfileService {
     return _baseUri.replace(path: path);
   }
 
-  Map<String, String> _userHeaders(String userId) {
-    return {'x-user-id': userId};
+  Map<String, String> _bearerHeaders(String accessToken) {
+    return {'authorization': 'Bearer $accessToken'};
   }
 }

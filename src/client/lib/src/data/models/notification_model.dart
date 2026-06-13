@@ -12,8 +12,9 @@ class NotificationItem {
   });
 
   factory NotificationItem.fromJson(Map<String, dynamic> data) {
+    final rawId = data['id'];
     return NotificationItem(
-      id: data['id'] as int,
+      id: rawId is int ? rawId : int.parse(rawId.toString()),
       content: data['content'] as String,
       read: data['read'] as bool,
       createdAt: DateTime.tryParse(data['created_at'] as String? ?? '') ?? DateTime.now(),

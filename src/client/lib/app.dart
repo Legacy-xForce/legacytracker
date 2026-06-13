@@ -19,10 +19,10 @@ class App extends StatelessWidget {
 
   static String _defaultBackendBaseUrl() {
     if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
+      return 'http://192.168.0.224:3000';
     }
     if (Platform.isIOS) {
-      return 'http://127.0.0.1:3000';
+      return 'http://192.168.0.224:3000';
     }
     return 'http://127.0.0.1:3000';
   }
@@ -59,7 +59,7 @@ class App extends StatelessWidget {
             home: auth.isInitializing
                 ? const Scaffold(body: Center(child: CircularProgressIndicator()))
                 : auth.isAuthenticated
-                    ? AuthenticatedApp(username: auth.username!, profile: auth.profile)
+                    ? AuthenticatedApp(accessToken: auth.tokens!.accessToken, selfId: auth.profile?.id ?? '', profile: auth.profile)
                     : const LoginScreen(),
           );
         },
@@ -69,9 +69,10 @@ class App extends StatelessWidget {
 }
 
 class AuthenticatedApp extends StatefulWidget {
-  const AuthenticatedApp({super.key, required this.username, required this.profile});
+  const AuthenticatedApp({super.key, required this.accessToken, required this.selfId, required this.profile});
 
-  final String username;
+  final String accessToken;
+  final String selfId;
   final UserProfile? profile;
 
   @override
@@ -83,10 +84,10 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
 
   static String _defaultBackendBaseUrl() {
     if (Platform.isAndroid) {
-      return 'http://10.0.2.2:3000';
+      return 'http://192.168.0.224:3000';
     }
     if (Platform.isIOS) {
-      return 'http://127.0.0.1:3000';
+      return 'http://192.168.0.224:3000';
     }
     return 'http://127.0.0.1:3000';
   }
@@ -102,7 +103,8 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
 
       final backend = RemoteBackend(
         baseUrl: _defaultBackendBaseUrl(),
-        userId: widget.username,
+        accessToken: widget.accessToken,
+        selfId: widget.selfId,
       );
       _trackingController = TrackingController(
         locationRepository: LocationRepository(
@@ -110,7 +112,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
           backend: backend,
         ),
         backend: backend,
-        initialProfile: widget.profile ?? UserProfile(id: widget.username, name: widget.username),
+        initialProfile: widget.profile ?? UserProfile(id: widget.selfId, name: widget.selfId),
       );
     }
   }

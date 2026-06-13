@@ -93,11 +93,11 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
     try {
       profile = await profileService.updateProfile(
-        username!,
+        tokens!.accessToken,
         name: name.trim(),
         avatarUrl: avatarUrl.trim(),
       );
-      notifications = await profileService.fetchNotifications(username!);
+      notifications = await profileService.fetchNotifications(tokens!.accessToken);
     } finally {
       isLoading = false;
       notifyListeners();
@@ -109,7 +109,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     try {
-      notifications = await profileService.fetchNotifications(username!);
+      notifications = await profileService.fetchNotifications(tokens!.accessToken);
       notifyListeners();
     } catch (_) {
       // Keep existing notifications if refresh fails.
@@ -121,7 +121,7 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     try {
-      await profileService.markNotificationRead(username!, id);
+      await profileService.markNotificationRead(tokens!.accessToken, id);
       await refreshNotifications();
     } catch (_) {
       // ignore notification update failures
@@ -151,8 +151,8 @@ class AuthProvider extends ChangeNotifier {
     if (username == null) {
       return;
     }
-    profile = await profileService.fetchProfile(username!);
-    notifications = await profileService.fetchNotifications(username!);
+    profile = await profileService.fetchProfile(tokens!.accessToken);
+    notifications = await profileService.fetchNotifications(tokens!.accessToken);
     notifyListeners();
   }
 

@@ -9,7 +9,7 @@ class AuthService {
       : _httpClient = httpClient ?? http.Client(),
         _baseUri = Uri.parse(baseUrl ?? _defaultBaseUrl);
 
-  static const String _defaultBaseUrl = 'http://caccabot.duckdns.org:4000';
+  static const String _defaultBaseUrl = 'https://auth.legacy-group.tech';
   final Uri _baseUri;
   final http.Client _httpClient;
 

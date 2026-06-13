@@ -9,10 +9,11 @@ import '../../data/models/user_model.dart';
 import 'backend.dart';
 
 class RemoteBackend implements Backend {
-  RemoteBackend({required this.baseUrl, required this.userId});
+  RemoteBackend({required this.baseUrl, required this.accessToken, required this.selfId});
 
   final String baseUrl;
-  final String userId;
+  final String accessToken;
+  final String selfId;
   final http.Client _httpClient = http.Client();
   final StreamController<List<UserProfile>> _peerController = StreamController<List<UserProfile>>.broadcast();
   final Map<String, UserProfile> _peerCache = {};
@@ -58,7 +59,7 @@ class RemoteBackend implements Backend {
       uri,
       headers: {
         'content-type': 'application/json',
-        'x-user-id': userId,
+        'authorization': 'Bearer $accessToken',
       },
       body: jsonEncode(payload),
     );
@@ -79,7 +80,7 @@ class RemoteBackend implements Backend {
       uri,
       headers: {
         'content-type': 'application/json',
-        'x-user-id': userId,
+        'authorization': 'Bearer $accessToken',
       },
     );
 
@@ -146,7 +147,7 @@ class RemoteBackend implements Backend {
 
   void _handlePeerUpdate(Map<String, dynamic> payload) {
     final remoteUserId = payload['user_id'] as String?;
-    if (remoteUserId == null || remoteUserId == userId) {
+    if (remoteUserId == null || remoteUserId == selfId) {
       return;
     }
 
