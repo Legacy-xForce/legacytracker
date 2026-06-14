@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -13,10 +14,21 @@ abstract class LocationService {
 }
 
 class GeolocatorLocationService implements LocationService {
-  final LocationSettings _settings = const LocationSettings(
-    accuracy: LocationAccuracy.bestForNavigation,
-    distanceFilter: 1,
-  );
+  LocationSettings get _settings {
+    if (Platform.isIOS || Platform.isMacOS) {
+      return AppleSettings(
+        accuracy: LocationAccuracy.bestForNavigation,
+        distanceFilter: 1,
+        activityType: ActivityType.other,
+        pauseLocationUpdatesAutomatically: false,
+        allowBackgroundLocationUpdates: true,
+      );
+    }
+    return const LocationSettings(
+      accuracy: LocationAccuracy.bestForNavigation,
+      distanceFilter: 1,
+    );
+  }
 
   Stream<LocationPoint>? _locationStream;
 
@@ -40,7 +52,8 @@ class GeolocatorLocationService implements LocationService {
           (position) => LocationPoint(
             latitude: position.latitude,
             longitude: position.longitude,
-            speed: position.speed,
+            // On iOS, speed is -1.0 when unavailable; clamp to zero.
+            speed: position.speed < 0 ? 0.0 : position.speed,
             heading: position.heading.isFinite ? position.heading : null,
           ),
         );

@@ -98,11 +98,12 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       return;
     }
 
-    await backend.initialize();
     _startLocationStream();
-
     isTracking = true;
     notifyListeners();
+
+    // Backend connection is best-effort; local tracking works without it.
+    backend.initialize().catchError((_) {});
   }
 
   void _startLocationStream() {
