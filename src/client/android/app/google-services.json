@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "245407814324",
+    "project_id": "legacytracker-36ad9",
+    "storage_bucket": "legacytracker-36ad9.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:245407814324:android:47d7646b37ea5fd58ebde1",
+        "android_client_info": {
+          "package_name": "com.legacy.legacytracker"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCHw4qoK6yy_4DutIVcKG-4njgnxLfOZkQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

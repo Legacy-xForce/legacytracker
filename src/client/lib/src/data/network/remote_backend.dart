@@ -36,6 +36,21 @@ class RemoteBackend implements Backend {
   }
 
   @override
+  void sendLocationRealtime(LocationPoint point) {
+    if (_channel == null) return;
+    _channel!.sink.add(jsonEncode({
+      'type': 'location',
+      'coords': {
+        'latitude': point.latitude,
+        'longitude': point.longitude,
+        'speed': point.speed,
+        'heading': point.heading,
+      },
+      'timestamp': point.timestamp.toUtc().toIso8601String(),
+    }));
+  }
+
+  @override
   Future<bool> sendLocation(UserProfile profile) async {
     final location = profile.lastLocation;
     if (location == null) {
@@ -68,6 +83,23 @@ class RemoteBackend implements Backend {
   }
 
   @override
+  Future<void> registerFcmToken(String token) async {
+    final uri = _apiUri('/api/v1/fcm-token');
+    try {
+      await _httpClient.post(
+        uri,
+        headers: {
+          'content-type': 'application/json',
+          'authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode({'token': token}),
+      );
+    } catch (_) {
+      // Non-critical — FCM pacing updates simply won't arrive if this fails.
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     _channel?.sink.close();
     _peerController.close();
@@ -79,7 +111,6 @@ class RemoteBackend implements Backend {
     final response = await _httpClient.post(
       uri,
       headers: {
-        'content-type': 'application/json',
         'authorization': 'Bearer $accessToken',
       },
     );

@@ -22,10 +22,14 @@ class GeolocatorLocationService implements LocationService {
 
   @override
   Future<bool> requestPermission() async {
-    final status = await Permission.locationWhenInUse.request();
-    if (status.isDenied || status.isPermanentlyDenied) {
+    final whenInUse = await Permission.locationWhenInUse.request();
+    if (whenInUse.isDenied || whenInUse.isPermanentlyDenied) {
       return false;
     }
+    // Upgrade to "always" for background tracking. User may deny — that is
+    // fine; foreground tracking still works and the background service simply
+    // won't be able to obtain a position on iOS without this grant.
+    await Permission.locationAlways.request();
     return true;
   }
 

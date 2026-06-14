@@ -6,6 +6,7 @@ import websocket from '@fastify/websocket';
 import { createRemoteJWKSet, jwtVerify } from 'jose';
 import pool from './config/db';
 import ConnectionManager from './services/connection-manager';
+import { initializeFcm, broadcastPacingMode } from './services/fcm-service';
 
 const JWKS = createRemoteJWKSet(new URL('https://auth.legacy-group.tech/.well-known/jwks.json'), {
   timeoutDuration: 5000,
@@ -69,6 +70,15 @@ async function updateViewerState(): Promise<void> {
     );
   } catch (error) {
     app.log.warn({ error }, 'Unable to synchronize viewer state with database');
+  }
+
+  // Push new pacing mode to all registered devices via FCM.
+  try {
+    const result = await pool.query<{ token: string }>('SELECT token FROM user_fcm_tokens');
+    const tokens = result.rows.map((r) => r.token);
+    await broadcastPacingMode(tokens, getPacingMode());
+  } catch (error) {
+    app.log.warn({ error }, 'Unable to broadcast pacing mode via FCM');
   }
 }
 
@@ -277,6 +287,30 @@ app.post('/api/v1/notifications/read', async (request, reply) => {
   return reply.send({ success: true });
 });
 
+app.post('/api/v1/fcm-token', async (request, reply) => {
+  const userId = await getUserIdFromRequest(request);
+  if (!userId) {
+    return reply.code(401).send({ error: 'Unauthorized' });
+  }
+
+  const body = request.body as Record<string, unknown> | null;
+  const token = typeof body?.token === 'string' ? body.token.trim() : null;
+  if (!token) {
+    return reply.code(400).send({ error: 'Missing token' });
+  }
+
+  await ensureUserExists(userId);
+
+  await pool.query(
+    `INSERT INTO user_fcm_tokens (user_id, token, updated_at)
+     VALUES ($1, $2, now())
+     ON CONFLICT (user_id, token) DO UPDATE SET updated_at = now()`,
+    [userId, token],
+  );
+
+  return reply.send({ ok: true });
+});
+
 app.post('/api/v1/streams/ticket', async (request, reply) => {
   const userId = await getUserIdFromRequest(request);
   if (!userId) {
@@ -338,12 +372,16 @@ app.post('/api/v1/location', async (request, reply) => {
 });
 
 app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
-  const query = req.query as Record<string, unknown>;
-  const ticket = String(query.ticket || '').trim();
+  const urlParams = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
+  const ticket = urlParams.get('ticket') ?? '';
   const entry = tickets.get(ticket);
 
   if (!entry || entry.used || entry.expiresAt < Date.now()) {
-    connection.socket.close(1008, 'Unauthorized');
+    try {
+      connection.socket.close(1008, 'Unauthorized');
+    } catch {
+      connection.destroy();
+    }
     return;
   }
 
@@ -365,6 +403,41 @@ app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
     connection.socket.send(JSON.stringify({ type: 'snapshot', users: snapshot }));
   }
 
+  connection.socket.on('message', async (raw: Buffer | string) => {
+    let msg: unknown;
+    try {
+      msg = JSON.parse(raw.toString());
+    } catch {
+      return;
+    }
+
+    if (typeof msg !== 'object' || msg === null || (msg as Record<string, unknown>)['type'] !== 'location') {
+      return;
+    }
+
+    const point = parseLocationItem(msg);
+    if (!point) {
+      return;
+    }
+
+    await pool.query(
+      `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
+      [userId, point.recordedAt, point.longitude, point.latitude, point.speed, point.heading],
+    );
+
+    lastKnownLocation.set(userId, point);
+
+    connectionManager.broadcast({
+      user_id: userId,
+      latitude: point.latitude,
+      longitude: point.longitude,
+      speed: point.speed,
+      heading: point.heading,
+      recorded_at: point.recordedAt,
+    });
+  });
+
   connection.socket.on('close', () => {
     connectionManager.remove(userId);
     updateViewerState();
@@ -375,6 +448,7 @@ const port = Number(process.env.PORT || 3000);
 
 const start = async (): Promise<void> => {
   try {
+    initializeFcm();
     await ensureBackendSchema();
     await app.listen({ port, host: '0.0.0.0' });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);

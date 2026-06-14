@@ -16,6 +16,13 @@ CREATE TABLE IF NOT EXISTS notifications (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
+CREATE TABLE IF NOT EXISTS user_fcm_tokens (
+  user_id text NOT NULL REFERENCES users(id),
+  token text NOT NULL,
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (user_id, token)
+);
+
 CREATE TABLE IF NOT EXISTS viewer_state (
   id text PRIMARY KEY,
   active_viewers integer NOT NULL DEFAULT 0,
