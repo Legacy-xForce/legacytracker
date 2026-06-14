@@ -371,7 +371,15 @@ app.post('/api/v1/location', async (request, reply) => {
   return reply.send({ received: points.length, pacing: pacingMode });
 });
 
-app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
+// @fastify/websocket adds its `onRoute` hook only once the plugin finishes
+// loading during boot. Routes declared at the top level are registered *before*
+// that hook exists, so `{ websocket: true }` is silently ignored and the handler
+// runs as a plain HTTP route — receiving (request, reply) instead of a websocket
+// connection. That is why `connection.socket.close()` / `connection.destroy()`
+// blew up. Registering inside app.register() defers this route until after the
+// plugin has loaded, so it is correctly upgraded.
+app.register(async () => {
+  app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
   const urlParams = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
   const ticket = urlParams.get('ticket') ?? '';
   const entry = tickets.get(ticket);
@@ -389,6 +397,7 @@ app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
   tickets.delete(ticket);
   const userId = entry.userId;
   connectionManager.add(userId, connection.socket);
+  app.log.info({ userId, totalConnections: connectionManager.count }, '[ws] client connected');
   updateViewerState();
 
   if (lastKnownLocation.size > 0) {
@@ -400,14 +409,19 @@ app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
       heading: point.heading,
       recorded_at: point.recordedAt,
     }));
+    app.log.info({ userId, userCount: snapshot.length }, '[ws] sending snapshot');
     connection.socket.send(JSON.stringify({ type: 'snapshot', users: snapshot }));
   }
 
   connection.socket.on('message', async (raw: Buffer | string) => {
+    const rawStr = raw.toString();
+    app.log.info({ userId, data: rawStr }, '[ws] message received');
+
     let msg: unknown;
     try {
-      msg = JSON.parse(raw.toString());
+      msg = JSON.parse(rawStr);
     } catch {
+      app.log.warn({ userId, data: rawStr }, '[ws] failed to parse message');
       return;
     }
 
@@ -417,6 +431,7 @@ app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
 
     const point = parseLocationItem(msg);
     if (!point) {
+      app.log.warn({ userId, msg }, '[ws] invalid location payload');
       return;
     }
 
@@ -428,19 +443,23 @@ app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
 
     lastKnownLocation.set(userId, point);
 
-    connectionManager.broadcast({
+    const broadcast = {
       user_id: userId,
       latitude: point.latitude,
       longitude: point.longitude,
       speed: point.speed,
       heading: point.heading,
       recorded_at: point.recordedAt,
-    });
+    };
+    app.log.info({ broadcast, recipients: connectionManager.count }, '[ws] broadcasting location');
+    connectionManager.broadcast(broadcast);
   });
 
   connection.socket.on('close', () => {
+    app.log.info({ userId, totalConnections: connectionManager.count - 1 }, '[ws] client disconnected');
     connectionManager.remove(userId);
     updateViewerState();
+  });
   });
 });
 

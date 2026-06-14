@@ -40,13 +40,14 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   final Distance _distance = const Distance();
   late final AnimationController _pulseController;
   late final AnimationController _mapCenterController;
-  late final AnimationController _selfMarkerController;
+
+  // One motion per tracked marker (self + each peer), keyed by profile id, so
+  // markers glide from their previous position to the new one instead of
+  // teleporting whenever a fresh location arrives.
+  final Map<String, _MarkerMotion> _motions = {};
 
   Animation<LatLng>? _mapCenterAnimation;
-  Animation<LatLng>? _selfMarkerAnimation;
-  LatLng? _displayedSelfLocation;
   LatLng? _lastCenteredLocation;
-  DateTime? _lastAnimatedSelfTimestamp;
 
   @override
   void initState() {
@@ -58,19 +59,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _mapCenterController = AnimationController(vsync: this)
       ..addListener(_handleMapCenterTick)
       ..addStatusListener(_handleMapCenterStatus);
-    _selfMarkerController = AnimationController(vsync: this)
-      ..addListener(_handleSelfMarkerTick)
-      ..addStatusListener(_handleSelfMarkerStatus);
-    _displayedSelfLocation = _currentSelfLocation;
-    _lastAnimatedSelfTimestamp = widget.selfProfile.lastLocation?.timestamp;
     _syncMovementPulse();
+    _syncMarkerMotions();
   }
 
   @override
   void didUpdateWidget(covariant TrackingMapTab oldWidget) {
     super.didUpdateWidget(oldWidget);
     _syncMovementPulse();
-    _syncSelfMarkerAnimation();
+    _syncMarkerMotions();
 
     if (!widget.isActive) {
       return;
@@ -91,10 +88,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       ..removeListener(_handleMapCenterTick)
       ..removeStatusListener(_handleMapCenterStatus)
       ..dispose();
-    _selfMarkerController
-      ..removeListener(_handleSelfMarkerTick)
-      ..removeStatusListener(_handleSelfMarkerStatus)
-      ..dispose();
+    for (final motion in _motions.values) {
+      motion.dispose();
+    }
+    _motions.clear();
     _pulseController.dispose();
     _mapController.dispose();
     super.dispose();
@@ -106,16 +103,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     } catch (_) {
       return AppConstants.defaultZoom;
     }
-  }
-
-  LatLng? get _currentSelfLocation {
-    final location = widget.selfProfile.lastLocation;
-    if (location == null ||
-        !location.latitude.isFinite ||
-        !location.longitude.isFinite) {
-      return null;
-    }
-    return LatLng(location.latitude, location.longitude);
   }
 
   void _animateMapTo(LatLng target) {
@@ -167,34 +154,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
   }
 
-  void _handleSelfMarkerTick() {
-    if (!mounted) {
-      return;
-    }
-
-    final animatedLocation = _selfMarkerAnimation?.value;
-    if (animatedLocation == null) {
-      return;
-    }
-
-    setState(() {
-      _displayedSelfLocation = animatedLocation;
-    });
-  }
-
-  void _handleSelfMarkerStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed ||
-        status == AnimationStatus.dismissed) {
-      final location = _currentSelfLocation;
-      if (location != null && mounted) {
-        setState(() {
-          _displayedSelfLocation = location;
-        });
-      }
-      _selfMarkerAnimation = null;
-    }
-  }
-
   Duration _movementDuration(LatLng start, LatLng end) {
     final meters = _distance.as(LengthUnit.Meter, start, end);
     final milliseconds = (80 + math.sqrt(meters) * 12).clamp(80, 450);
@@ -215,45 +174,36 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
   }
 
-  void _syncSelfMarkerAnimation() {
-    final location = widget.selfProfile.lastLocation;
-    if (location == null) {
-      _displayedSelfLocation = null;
-      _lastAnimatedSelfTimestamp = null;
-      return;
+  /// Feeds the latest location of self and every peer into its motion, so each
+  /// marker glides to the new position, and disposes motions for users that are
+  /// no longer present.
+  void _syncMarkerMotions() {
+    final activeIds = <String>{widget.selfProfile.id};
+    _motionFor(widget.selfProfile.id).update(widget.selfProfile.lastLocation);
+
+    for (final peer in widget.peers) {
+      activeIds.add(peer.id);
+      _motionFor(peer.id).update(peer.lastLocation);
     }
 
-    if (!location.latitude.isFinite || !location.longitude.isFinite) {
-      _displayedSelfLocation = null;
-      _lastAnimatedSelfTimestamp = null;
-      return;
+    final stale =
+        _motions.keys.where((id) => !activeIds.contains(id)).toList();
+    for (final id in stale) {
+      _motions.remove(id)!.dispose();
     }
+  }
 
-    if (_lastAnimatedSelfTimestamp == location.timestamp) {
-      return;
-    }
-
-    final target = LatLng(location.latitude, location.longitude);
-    final start = _displayedSelfLocation ?? target;
-    _lastAnimatedSelfTimestamp = location.timestamp;
-
-    if (start == target) {
-      setState(() {
-        _displayedSelfLocation = target;
-      });
-      return;
-    }
-
-    final duration = _movementDuration(start, target);
-    _selfMarkerController.stop();
-    _selfMarkerAnimation = _LatLngTween(begin: start, end: target).animate(
-      CurvedAnimation(
-        parent: _selfMarkerController,
-        curve: Curves.easeOutCubic,
-      ),
+  _MarkerMotion _motionFor(String id) {
+    return _motions.putIfAbsent(
+      id,
+      () => _MarkerMotion(vsync: this, onTick: _handleMotionTick),
     );
-    _selfMarkerController.duration = duration;
-    _selfMarkerController.forward(from: 0);
+  }
+
+  void _handleMotionTick() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   @override
@@ -352,10 +302,12 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         );
       }
 
+      final point = _motions[peer.id]?.value ??
+          LatLng(location.latitude, location.longitude);
       return _buildTrackedUserMarker(
         profile: peer,
         location: location,
-        point: LatLng(location.latitude, location.longitude),
+        point: point,
         onTap: () => widget.onUserTap(peer),
         tooltipMessage: peer.name,
         beamColor: const Color(0xFF8B5CF6),
@@ -377,8 +329,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       );
     }
 
-    final markerLocation =
-        _displayedSelfLocation ?? LatLng(location.latitude, location.longitude);
+    final markerLocation = _motions[profile.id]?.value ??
+        LatLng(location.latitude, location.longitude);
     return _buildTrackedUserMarker(
       profile: profile,
       location: location,
@@ -535,6 +487,139 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       return null;
     }
     return normalizeBearing(heading);
+  }
+}
+
+/// Drives the on-screen position of a single marker, tweening it from its
+/// current position to each new location instead of jumping there instantly.
+class _MarkerMotion {
+  _MarkerMotion({required TickerProvider vsync, required this.onTick})
+    : _controller = AnimationController(vsync: vsync) {
+    _controller
+      ..addListener(_handleTick)
+      ..addStatusListener(_handleStatus);
+  }
+
+  // Glide bounds: long enough that movement reads as continuous, short enough
+  // that a late update doesn't leave the marker crawling far behind reality.
+  static const Duration _minGlide = Duration(milliseconds: 300);
+  static const Duration _maxGlide = Duration(seconds: 4);
+  static const Duration _defaultGlide = Duration(milliseconds: 1000);
+
+  final AnimationController _controller;
+  final VoidCallback onTick;
+
+  Animation<LatLng>? _animation;
+  LatLng? _displayed;
+  LatLng? _lastTarget;
+  DateTime? _lastUpdateAt;
+
+  /// The position the marker should currently be drawn at, or null until a
+  /// valid location has been seen.
+  LatLng? get value => _displayed;
+
+  /// Tweens towards [location], reusing the previous position as the start
+  /// point so the marker glides rather than teleports.
+  ///
+  /// Movement is keyed on the target coordinates rather than the location's
+  /// timestamp: peer timestamps come from the server's `recorded_at`, which can
+  /// repeat across updates, whereas a changed position is exactly what should
+  /// trigger a glide. The glide stretches across roughly the real gap between
+  /// updates so the marker is continuously in motion rather than hopping and
+  /// then sitting still until the next fix arrives.
+  void update(LocationPoint? location) {
+    if (location == null ||
+        !location.latitude.isFinite ||
+        !location.longitude.isFinite) {
+      _controller.stop();
+      _animation = null;
+      _displayed = null;
+      _lastTarget = null;
+      _lastUpdateAt = null;
+      return;
+    }
+
+    final target = LatLng(location.latitude, location.longitude);
+    if (_lastTarget != null && _sameLatLng(_lastTarget!, target)) {
+      return;
+    }
+
+    final now = DateTime.now();
+    final interval = _lastUpdateAt == null ? null : now.difference(_lastUpdateAt!);
+    _lastUpdateAt = now;
+    _lastTarget = target;
+
+    final start = _displayed ?? target;
+    if (_sameLatLng(start, target)) {
+      _displayed = target;
+      return;
+    }
+
+    _controller.stop();
+    _animation = _LatLngTween(begin: start, end: target).animate(
+      // Linear: constant-speed travel between fixes, so chained segments don't
+      // ease-in/out and stutter at every waypoint.
+      CurvedAnimation(parent: _controller, curve: Curves.linear),
+    );
+    _controller
+      ..duration = _glideDuration(interval)
+      ..forward(from: 0);
+    debugPrint(
+      '[MarkerMotion] glide ${start.latitude.toStringAsFixed(5)},${start.longitude.toStringAsFixed(5)}'
+      ' -> ${target.latitude.toStringAsFixed(5)},${target.longitude.toStringAsFixed(5)}'
+      ' over ${_controller.duration?.inMilliseconds}ms'
+      ' isAnimating=${_controller.isAnimating}',
+    );
+  }
+
+  /// Spreads the glide across the measured time between updates so the marker
+  /// arrives roughly as the next fix lands, clamped to sane bounds.
+  Duration _glideDuration(Duration? interval) {
+    if (interval == null) {
+      return _defaultGlide;
+    }
+    if (interval < _minGlide) return _minGlide;
+    if (interval > _maxGlide) return _maxGlide;
+    return interval;
+  }
+
+  int _tickCount = 0;
+
+  void _handleTick() {
+    final animated = _animation?.value;
+    if (animated == null) {
+      return;
+    }
+    _displayed = animated;
+    // Log only occasionally so we can confirm the controller is actually
+    // advancing without flooding the console.
+    if (_tickCount++ % 15 == 0) {
+      debugPrint(
+        '[MarkerMotion] tick ${_controller.value.toStringAsFixed(2)}'
+        ' -> ${animated.latitude.toStringAsFixed(5)},${animated.longitude.toStringAsFixed(5)}',
+      );
+    }
+    onTick();
+  }
+
+  void _handleStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      if (_animation != null) {
+        _displayed = _animation!.value;
+      }
+      _animation = null;
+    }
+  }
+
+  void dispose() {
+    _controller
+      ..removeListener(_handleTick)
+      ..removeStatusListener(_handleStatus)
+      ..dispose();
+  }
+
+  static bool _sameLatLng(LatLng a, LatLng b) {
+    return a.latitude == b.latitude && a.longitude == b.longitude;
   }
 }
 

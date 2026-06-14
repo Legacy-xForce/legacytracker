@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:developer' as dev;
 
 import 'package:http/http.dart' as http;
 import 'package:web_socket_channel/web_socket_channel.dart';
@@ -38,7 +39,7 @@ class RemoteBackend implements Backend {
   @override
   void sendLocationRealtime(LocationPoint point) {
     if (_channel == null) return;
-    _channel!.sink.add(jsonEncode({
+    final payload = {
       'type': 'location',
       'coords': {
         'latitude': point.latitude,
@@ -47,7 +48,9 @@ class RemoteBackend implements Backend {
         'heading': point.heading,
       },
       'timestamp': point.timestamp.toUtc().toIso8601String(),
-    }));
+    };
+    dev.log('[ws] sending: ${jsonEncode(payload)}', name: 'RemoteBackend');
+    _channel!.sink.add(jsonEncode(payload));
   }
 
   @override
@@ -134,13 +137,19 @@ class RemoteBackend implements Backend {
     }
 
     _channel?.sink.close();
-    _channel = WebSocketChannel.connect(_webSocketUri(_ticket!));
+    final uri = _webSocketUri(_ticket!);
+    dev.log('[ws] connecting to $uri', name: 'RemoteBackend');
+    _channel = WebSocketChannel.connect(uri);
     _channel!.stream.listen(
       _handleWebSocketMessage,
       onError: (error) {
+        dev.log('[ws] error: $error', name: 'RemoteBackend');
         _scheduleReconnect();
       },
-      onDone: _scheduleReconnect,
+      onDone: () {
+        dev.log('[ws] connection closed, scheduling reconnect', name: 'RemoteBackend');
+        _scheduleReconnect();
+      },
     );
   }
 
@@ -149,6 +158,7 @@ class RemoteBackend implements Backend {
       return;
     }
 
+    dev.log('[ws] received: $message', name: 'RemoteBackend');
     final decoded = jsonDecode(message);
     if (decoded is Map<String, dynamic>) {
       if (decoded['type'] == 'snapshot' && decoded['users'] is List) {
@@ -241,6 +251,7 @@ class RemoteBackend implements Backend {
 
   void _scheduleReconnect() {
     _channel = null;
+    dev.log('[ws] reconnecting in 3s', name: 'RemoteBackend');
     Future.delayed(const Duration(seconds: 3), () {
       if (_ticket != null) {
         _connectWebSocket();
