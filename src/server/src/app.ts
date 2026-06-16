@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import Fastify, { FastifyRequest } from 'fastify';
 import cors from '@fastify/cors';
 import websocket from '@fastify/websocket';
-import { createRemoteJWKSet, jwtVerify } from 'jose';
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import pool from './config/db';
 import ConnectionManager from './services/connection-manager';
 import { initializeFcm, broadcastPacingMode } from './services/fcm-service';
@@ -89,14 +89,44 @@ function normalizeNumber(value: unknown): number | null {
   return value;
 }
 
-async function getUserIdFromRequest(request: FastifyRequest): Promise<string | null> {
+function readStringClaim(payload: JWTPayload, claim: string): string | null {
+  const value = payload[claim];
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : null;
+}
+
+function getDisplayNameFromToken(payload: JWTPayload, fallbackId: string): string {
+  const candidates = [
+    readStringClaim(payload, 'preferred_username'),
+    readStringClaim(payload, 'username'),
+    readStringClaim(payload, 'nickname'),
+    readStringClaim(payload, 'name'),
+    readStringClaim(payload, 'email'),
+  ];
+
+  return candidates.find((candidate) => candidate != null && candidate !== fallbackId) ?? fallbackId;
+}
+
+async function getCurrentUserIdentity(request: FastifyRequest): Promise<{ userId: string; displayName: string } | null> {
   const authHeader = request.headers['authorization'] ?? '';
   const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
   if (!token) return null;
+
   try {
     const { payload } = await jwtVerify(token, JWKS, { algorithms: ['ES256'] });
-    const sub = payload.sub;
-    return typeof sub === 'string' && sub.length > 0 ? sub : null;
+    const sub = typeof payload.sub === 'string' && payload.sub.length > 0 ? payload.sub : null;
+    if (!sub) {
+      return null;
+    }
+
+    return {
+      userId: sub,
+      displayName: getDisplayNameFromToken(payload, sub),
+    };
   } catch {
     return null;
   }
@@ -152,10 +182,20 @@ function parseLocationItem(item: unknown): KnownLocation | null {
   };
 }
 
-async function ensureUserExists(userId: string): Promise<void> {
+async function ensureUserExists(userId: string, displayName: string): Promise<void> {
   await pool.query(
-    'INSERT INTO users (id, name) VALUES ($1, $2) ON CONFLICT (id) DO NOTHING',
-    [userId, userId],
+    `
+      INSERT INTO users (id, name)
+      VALUES ($1, $2)
+      ON CONFLICT (id) DO UPDATE
+      SET name = CASE
+        WHEN users.name = users.id AND EXCLUDED.name IS DISTINCT FROM users.id
+          THEN EXCLUDED.name
+        ELSE users.name
+      END
+      WHERE users.name = users.id AND EXCLUDED.name IS DISTINCT FROM users.id
+    `,
+    [userId, displayName],
   );
 
   await pool.query(
@@ -167,16 +207,16 @@ async function ensureUserExists(userId: string): Promise<void> {
 }
 
 app.get('/api/v1/profile', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
-  await ensureUserExists(userId);
+  await ensureUserExists(identity.userId, identity.displayName);
 
   const result = await pool.query(
     'SELECT id, name, avatar_url, role FROM users WHERE id = $1',
-    [userId],
+    [identity.userId],
   );
 
   if (result.rowCount === 0) {
@@ -193,8 +233,8 @@ app.get('/api/v1/profile', async (request, reply) => {
 });
 
 app.patch('/api/v1/profile', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
@@ -210,10 +250,10 @@ app.patch('/api/v1/profile', async (request, reply) => {
     return reply.code(400).send({ error: 'Missing profile update fields' });
   }
 
-  await ensureUserExists(userId);
+  await ensureUserExists(identity.userId, identity.displayName);
 
   const updates = [] as string[];
-  const params: Array<unknown> = [userId];
+  const params: Array<unknown> = [identity.userId];
 
   if (name != null) {
     updates.push(`name = $${params.length + 1}`);
@@ -228,7 +268,7 @@ app.patch('/api/v1/profile', async (request, reply) => {
 
   const result = await pool.query(
     'SELECT id, name, avatar_url, role FROM users WHERE id = $1',
-    [userId],
+    [identity.userId],
   );
 
   const user = result.rows[0];
@@ -241,16 +281,16 @@ app.patch('/api/v1/profile', async (request, reply) => {
 });
 
 app.get('/api/v1/notifications', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
-  await ensureUserExists(userId);
+  await ensureUserExists(identity.userId, identity.displayName);
 
   const result = await pool.query(
     'SELECT id, content, read, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
-    [userId],
+    [identity.userId],
   );
 
   return reply.send({
@@ -264,8 +304,8 @@ app.get('/api/v1/notifications', async (request, reply) => {
 });
 
 app.post('/api/v1/notifications/read', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
@@ -281,15 +321,15 @@ app.post('/api/v1/notifications/read', async (request, reply) => {
 
   await pool.query(
     'UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2',
-    [notificationId, userId],
+    [notificationId, identity.userId],
   );
 
   return reply.send({ success: true });
 });
 
 app.post('/api/v1/fcm-token', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
@@ -299,39 +339,39 @@ app.post('/api/v1/fcm-token', async (request, reply) => {
     return reply.code(400).send({ error: 'Missing token' });
   }
 
-  await ensureUserExists(userId);
+  await ensureUserExists(identity.userId, identity.displayName);
 
   await pool.query(
     `INSERT INTO user_fcm_tokens (user_id, token, updated_at)
      VALUES ($1, $2, now())
      ON CONFLICT (user_id, token) DO UPDATE SET updated_at = now()`,
-    [userId, token],
+    [identity.userId, token],
   );
 
   return reply.send({ ok: true });
 });
 
 app.post('/api/v1/streams/ticket', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
   const ticket = crypto.randomUUID();
   tickets.set(ticket, {
-    userId,
+    userId: identity.userId,
     expiresAt: Date.now() + 60_000,
     used: false,
   });
 
-  await ensureUserExists(userId);
+  await ensureUserExists(identity.userId, identity.displayName);
 
   return reply.send({ ticket });
 });
 
 app.post('/api/v1/location', async (request, reply) => {
-  const userId = await getUserIdFromRequest(request);
-  if (!userId) {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
     return reply.code(401).send({ error: 'Unauthorized' });
   }
 
@@ -342,21 +382,21 @@ app.post('/api/v1/location', async (request, reply) => {
     return reply.code(400).send({ error: 'Invalid location payload' });
   }
 
-  await ensureUserExists(userId);
+  await ensureUserExists(identity.userId, identity.displayName);
 
   for (const point of points) {
     await pool.query(
       `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
        VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
-      [userId, point.recordedAt, point.longitude, point.latitude, point.speed, point.heading],
+      [identity.userId, point.recordedAt, point.longitude, point.latitude, point.speed, point.heading],
     );
   }
 
   const latest = points[points.length - 1];
-  lastKnownLocation.set(userId, latest);
+  lastKnownLocation.set(identity.userId, latest);
 
   const broadcastMessage = {
-    user_id: userId,
+    user_id: identity.userId,
     latitude: latest.latitude,
     longitude: latest.longitude,
     speed: latest.speed,
