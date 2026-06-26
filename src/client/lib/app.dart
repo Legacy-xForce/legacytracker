@@ -26,7 +26,7 @@ class App extends StatelessWidget {
     if (Platform.isIOS) {
       return 'http://192.168.0.224:3000';
     }
-    return 'http://127.0.0.1:3000';
+    return 'http://10.0.2.2:3000';
   }
 
   final AuthService authService = AuthService();
@@ -100,7 +100,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
     if (Platform.isIOS) {
       return 'http://192.168.0.224:3000';
     }
-    return 'http://127.0.0.1:3000';
+    return 'http://10.0.2.2:3000';
   }
 
   @override

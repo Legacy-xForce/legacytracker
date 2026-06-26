@@ -51,7 +51,7 @@ docker run -p 3000:3000 -e DATABASE_URL=<url> legacytracker-server
 
 ## API reference
 
-All REST endpoints require an `Authorization: Bearer <access_token>` header. The token is verified against the JWKS endpoint at `https://auth.legacy-group.tech/.well-known/jwks.json` and the user identity is taken from the `sub` claim. Users are created on first request.
+All REST endpoints require an `Authorization: Bearer <access_token>` header. The token is verified against the JWKS endpoint at `https://auth.legacy-group.tech/.well-known/jwks.json` and the user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
 
 ### Profile
 

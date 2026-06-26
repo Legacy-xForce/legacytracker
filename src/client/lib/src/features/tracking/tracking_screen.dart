@@ -22,6 +22,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
   bool _trackingStarted = false;
   int _selectedIndex = 0;
   MapLayer _selectedLayer = MapLayer.standard;
+  String? _selectedUserId;
 
   @override
   void didChangeDependencies() {
@@ -71,8 +72,16 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 selectedLayer: _selectedLayer,
                 peers: controller.peers,
                 selfProfile: controller.selfProfile,
+                selfTrackingPaused: !controller.isTracking,
+                selfMissingPermissions: !controller.permissionGranted,
+                selfBatterySavingEnabled:
+                    controller.selfProfile.batterySavingEnabled,
+                selectedUserId: _selectedUserId,
                 onLayerSelected: (layer) =>
                     setState(() => _selectedLayer = layer),
+                onUserSelected: (user) {
+                  setState(() => _selectedUserId = user.id);
+                },
                 onUserTap: (user) => showTrackingUserBottomSheet(context, user),
               ),
               TrackingProfileTab(
@@ -85,8 +94,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       : _nameController.text.trim();
                   final updatedAvatar = _avatarController.text.trim();
 
-                  controller.updateProfile(name: updatedName, avatarUrl: updatedAvatar);
-                  await auth.updateProfile(name: updatedName, avatarUrl: updatedAvatar);
+                  controller.updateProfile(
+                    name: updatedName,
+                    avatarUrl: updatedAvatar,
+                  );
+                  await auth.updateProfile(
+                    name: updatedName,
+                    avatarUrl: updatedAvatar,
+                  );
                 },
               ),
             ],

@@ -9,6 +9,7 @@ import '../../../core/constants.dart';
 import '../../../data/models/location_model.dart';
 import '../../../data/models/user_model.dart';
 import 'tracking_map_layer.dart';
+import 'tracking_users_drawer.dart';
 
 class TrackingMapTab extends StatefulWidget {
   const TrackingMapTab({
@@ -18,7 +19,12 @@ class TrackingMapTab extends StatefulWidget {
     required this.selectedLayer,
     required this.peers,
     required this.selfProfile,
+    required this.selfTrackingPaused,
+    required this.selfMissingPermissions,
+    required this.selfBatterySavingEnabled,
+    required this.selectedUserId,
     required this.onLayerSelected,
+    required this.onUserSelected,
     required this.onUserTap,
   });
 
@@ -27,7 +33,12 @@ class TrackingMapTab extends StatefulWidget {
   final MapLayer selectedLayer;
   final List<UserProfile> peers;
   final UserProfile selfProfile;
+  final bool selfTrackingPaused;
+  final bool selfMissingPermissions;
+  final bool selfBatterySavingEnabled;
+  final String? selectedUserId;
   final ValueChanged<MapLayer> onLayerSelected;
+  final ValueChanged<UserProfile> onUserSelected;
   final ValueChanged<UserProfile> onUserTap;
 
   @override
@@ -47,7 +58,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   final Map<String, _MarkerMotion> _motions = {};
 
   Animation<LatLng>? _mapCenterAnimation;
-  LatLng? _lastCenteredLocation;
+  Animation<double>? _mapZoomAnimation;
 
   @override
   void initState() {
@@ -69,17 +80,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _syncMovementPulse();
     _syncMarkerMotions();
 
-    if (!widget.isActive) {
-      return;
-    }
-
-    if (_lastCenteredLocation != widget.center) {
-      _lastCenteredLocation = widget.center;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !widget.isActive) return;
-        _animateMapTo(widget.center);
-      });
-    }
   }
 
   @override
@@ -105,7 +105,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
   }
 
-  void _animateMapTo(LatLng target) {
+  double _selectedZoomForSelection() {
+    final currentZoom = _currentZoom;
+    return math.min(
+      AppConstants.maxZoom,
+      math.max(currentZoom, AppConstants.defaultZoom + 3.5),
+    );
+  }
+
+  void _animateMapTo(LatLng target, {double? zoomTarget}) {
     if (!target.latitude.isFinite || !target.longitude.isFinite) {
       return;
     }
@@ -121,7 +129,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       start = target;
     }
 
-    if (start == target) {
+    final targetZoom = zoomTarget ?? _currentZoom;
+    if (start == target && targetZoom == _currentZoom) {
       return;
     }
 
@@ -130,6 +139,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _mapCenterAnimation = _LatLngTween(begin: start, end: target).animate(
       CurvedAnimation(parent: _mapCenterController, curve: Curves.easeOutCubic),
     );
+    _mapZoomAnimation = Tween<double>(begin: _currentZoom, end: targetZoom)
+        .animate(
+          CurvedAnimation(
+            parent: _mapCenterController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
     _mapCenterController.duration = duration;
     _mapCenterController.forward(from: 0);
   }
@@ -140,17 +156,22 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     final animatedCenter = _mapCenterAnimation?.value;
+    final animatedZoom = _mapZoomAnimation?.value ?? _currentZoom;
     if (animatedCenter == null) {
       return;
     }
 
-    _mapController.move(animatedCenter, _currentZoom);
+    _mapController.move(animatedCenter, animatedZoom);
   }
 
   void _handleMapCenterStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed ||
-        status == AnimationStatus.dismissed) {
+    // Only clean up after the animation fully completes. dismissed fires when
+    // forward(from: 0) resets the controller value to 0, but _mapCenterAnimation
+    // has already been replaced with the new animation at that point — clearing
+    // it here would make every subsequent tick a no-op.
+    if (status == AnimationStatus.completed) {
       _mapCenterAnimation = null;
+      _mapZoomAnimation = null;
     }
   }
 
@@ -186,8 +207,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       _motionFor(peer.id).update(peer.lastLocation);
     }
 
-    final stale =
-        _motions.keys.where((id) => !activeIds.contains(id)).toList();
+    final stale = _motions.keys.where((id) => !activeIds.contains(id)).toList();
     for (final id in stale) {
       _motions.remove(id)!.dispose();
     }
@@ -200,10 +220,43 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
-  void _handleMotionTick() {
-    if (mounted) {
-      setState(() {});
+  void _selectUser(UserProfile profile) {
+    widget.onUserSelected(profile);
+    widget.onUserTap(profile);
+  }
+
+  void _focusUser(UserProfile profile) {
+    final location = profile.lastLocation;
+    if (location == null ||
+        !location.latitude.isFinite ||
+        !location.longitude.isFinite) {
+      widget.onUserSelected(profile);
+      return;
     }
+
+    widget.onUserSelected(profile);
+
+    _animateMapTo(
+      LatLng(location.latitude, location.longitude),
+      zoomTarget: _selectedZoomForSelection(),
+    );
+  }
+
+  void _handleMotionTick() {
+    if (!mounted) return;
+    setState(() {});
+    _syncMapCameraToFollowedUser();
+  }
+
+  void _syncMapCameraToFollowedUser() {
+    if (!mounted || !widget.isActive) return;
+    // Let a deliberate focus animation (e.g. initial user selection) finish
+    // before the motion tick takes over camera control.
+    if (_mapCenterController.isAnimating) return;
+    final followedId = widget.selectedUserId ?? widget.selfProfile.id;
+    final pos = _motions[followedId]?.value;
+    if (pos == null) return;
+    _mapController.move(pos, _currentZoom);
   }
 
   @override
@@ -228,6 +281,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               ],
             ),
           ],
+        ),
+        TrackingUsersDrawer(
+          selfProfile: widget.selfProfile,
+          peers: widget.peers,
+          selfTrackingPaused: widget.selfTrackingPaused,
+          selfMissingPermissions: widget.selfMissingPermissions,
+          selfBatterySavingEnabled: widget.selfBatterySavingEnabled,
+          selectedUserId: widget.selectedUserId,
+          onUserSelected: _focusUser,
         ),
         Positioned(
           top: 16,
@@ -302,13 +364,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         );
       }
 
-      final point = _motions[peer.id]?.value ??
+      final point =
+          _motions[peer.id]?.value ??
           LatLng(location.latitude, location.longitude);
       return _buildTrackedUserMarker(
         profile: peer,
         location: location,
         point: point,
-        onTap: () => widget.onUserTap(peer),
+        isSelected: widget.selectedUserId == peer.id,
+        onTap: () => _selectUser(peer),
         tooltipMessage: peer.name,
         beamColor: const Color(0xFF8B5CF6),
         ringColor: Colors.white,
@@ -329,13 +393,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       );
     }
 
-    final markerLocation = _motions[profile.id]?.value ??
+    final markerLocation =
+        _motions[profile.id]?.value ??
         LatLng(location.latitude, location.longitude);
     return _buildTrackedUserMarker(
       profile: profile,
       location: location,
       point: markerLocation,
-      onTap: () => widget.onUserTap(profile),
+      isSelected: widget.selectedUserId == profile.id,
+      onTap: () => _selectUser(profile),
       tooltipMessage: '${profile.name} (you)',
       beamColor: const Color(0xFF8B5CF6),
       ringColor: const Color(0xFF8B5CF6),
@@ -347,6 +413,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     required UserProfile profile,
     required LocationPoint location,
     required LatLng point,
+    required bool isSelected,
     required VoidCallback onTap,
     required String tooltipMessage,
     required Color beamColor,
@@ -356,6 +423,12 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     final speed = location.speed;
     final isMoving = location.isMoving;
     final heading = _headingFor(location);
+    final isStale = _isLocationStale(location);
+    final displayBeamColor = isStale ? Colors.grey.shade500 : beamColor;
+    final displayRingColor = isStale ? Colors.grey.shade500 : ringColor;
+    final displayBadgeColor = isStale ? Colors.grey.shade700 : badgeColor;
+    final batteryLevel = profile.batteryLevel;
+    final displayBatteryLevel = batteryLevel?.clamp(0, 100).toInt();
 
     return Marker(
       point: point,
@@ -366,7 +439,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         child: Tooltip(
           message: tooltipMessage,
           child: TweenAnimationBuilder<double>(
-            tween: Tween<double>(end: isMoving ? 1.08 : 1.0),
+            tween: Tween<double>(
+              end: isSelected ? 1.18 : (isMoving ? 1.08 : 1.0),
+            ),
             duration: const Duration(milliseconds: 220),
             curve: Curves.easeOut,
             builder: (context, scale, child) {
@@ -384,7 +459,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                         duration: const Duration(milliseconds: 260),
                         curve: Curves.easeOutCubic,
                         child: CustomPaint(
-                          painter: _HeadingBeamPainter(beamColor: beamColor),
+                          painter: _HeadingBeamPainter(
+                            beamColor: displayBeamColor,
+                          ),
                         ),
                       ),
                     ),
@@ -401,35 +478,66 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                         height: 58 + (22 * t),
                         decoration: BoxDecoration(
                           shape: BoxShape.circle,
-                          color: beamColor.withValues(alpha: 0.22 * (1 - t)),
+                          color: displayBeamColor.withValues(
+                            alpha: 0.22 * (1 - t),
+                          ),
                         ),
                       );
                     },
                   ),
-                Container(
-                  width: 60,
-                  height: 60,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: isMoving ? Colors.teal.shade600 : Colors.teal,
-                    border: Border.all(color: ringColor, width: 4),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
-                        blurRadius: 10,
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.white,
-                    backgroundImage: profile.avatarUrl.isNotEmpty
-                        ? NetworkImage(profile.avatarUrl)
-                        : null,
-                    child: profile.avatarUrl.isEmpty
-                        ? Text(profile.name.characters.first.toUpperCase())
-                        : null,
+                ColorFiltered(
+                  colorFilter: isStale
+                      ? const ColorFilter.matrix(<double>[
+                          0.2126,
+                          0.7152,
+                          0.0722,
+                          0,
+                          0,
+                          0.2126,
+                          0.7152,
+                          0.0722,
+                          0,
+                          0,
+                          0.2126,
+                          0.7152,
+                          0.0722,
+                          0,
+                          0,
+                          0,
+                          0,
+                          0,
+                          1,
+                          0,
+                        ])
+                      : const ColorFilter.mode(
+                          Colors.transparent,
+                          BlendMode.srcOver,
+                        ),
+                  child: Container(
+                    width: 60,
+                    height: 60,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: isMoving ? Colors.teal.shade600 : Colors.teal,
+                      border: Border.all(color: displayRingColor, width: 4),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.18),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
+                    ),
+                    child: CircleAvatar(
+                      radius: 24,
+                      backgroundColor: Colors.white,
+                      backgroundImage: profile.avatarUrl.isNotEmpty
+                          ? NetworkImage(profile.avatarUrl)
+                          : null,
+                      child: profile.avatarUrl.isEmpty
+                          ? Text(profile.name.characters.first.toUpperCase())
+                          : null,
+                    ),
                   ),
                 ),
                 Positioned(
@@ -442,7 +550,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                       vertical: 4,
                     ),
                     decoration: BoxDecoration(
-                      color: badgeColor,
+                      color: displayBadgeColor,
                       borderRadius: BorderRadius.circular(999),
                       boxShadow: [
                         BoxShadow(
@@ -473,6 +581,48 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                     ),
                   ),
                 ),
+                if (displayBatteryLevel != null)
+                  Positioned(
+                    top: 0,
+                    left: 16,
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 220),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: displayBadgeColor,
+                        borderRadius: BorderRadius.circular(999),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.12),
+                            blurRadius: 8,
+                            offset: const Offset(0, 3),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(
+                            Icons.battery_full_rounded,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            '$displayBatteryLevel%',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
@@ -487,6 +637,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       return null;
     }
     return normalizeBearing(heading);
+  }
+
+  bool _isLocationStale(LocationPoint location) {
+    return DateTime.now().difference(location.timestamp) >
+        const Duration(minutes: 2);
   }
 }
 
@@ -545,7 +700,9 @@ class _MarkerMotion {
     }
 
     final now = DateTime.now();
-    final interval = _lastUpdateAt == null ? null : now.difference(_lastUpdateAt!);
+    final interval = _lastUpdateAt == null
+        ? null
+        : now.difference(_lastUpdateAt!);
     _lastUpdateAt = now;
     _lastTarget = target;
 
@@ -564,12 +721,6 @@ class _MarkerMotion {
     _controller
       ..duration = _glideDuration(interval)
       ..forward(from: 0);
-    debugPrint(
-      '[MarkerMotion] glide ${start.latitude.toStringAsFixed(5)},${start.longitude.toStringAsFixed(5)}'
-      ' -> ${target.latitude.toStringAsFixed(5)},${target.longitude.toStringAsFixed(5)}'
-      ' over ${_controller.duration?.inMilliseconds}ms'
-      ' isAnimating=${_controller.isAnimating}',
-    );
   }
 
   /// Spreads the glide across the measured time between updates so the marker
@@ -583,22 +734,12 @@ class _MarkerMotion {
     return interval;
   }
 
-  int _tickCount = 0;
-
   void _handleTick() {
     final animated = _animation?.value;
     if (animated == null) {
       return;
     }
     _displayed = animated;
-    // Log only occasionally so we can confirm the controller is actually
-    // advancing without flooding the console.
-    if (_tickCount++ % 15 == 0) {
-      debugPrint(
-        '[MarkerMotion] tick ${_controller.value.toStringAsFixed(2)}'
-        ' -> ${animated.latitude.toStringAsFixed(5)},${animated.longitude.toStringAsFixed(5)}',
-      );
-    }
     onTick();
   }
 

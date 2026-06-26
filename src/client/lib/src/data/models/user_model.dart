@@ -5,6 +5,10 @@ class UserProfile {
   String name;
   String avatarUrl;
   String role;
+  bool locationTrackingPaused;
+  bool missingPermissions;
+  bool batterySavingEnabled;
+  int? batteryLevel;
   LocationPoint? lastLocation;
   List<LocationPoint> history;
 
@@ -13,7 +17,14 @@ class UserProfile {
     required this.name,
     this.avatarUrl = '',
     this.role = 'user',
+    this.locationTrackingPaused = false,
+    this.missingPermissions = false,
+    this.batterySavingEnabled = false,
+    this.batteryLevel,
     this.lastLocation,
     List<LocationPoint>? history,
   }) : history = history ?? [];
+
+  bool get hasAnyStatus =>
+      locationTrackingPaused || missingPermissions || batterySavingEnabled;
 }

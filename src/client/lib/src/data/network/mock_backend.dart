@@ -15,6 +15,8 @@ class MockBackend implements Backend {
       id: 'alice',
       name: 'Alice',
       avatarUrl: 'https://i.pravatar.cc/150?img=32',
+      batterySavingEnabled: true,
+      batteryLevel: 84,
       lastLocation: LocationPoint(
         latitude: 37.7764,
         longitude: -122.4241,
@@ -26,6 +28,8 @@ class MockBackend implements Backend {
       id: 'bobby',
       name: 'Bobby',
       avatarUrl: 'https://i.pravatar.cc/150?img=12',
+      missingPermissions: true,
+      batteryLevel: 31,
       lastLocation: LocationPoint(
         latitude: 37.7721,
         longitude: -122.4173,
@@ -37,6 +41,8 @@ class MockBackend implements Backend {
       id: 'carla',
       name: 'Carla',
       avatarUrl: 'https://i.pravatar.cc/150?img=47',
+      locationTrackingPaused: true,
+      batteryLevel: 56,
       lastLocation: LocationPoint(
         latitude: 37.7785,
         longitude: -122.4149,
@@ -89,16 +95,25 @@ class MockBackend implements Backend {
             heading: random.nextDouble() * 360,
           );
         } else {
-          final nextHeading = (oldLocation.heading ?? random.nextDouble() * 360) +
+          final nextHeading =
+              (oldLocation.heading ?? random.nextDouble() * 360) +
               random.nextDouble() * 40 -
               20;
           peer.lastLocation = LocationPoint(
-            latitude: oldLocation.latitude + random.nextDouble() * 0.0008 - 0.0004,
-            longitude: oldLocation.longitude + random.nextDouble() * 0.0008 - 0.0004,
+            latitude:
+                oldLocation.latitude + random.nextDouble() * 0.0008 - 0.0004,
+            longitude:
+                oldLocation.longitude + random.nextDouble() * 0.0008 - 0.0004,
             speed: random.nextDouble() * 3.2,
             heading: (nextHeading + 360) % 360,
           );
-          peer.history = [peer.lastLocation!, ...peer.history].take(20).toList();
+          peer.batteryLevel =
+              ((peer.batteryLevel ?? 60) - random.nextInt(2)).clamp(10, 100)
+                  .toInt();
+          peer.history = [
+            peer.lastLocation!,
+            ...peer.history,
+          ].take(20).toList();
         }
       }
       _peerController.add(List.unmodifiable(_peers));

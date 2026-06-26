@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../../data/models/user_model.dart';
+import 'tracking_location_street_label.dart';
 
 Future<void> showTrackingUserBottomSheet(
   BuildContext context,
@@ -18,9 +19,10 @@ Future<void> showTrackingUserBottomSheet(
     ),
     builder: (sheetContext) {
       final duration = DateTime.now().difference(loc.timestamp);
-      final coords =
-          '${loc.latitude.toStringAsFixed(5)}, ${loc.longitude.toStringAsFixed(5)}';
       final speedLabel = '${loc.speed.toStringAsFixed(1)} m/s';
+      final batteryLabel = user.batteryLevel == null
+          ? 'Battery unavailable'
+          : 'Battery: ${user.batteryLevel}%';
 
       return Padding(
         padding: const EdgeInsets.all(16.0),
@@ -49,9 +51,11 @@ Future<void> showTrackingUserBottomSheet(
                         style: Theme.of(sheetContext).textTheme.titleMedium,
                       ),
                       const SizedBox(height: 4),
-                      Text(
-                        coords,
+                      LocationStreetLabel(
+                        location: loc,
                         style: Theme.of(sheetContext).textTheme.bodySmall,
+                        maxLines: 2,
+                        placeholder: 'Looking up street...',
                       ),
                     ],
                   ),
@@ -65,6 +69,8 @@ Future<void> showTrackingUserBottomSheet(
                 Expanded(child: Text('Here: ${_formatDuration(duration)}')),
               ],
             ),
+            const SizedBox(height: 6),
+            Text(batteryLabel),
             const SizedBox(height: 14),
             ElevatedButton.icon(
               onPressed: () async {

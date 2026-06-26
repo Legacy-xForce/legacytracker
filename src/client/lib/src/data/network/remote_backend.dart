@@ -10,13 +10,18 @@ import '../../data/models/user_model.dart';
 import 'backend.dart';
 
 class RemoteBackend implements Backend {
-  RemoteBackend({required this.baseUrl, required this.accessToken, required this.selfId});
+  RemoteBackend({
+    required this.baseUrl,
+    required this.accessToken,
+    required this.selfId,
+  });
 
   final String baseUrl;
   final String accessToken;
   final String selfId;
   final http.Client _httpClient = http.Client();
-  final StreamController<List<UserProfile>> _peerController = StreamController<List<UserProfile>>.broadcast();
+  final StreamController<List<UserProfile>> _peerController =
+      StreamController<List<UserProfile>>.broadcast();
   final Map<String, UserProfile> _peerCache = {};
   WebSocketChannel? _channel;
   String? _ticket;
@@ -70,7 +75,7 @@ class RemoteBackend implements Backend {
           'heading': location.heading,
         },
         'timestamp': location.timestamp.toUtc().toIso8601String(),
-      }
+      },
     ];
 
     final response = await _httpClient.post(
@@ -113,9 +118,7 @@ class RemoteBackend implements Backend {
     final uri = _apiUri('/api/v1/streams/ticket');
     final response = await _httpClient.post(
       uri,
-      headers: {
-        'authorization': 'Bearer $accessToken',
-      },
+      headers: {'authorization': 'Bearer $accessToken'},
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
@@ -147,7 +150,10 @@ class RemoteBackend implements Backend {
         _scheduleReconnect();
       },
       onDone: () {
-        dev.log('[ws] connection closed, scheduling reconnect', name: 'RemoteBackend');
+        dev.log(
+          '[ws] connection closed, scheduling reconnect',
+          name: 'RemoteBackend',
+        );
         _scheduleReconnect();
       },
     );
@@ -200,7 +206,9 @@ class RemoteBackend implements Backend {
 
     final speed = _parseDouble(payload['speed']) ?? 0.0;
     final heading = _parseDouble(payload['heading']);
-    final recordedAt = DateTime.tryParse(payload['recorded_at'] as String? ?? '') ?? DateTime.now();
+    final recordedAt =
+        DateTime.tryParse(payload['recorded_at'] as String? ?? '') ??
+        DateTime.now();
 
     final point = LocationPoint(
       latitude: latitude,
@@ -211,11 +219,25 @@ class RemoteBackend implements Backend {
     );
 
     final existingProfile = _peerCache[remoteUserId];
-    final profile = existingProfile ?? UserProfile(id: remoteUserId, name: remoteUserId, avatarUrl: '');
+    final profile =
+        existingProfile ??
+        UserProfile(id: remoteUserId, name: remoteUserId, avatarUrl: '');
     profile.lastLocation = point;
     profile.history = [point, ...profile.history].take(20).toList();
+    profile.locationTrackingPaused =
+        payload['location_tracking_paused'] as bool? ??
+        profile.locationTrackingPaused;
+    profile.missingPermissions =
+        payload['missing_permissions'] as bool? ?? profile.missingPermissions;
+    profile.batterySavingEnabled =
+        payload['battery_saving_enabled'] as bool? ??
+        profile.batterySavingEnabled;
+    profile.batteryLevel =
+        (payload['battery_level'] as num?)?.toInt() ?? profile.batteryLevel;
     _peerCache[remoteUserId] = profile;
-    _peerController.add(List<UserProfile>.unmodifiable(_peerCache.values.toList()));
+    _peerController.add(
+      List<UserProfile>.unmodifiable(_peerCache.values.toList()),
+    );
   }
 
   double? _parseDouble(dynamic value) {
@@ -230,10 +252,7 @@ class RemoteBackend implements Backend {
 
   Uri _apiUri(String path) {
     final target = Uri.parse(baseUrl);
-    return target.replace(
-      path: path,
-      queryParameters: null,
-    );
+    return target.replace(path: path, queryParameters: null);
   }
 
   Uri _webSocketUri(String ticket) {

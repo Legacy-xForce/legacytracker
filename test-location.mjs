@@ -104,7 +104,7 @@ async function main() {
   console.log(`Logging in as demouser @ ${AUTH_URL}...`);
   let token;
   try {
-    token = await login('demouser', 'demo');
+    token = await login('test1', 'test1');
     console.log('Login successful. Access token obtained.\n');
   } catch (err) {
     console.error(err.message);
