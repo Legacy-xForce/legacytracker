@@ -5,7 +5,14 @@ abstract class Backend {
   Stream<List<UserProfile>> get peerStream;
 
   /// Send a location update over WebSocket (foreground realtime mode).
-  void sendLocationRealtime(LocationPoint point);
+  ///
+  /// [batteryLevel] (0–100) and [isCharging] reflect the device's current power
+  /// state and are omitted from the payload when null.
+  void sendLocationRealtime(
+    LocationPoint point, {
+    int? batteryLevel,
+    bool? isCharging,
+  });
 
   /// HTTP fallback used only by the background isolate; kept for mock/test use.
   Future<bool> sendLocation(UserProfile profile);

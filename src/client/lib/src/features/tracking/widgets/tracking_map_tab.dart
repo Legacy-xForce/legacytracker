@@ -17,6 +17,15 @@ double _normalizeBearing(double bearing) {
   return normalized < 0 ? normalized + 360.0 : normalized;
 }
 
+/// Full extent the camera is kept within. `CameraConstraint.contain` rejects any
+/// move whose viewport would spill outside these bounds, so the user can zoom
+/// out until the world fills the screen but never into empty space around it,
+/// and can't pan past the poles into the untiled grey void.
+final LatLngBounds _worldBounds = LatLngBounds(
+  const LatLng(-AppConstants.maxMercatorLatitude, -180),
+  const LatLng(AppConstants.maxMercatorLatitude, 180),
+);
+
 class TrackingMapTab extends StatefulWidget {
   const TrackingMapTab({
     super.key,
@@ -60,7 +69,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   late final AnimationController _bearingController;
 
   // Gesture handling for rotation vs zoom discrimination
-  Map<int, Offset> _pointerLocations = {};
+  final Map<int, Offset> _pointerLocations = {};
   double? _lastRotationAngle;
   bool _isRotationLocked = true;
   static const double _rotationThreshold = 15.0; // degrees of twist to unlock
@@ -302,6 +311,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _pointerLocations[event.pointer] = event.position;
     _isRotationLocked = true;
     _lastRotationAngle = null;
+    // Hand camera control to the user: cancel any in-flight programmatic camera
+    // animation so it can't fight the gesture. A move() landing mid-pinch
+    // corrupts flutter_map's focal-point math and flings the map off-screen.
+    _mapCenterController.stop();
+    _bearingController.stop();
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
@@ -350,6 +364,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   void _syncMapCameraToFollowedUser() {
     if (!mounted || !widget.isActive) return;
+    // Never move the camera while the user is touching the map: a move() during
+    // a pinch/drag desyncs flutter_map's gesture math and the map can vanish.
+    if (_pointerLocations.isNotEmpty) return;
     // Let a deliberate focus animation (e.g. initial user selection) finish
     // before the motion tick takes over camera control.
     if (_mapCenterController.isAnimating) return;
@@ -374,6 +391,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               initialZoom: AppConstants.defaultZoom,
               minZoom: AppConstants.minZoom,
               maxZoom: AppConstants.maxZoom,
+              // Keep the viewport inside the tiled world: stops zoom-out into
+              // empty space and panning past the poles.
+              cameraConstraint: CameraConstraint.contain(bounds: _worldBounds),
               keepAlive: true,
               // Disable default rotation to handle it manually with threshold
               interactionOptions: const InteractionOptions(
@@ -551,6 +571,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     final displayBadgeColor = isStale ? Colors.grey.shade700 : badgeColor;
     final batteryLevel = profile.batteryLevel;
     final displayBatteryLevel = batteryLevel?.clamp(0, 100).toInt();
+    final isCharging = profile.isCharging ?? false;
+    final batteryIcon = _batteryIcon(displayBatteryLevel, isCharging);
 
     return Marker(
       point: point,
@@ -692,7 +714,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${speed.toStringAsFixed(1)} km/h',
+                          '${speed.round()} km/h',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
@@ -705,43 +727,48 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                 ),
                 if (displayBatteryLevel != null)
                   Positioned(
-                    top: 0,
-                    left: 16,
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 220),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: displayBadgeColor,
-                        borderRadius: BorderRadius.circular(999),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.12),
-                            blurRadius: 8,
-                            offset: const Offset(0, 3),
-                          ),
-                        ],
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const Icon(
-                            Icons.battery_full_rounded,
-                            size: 12,
-                            color: Colors.white,
-                          ),
-                          const SizedBox(width: 4),
-                          Text(
-                            '$displayBatteryLevel%',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 10,
-                              fontWeight: FontWeight.w600,
+                    top: 116,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 220),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: displayBadgeColor,
+                          borderRadius: BorderRadius.circular(999),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.12),
+                              blurRadius: 8,
+                              offset: const Offset(0, 3),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              batteryIcon,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              isCharging
+                                  ? '$displayBatteryLevel% ⚡'
+                                  : '$displayBatteryLevel%',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -751,6 +778,18 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         ),
       ),
     );
+  }
+
+  IconData _batteryIcon(int? level, bool isCharging) {
+    if (isCharging) return Icons.battery_charging_full_rounded;
+    if (level == null) return Icons.battery_unknown_rounded;
+    if (level >= 90) return Icons.battery_full_rounded;
+    if (level >= 70) return Icons.battery_5_bar_rounded;
+    if (level >= 55) return Icons.battery_4_bar_rounded;
+    if (level >= 40) return Icons.battery_3_bar_rounded;
+    if (level >= 25) return Icons.battery_2_bar_rounded;
+    if (level >= 10) return Icons.battery_1_bar_rounded;
+    return Icons.battery_alert_rounded;
   }
 
   double? _headingFor(LocationPoint location) {

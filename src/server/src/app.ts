@@ -39,6 +39,8 @@ interface KnownLocation {
   speed: number;
   heading: number | null;
   recordedAt: string;
+  batteryLevel: number | null;
+  isCharging: boolean | null;
 }
 
 interface LocationPayload {
@@ -49,6 +51,8 @@ interface LocationPayload {
     heading?: number;
   };
   timestamp?: string;
+  battery_level?: number;
+  is_charging?: boolean;
 }
 
 app.register(cors, {
@@ -175,12 +179,19 @@ function parseLocationItem(item: unknown): KnownLocation | null {
     return null;
   }
 
+  const batteryLevelRaw = normalizeNumber(payload.battery_level);
+  const batteryLevel =
+    batteryLevelRaw === null ? null : Math.max(0, Math.min(100, Math.round(batteryLevelRaw)));
+  const isCharging = typeof payload.is_charging === 'boolean' ? payload.is_charging : null;
+
   return {
     latitude,
     longitude,
     speed,
     heading: heading === null ? null : heading,
     recordedAt: timestamp.toISOString(),
+    batteryLevel,
+    isCharging,
   };
 }
 
@@ -408,6 +419,8 @@ app.post('/api/v1/location', async (request, reply) => {
     speed: latest.speed,
     heading: latest.heading,
     recorded_at: latest.recordedAt,
+    battery_level: latest.batteryLevel,
+    is_charging: latest.isCharging,
   };
   connectionManager.broadcast(broadcastMessage);
 
@@ -457,6 +470,8 @@ app.register(async () => {
       speed: point.speed,
       heading: point.heading,
       recorded_at: point.recordedAt,
+      battery_level: point.batteryLevel,
+      is_charging: point.isCharging,
     }));
     app.log.info({ userId, userCount: snapshot.length }, '[ws] sending snapshot');
     connection.socket.send(JSON.stringify({ type: 'snapshot', users: snapshot }));
@@ -500,6 +515,8 @@ app.register(async () => {
       speed: point.speed,
       heading: point.heading,
       recorded_at: point.recordedAt,
+      battery_level: point.batteryLevel,
+      is_charging: point.isCharging,
     };
     app.log.info({ broadcast, recipients: connectionManager.count }, '[ws] broadcasting location');
     connectionManager.broadcast(broadcast);

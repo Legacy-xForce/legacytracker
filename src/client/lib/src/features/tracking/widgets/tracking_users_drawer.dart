@@ -108,6 +108,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
         missingPermissions: widget.selfMissingPermissions,
         batterySavingEnabled: widget.selfBatterySavingEnabled,
         batteryLevel: widget.selfProfile.batteryLevel,
+        isCharging: widget.selfProfile.isCharging,
       ),
       ...widget.peers.map(
         (peer) => _DrawerUser(
@@ -116,6 +117,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
           missingPermissions: peer.missingPermissions,
           batterySavingEnabled: peer.batterySavingEnabled,
           batteryLevel: peer.batteryLevel,
+          isCharging: peer.isCharging,
         ),
       ),
     ];
@@ -235,6 +237,7 @@ class _DrawerUser {
     required this.missingPermissions,
     required this.batterySavingEnabled,
     required this.batteryLevel,
+    required this.isCharging,
   });
 
   final UserProfile profile;
@@ -243,6 +246,7 @@ class _DrawerUser {
   final bool missingPermissions;
   final bool batterySavingEnabled;
   final int? batteryLevel;
+  final bool? isCharging;
 
   List<_UserStatus> get statuses {
     final result = <_UserStatus>[];
@@ -256,7 +260,13 @@ class _DrawerUser {
       result.add(_UserStatus('Battery saving enabled', Icons.battery_saver));
     }
     if (batteryLevel != null) {
-      result.add(_UserStatus('$batteryLevel% battery', Icons.battery_full));
+      final charging = isCharging == true;
+      result.add(
+        _UserStatus(
+          '$batteryLevel% battery${charging ? ' · charging' : ''}',
+          charging ? Icons.battery_charging_full : Icons.battery_full,
+        ),
+      );
     }
     return result;
   }
@@ -388,6 +398,8 @@ class _UserRow extends StatelessWidget {
         return Colors.redAccent;
       case Icons.battery_saver:
         return Colors.teal;
+      case Icons.battery_charging_full:
+        return Colors.green.shade600;
       default:
         return Theme.of(context).colorScheme.primary;
     }

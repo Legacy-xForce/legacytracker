@@ -22,7 +22,8 @@ Future<void> showTrackingUserBottomSheet(
       final speedLabel = '${loc.speed.toStringAsFixed(1)} m/s';
       final batteryLabel = user.batteryLevel == null
           ? 'Battery unavailable'
-          : 'Battery: ${user.batteryLevel}%';
+          : 'Battery: ${user.batteryLevel}%'
+              '${user.isCharging == true ? ' (charging)' : ''}';
 
       return Padding(
         padding: const EdgeInsets.all(16.0),

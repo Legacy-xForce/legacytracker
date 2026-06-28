@@ -39,6 +39,7 @@ class ProfileService {
       missingPermissions: data['missing_permissions'] as bool? ?? false,
       batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
       batteryLevel: (data['battery_level'] as num?)?.toInt(),
+      isCharging: data['is_charging'] as bool?,
       history: [],
     );
   }
@@ -83,6 +84,7 @@ class ProfileService {
       missingPermissions: data['missing_permissions'] as bool? ?? false,
       batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
       batteryLevel: (data['battery_level'] as num?)?.toInt(),
+      isCharging: data['is_charging'] as bool?,
       history: [],
     );
   }

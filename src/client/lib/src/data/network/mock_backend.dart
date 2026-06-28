@@ -17,6 +17,7 @@ class MockBackend implements Backend {
       avatarUrl: 'https://i.pravatar.cc/150?img=32',
       batterySavingEnabled: true,
       batteryLevel: 84,
+      isCharging: true,
       lastLocation: LocationPoint(
         latitude: 37.7764,
         longitude: -122.4241,
@@ -30,6 +31,7 @@ class MockBackend implements Backend {
       avatarUrl: 'https://i.pravatar.cc/150?img=12',
       missingPermissions: true,
       batteryLevel: 31,
+      isCharging: false,
       lastLocation: LocationPoint(
         latitude: 37.7721,
         longitude: -122.4173,
@@ -43,6 +45,7 @@ class MockBackend implements Backend {
       avatarUrl: 'https://i.pravatar.cc/150?img=47',
       locationTrackingPaused: true,
       batteryLevel: 56,
+      isCharging: false,
       lastLocation: LocationPoint(
         latitude: 37.7785,
         longitude: -122.4149,
@@ -62,7 +65,11 @@ class MockBackend implements Backend {
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
 
   @override
-  void sendLocationRealtime(LocationPoint point) {}
+  void sendLocationRealtime(
+    LocationPoint point, {
+    int? batteryLevel,
+    bool? isCharging,
+  }) {}
 
   @override
   Future<bool> sendLocation(UserProfile profile) async {

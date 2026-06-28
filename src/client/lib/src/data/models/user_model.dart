@@ -9,6 +9,7 @@ class UserProfile {
   bool missingPermissions;
   bool batterySavingEnabled;
   int? batteryLevel;
+  bool? isCharging;
   LocationPoint? lastLocation;
   List<LocationPoint> history;
 
@@ -21,6 +22,7 @@ class UserProfile {
     this.missingPermissions = false,
     this.batterySavingEnabled = false,
     this.batteryLevel,
+    this.isCharging,
     this.lastLocation,
     List<LocationPoint>? history,
   }) : history = history ?? [];

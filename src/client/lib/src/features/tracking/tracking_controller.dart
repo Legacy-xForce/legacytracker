@@ -7,6 +7,7 @@ import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/backend.dart';
 import '../background/background_tracker.dart';
+import '../location/battery_service.dart';
 import '../location/location_repository.dart';
 
 class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
@@ -14,8 +15,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     required this.locationRepository,
     required this.backend,
     required this.baseUrl,
+    BatteryService? batteryService,
     UserProfile? initialProfile,
-  }) : selfProfile = initialProfile ??
+  })  : batteryService = batteryService ?? BatteryService(),
+        selfProfile = initialProfile ??
             UserProfile(
               id: 'me',
               name: 'You',
@@ -31,6 +34,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   final LocationRepository locationRepository;
   final Backend backend;
   final String baseUrl;
+  final BatteryService batteryService;
   final UserProfile selfProfile;
 
   bool isTracking = false;
@@ -41,6 +45,8 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
 
   StreamSubscription<List<UserProfile>>? _peerSubscription;
   StreamSubscription<LocationPoint>? _locationSubscription;
+  StreamSubscription<void>? _batterySubscription;
+  Timer? _batteryRefreshTimer;
 
   String get speedLabel {
     final speed = lastLocation?.speed ?? 0.0;
@@ -79,12 +85,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   void _switchToBackground() {
     _locationSubscription?.cancel();
     _locationSubscription = null;
+    _stopBatteryMonitoring();
     BackgroundTracker.start(baseUrl);
   }
 
   void _switchToForeground() {
     BackgroundTracker.stop();
     _startLocationStream();
+    _startBatteryMonitoring();
   }
 
   // ── Tracking ──────────────────────────────────────────────────────────────
@@ -99,6 +107,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     }
 
     _startLocationStream();
+    _startBatteryMonitoring();
     isTracking = true;
     notifyListeners();
 
@@ -118,9 +127,44 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       selfProfile.history = history;
       notifyListeners();
 
-      // Foreground: send realtime over the open WebSocket.
-      backend.sendLocationRealtime(point);
+      // Foreground: send realtime over the open WebSocket, tagging the device's
+      // current power state so peers can render the battery badge.
+      backend.sendLocationRealtime(
+        point,
+        batteryLevel: selfProfile.batteryLevel,
+        isCharging: selfProfile.isCharging,
+      );
     });
+  }
+
+  // Keep [selfProfile]'s battery fields fresh: react to charging-state changes
+  // immediately and re-poll the level periodically (the platform doesn't push
+  // level changes). The next location send carries the updated values.
+  void _startBatteryMonitoring() {
+    _refreshBattery();
+    _batterySubscription?.cancel();
+    _batterySubscription =
+        batteryService.onChanged.listen((_) => _refreshBattery());
+    _batteryRefreshTimer?.cancel();
+    _batteryRefreshTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _refreshBattery(),
+    );
+  }
+
+  void _stopBatteryMonitoring() {
+    _batterySubscription?.cancel();
+    _batterySubscription = null;
+    _batteryRefreshTimer?.cancel();
+    _batteryRefreshTimer = null;
+  }
+
+  Future<void> _refreshBattery() async {
+    final snapshot = await batteryService.read();
+    if (snapshot.level == null && snapshot.isCharging == null) return;
+    selfProfile.batteryLevel = snapshot.level;
+    selfProfile.isCharging = snapshot.isCharging;
+    notifyListeners();
   }
 
   Future<void> stopTracking() async {
@@ -128,6 +172,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
 
     await _locationSubscription?.cancel();
     _locationSubscription = null;
+    _stopBatteryMonitoring();
     isTracking = false;
     notifyListeners();
   }
@@ -150,6 +195,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _locationSubscription?.cancel();
     _peerSubscription?.cancel();
+    _stopBatteryMonitoring();
     locationRepository.dispose();
     backend.dispose();
     BackgroundTracker.stop();

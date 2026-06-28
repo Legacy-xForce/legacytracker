@@ -1,5 +1,6 @@
 import 'dart:convert';
 
+import 'package:battery_plus/battery_plus.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
@@ -67,6 +68,7 @@ class BackgroundLocationHandler extends TaskHandler {
     String accessToken,
     Position position,
   ) async {
+    final battery = await _readBattery();
     final uri = Uri.parse('$baseUrl/api/v1/location');
     await http.post(
       uri,
@@ -83,8 +85,24 @@ class BackgroundLocationHandler extends TaskHandler {
             'heading': position.heading.isFinite ? position.heading : null,
           },
           'timestamp': DateTime.now().toUtc().toIso8601String(),
+          'battery_level': ?battery.$1,
+          'is_charging': ?battery.$2,
         }
       ]),
     );
+  }
+
+  /// Returns (level 0–100, isCharging), with null fields when unavailable.
+  Future<(int?, bool?)> _readBattery() async {
+    try {
+      final battery = Battery();
+      final level = (await battery.batteryLevel).clamp(0, 100);
+      final state = await battery.batteryState;
+      final isCharging =
+          state == BatteryState.charging || state == BatteryState.full;
+      return (level, isCharging);
+    } catch (_) {
+      return (null, null);
+    }
   }
 }

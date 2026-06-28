@@ -42,7 +42,11 @@ class RemoteBackend implements Backend {
   }
 
   @override
-  void sendLocationRealtime(LocationPoint point) {
+  void sendLocationRealtime(
+    LocationPoint point, {
+    int? batteryLevel,
+    bool? isCharging,
+  }) {
     if (_channel == null) return;
     final payload = {
       'type': 'location',
@@ -53,6 +57,8 @@ class RemoteBackend implements Backend {
         'heading': point.heading,
       },
       'timestamp': point.timestamp.toUtc().toIso8601String(),
+      'battery_level': ?batteryLevel,
+      'is_charging': ?isCharging,
     };
     dev.log('[ws] sending: ${jsonEncode(payload)}', name: 'RemoteBackend');
     _channel!.sink.add(jsonEncode(payload));
@@ -75,6 +81,8 @@ class RemoteBackend implements Backend {
           'heading': location.heading,
         },
         'timestamp': location.timestamp.toUtc().toIso8601String(),
+        'battery_level': ?profile.batteryLevel,
+        'is_charging': ?profile.isCharging,
       },
     ];
 
@@ -241,6 +249,7 @@ class RemoteBackend implements Backend {
         profile.batterySavingEnabled;
     profile.batteryLevel =
         (payload['battery_level'] as num?)?.toInt() ?? profile.batteryLevel;
+    profile.isCharging = payload['is_charging'] as bool? ?? profile.isCharging;
     _peerCache[remoteUserId] = profile;
     _peerController.add(
       List<UserProfile>.unmodifiable(_peerCache.values.toList()),
