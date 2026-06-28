@@ -54,12 +54,21 @@ jobs:
   server-docker:
     name: Build server Docker image
     runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: read
+      packages: write
     steps:
       - uses: actions/checkout@v4
-      - name: Build server application
-        run: |
-          cd src/server
-          npm ci
-          npm run build
-      - name: Build Docker image
-        run: docker build -t legacytracker-server:ci src/server
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: src/server
+          push: true
+          tags: ghcr.io/${{ github.repository_owner }}/legacytracker:latest
