@@ -70,20 +70,32 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   Future<void> _settleSheet(DragEndDetails details) async {
     final velocity = details.primaryVelocity ?? 0;
-    final midpoint = (_collapsedSize + _expandedSize) / 2;
-    final target = velocity > 650
-        ? _collapsedSize
-        : velocity < -650
-        ? _expandedSize
-        : _sheetController.size < midpoint
-        ? _collapsedSize
-        : _expandedSize;
+    final size = _sheetController.size;
 
-    await _sheetController.animateTo(
-      target,
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutCubic,
-    );
+    // 15% of total range defines the snap zone at each end.
+    const snapZone = (_expandedSize - _collapsedSize) * 0.15;
+    final bottomThreshold = _collapsedSize + snapZone;
+    final topThreshold = _expandedSize - snapZone;
+
+    double? target;
+    if (velocity > 650) {
+      target = _collapsedSize;
+    } else if (velocity < -650) {
+      target = _expandedSize;
+    } else if (size <= bottomThreshold) {
+      target = _collapsedSize;
+    } else if (size >= topThreshold) {
+      target = _expandedSize;
+    }
+    // Middle zone: no snap — sheet rests at the released position.
+
+    if (target != null) {
+      await _sheetController.animateTo(
+        target,
+        duration: const Duration(milliseconds: 220),
+        curve: Curves.easeOutCubic,
+      );
+    }
   }
 
   @override
@@ -166,7 +178,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                       child: AnimatedOpacity(
                         opacity:
                             ((_sheetSize - _collapsedSize) /
-                                    (_expandedSize - _collapsedSize))
+                                    ((_expandedSize - _collapsedSize) * 0.15))
                                 .clamp(0.0, 1.0),
                         duration: const Duration(milliseconds: 80),
                         curve: Curves.easeOut,
@@ -195,7 +207,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                                         widget.onUserSelected(user.profile),
                                   ),
                                 ),
-                                const SizedBox(height: 10),
+                                const SizedBox(height: 6),
                               ],
                             ),
                           ],
@@ -272,6 +284,8 @@ class _UserRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final statuses = user.statuses;
     final hasLocation = user.profile.lastLocation != null;
+    final allClear = statuses.isEmpty;
+    final primaryColor = Theme.of(context).colorScheme.primary;
 
     return Material(
       color: isSelected
@@ -284,12 +298,12 @@ class _UserRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         onTap: hasLocation ? onSelect : null,
         child: Padding(
-          padding: const EdgeInsets.all(14),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               CircleAvatar(
-                radius: 24,
+                radius: 22,
                 backgroundImage: user.profile.avatarUrl.isNotEmpty
                     ? NetworkImage(user.profile.avatarUrl)
                     : null,
@@ -303,6 +317,7 @@ class _UserRow extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
                         Expanded(
                           child: Text(
@@ -312,6 +327,10 @@ class _UserRow extends StatelessWidget {
                             style: Theme.of(context).textTheme.titleSmall,
                           ),
                         ),
+                        if (allClear) ...[
+                          const SizedBox(width: 6),
+                          _InlineClearBadge(color: primaryColor),
+                        ],
                         if (hasLocation)
                           Icon(
                             Icons.chevron_right,
@@ -322,7 +341,7 @@ class _UserRow extends StatelessWidget {
                           ),
                       ],
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: 3),
                     if (hasLocation)
                       LocationStreetLabel(
                         location: user.profile.lastLocation!,
@@ -335,17 +354,11 @@ class _UserRow extends StatelessWidget {
                         'No recent location',
                         style: Theme.of(context).textTheme.bodySmall,
                       ),
-                    const SizedBox(height: 10),
-                    if (statuses.isEmpty)
-                      _StatusChip(
-                        label: 'All clear',
-                        icon: Icons.check_circle,
-                        color: Theme.of(context).colorScheme.primary,
-                      )
-                    else
+                    if (!allClear) ...[
+                      const SizedBox(height: 8),
                       Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
+                        spacing: 6,
+                        runSpacing: 6,
                         children: statuses
                             .map(
                               (status) => _StatusChip(
@@ -356,6 +369,7 @@ class _UserRow extends StatelessWidget {
                             )
                             .toList(),
                       ),
+                    ],
                   ],
                 ),
               ),
@@ -377,6 +391,38 @@ class _UserRow extends StatelessWidget {
       default:
         return Theme.of(context).colorScheme.primary;
     }
+  }
+}
+
+class _InlineClearBadge extends StatelessWidget {
+  const _InlineClearBadge({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withValues(alpha: 0.28)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.check_circle, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            'All clear',
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: color,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 

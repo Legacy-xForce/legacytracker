@@ -335,7 +335,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         return [
           TileLayer(
             urlTemplate:
-                'https://basemap.nationalmap.gov/arcgis/rest/services/USGSTopo/MapServer/tile/{z}/{y}/{x}',
+                'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
+            subdomains: const ['a', 'b', 'c'],
             userAgentPackageName: 'com.example.legacytracker',
           ),
         ];
@@ -374,7 +375,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         isSelected: widget.selectedUserId == peer.id,
         onTap: () => _selectUser(peer),
         tooltipMessage: peer.name,
-        beamColor: const Color(0xFF8B5CF6),
+        beamColor: const Color(0xFF0985FB),
         ringColor: Colors.white,
         badgeColor: Colors.grey.shade900,
       );
@@ -403,8 +404,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       isSelected: widget.selectedUserId == profile.id,
       onTap: () => _selectUser(profile),
       tooltipMessage: '${profile.name} (you)',
-      beamColor: const Color(0xFF8B5CF6),
-      ringColor: const Color(0xFF8B5CF6),
+      beamColor: const Color(0xFF0985FB),
+      ringColor: const Color(0xFF0985FB),
       badgeColor: Colors.teal.shade800,
     );
   }
@@ -420,7 +421,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     required Color ringColor,
     required Color badgeColor,
   }) {
-    final speed = location.speed;
+    final speed = location.speed * 3.6;
     final isMoving = location.isMoving;
     final heading = _headingFor(location);
     final isStale = _isLocationStale(location);
@@ -570,7 +571,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${speed.toStringAsFixed(1)} m/s',
+                          '${speed.toStringAsFixed(1)} km/h',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
@@ -785,55 +786,35 @@ class _HeadingBeamPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final center = Offset(size.width / 2, size.height / 2 + 4);
-    final tip = Offset(size.width / 2, size.height * 0.08);
-    final outerLeft = Offset(size.width * 0.18, size.height * 0.38);
-    final outerRight = Offset(size.width * 0.82, size.height * 0.38);
-    final innerLeft = Offset(size.width * 0.30, size.height * 0.50);
-    final innerRight = Offset(size.width * 0.70, size.height * 0.50);
+    final outerRadius = size.height * 0.46;
 
-    final outerPath = ui.Path()
+    // 56° total cone (±28° from the upward axis)
+    const halfAngle = 28.0 * math.pi / 180.0;
+    const upAngle = -math.pi / 2;
+
+    final arcRect = Rect.fromCircle(center: center, radius: outerRadius);
+    final conePath = ui.Path()
       ..moveTo(center.dx, center.dy)
-      ..lineTo(outerLeft.dx, outerLeft.dy)
-      ..lineTo(tip.dx, tip.dy)
-      ..lineTo(outerRight.dx, outerRight.dy)
+      ..arcTo(arcRect, upAngle - halfAngle, halfAngle * 2, false)
       ..close();
 
-    final innerPath = ui.Path()
-      ..moveTo(center.dx, center.dy)
-      ..lineTo(innerLeft.dx, innerLeft.dy)
-      ..lineTo(tip.dx, tip.dy)
-      ..lineTo(innerRight.dx, innerRight.dy)
-      ..close();
-
-    final outerPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..shader = LinearGradient(
-        begin: Alignment.bottomCenter,
-        end: Alignment.topCenter,
-        colors: [
-          beamColor.withValues(alpha: 0.28),
-          beamColor.withValues(alpha: 0.05),
-        ],
-      ).createShader(Offset.zero & size);
-
-    final innerPaint = Paint()
-      ..style = PaintingStyle.fill
-      ..shader = LinearGradient(
-        begin: Alignment.bottomCenter,
-        end: Alignment.topCenter,
-        colors: [
-          beamColor.withValues(alpha: 0.55),
-          beamColor.withValues(alpha: 0.12),
-        ],
-      ).createShader(Offset.zero & size);
-
-    canvas.drawPath(outerPath, outerPaint);
-    canvas.drawPath(innerPath, innerPaint);
-
+    // Blurred glow layer drawn first to feather the straight edges
     final glowPaint = Paint()
+      ..style = PaintingStyle.fill
       ..color = beamColor.withValues(alpha: 0.12)
-      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 18);
-    canvas.drawPath(outerPath, glowPaint);
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 14);
+    canvas.drawPath(conePath, glowPaint);
+
+    // Main beam: radial gradient from ~50% opacity at user position to 0% at outer arc
+    final gradientPaint = Paint()
+      ..style = PaintingStyle.fill
+      ..shader = RadialGradient(
+        colors: [
+          beamColor.withValues(alpha: 0.50),
+          beamColor.withValues(alpha: 0.0),
+        ],
+      ).createShader(arcRect);
+    canvas.drawPath(conePath, gradientPaint);
   }
 
   @override
