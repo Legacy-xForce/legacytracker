@@ -1,5 +1,3 @@
-import 'dart:io';
-
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -19,15 +17,7 @@ import 'src/data/models/user_model.dart';
 class App extends StatelessWidget {
   App({super.key});
 
-  static String _defaultBackendBaseUrl() {
-    if (Platform.isAndroid) {
-      return 'http://192.168.0.224:3000';
-    }
-    if (Platform.isIOS) {
-      return 'http://192.168.0.224:3000';
-    }
-    return 'http://10.0.2.2:3000';
-  }
+  static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
 
   final AuthService authService = AuthService();
   final ProfileService profileService = ProfileService(baseUrl: _defaultBackendBaseUrl());
@@ -93,15 +83,7 @@ class AuthenticatedApp extends StatefulWidget {
 class _AuthenticatedAppState extends State<AuthenticatedApp> {
   TrackingController? _trackingController;
 
-  static String _defaultBackendBaseUrl() {
-    if (Platform.isAndroid) {
-      return 'http://192.168.0.224:3000';
-    }
-    if (Platform.isIOS) {
-      return 'http://192.168.0.224:3000';
-    }
-    return 'http://10.0.2.2:3000';
-  }
+  static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
 
   @override
   void initState() {
