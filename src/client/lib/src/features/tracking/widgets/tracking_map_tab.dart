@@ -11,6 +11,12 @@ import '../../../data/models/user_model.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_users_drawer.dart';
 
+/// Normalizes bearing to 0-360 range
+double _normalizeBearing(double bearing) {
+  final normalized = bearing % 360.0;
+  return normalized < 0 ? normalized + 360.0 : normalized;
+}
+
 class TrackingMapTab extends StatefulWidget {
   const TrackingMapTab({
     super.key,
@@ -51,6 +57,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   final Distance _distance = const Distance();
   late final AnimationController _pulseController;
   late final AnimationController _mapCenterController;
+  late final AnimationController _bearingController;
+
+  // Gesture handling for rotation vs zoom discrimination
+  Map<int, Offset> _pointerLocations = {};
+  double? _lastRotationAngle;
+  bool _isRotationLocked = true;
+  static const double _rotationThreshold = 15.0; // degrees of twist to unlock
 
   // One motion per tracked marker (self + each peer), keyed by profile id, so
   // markers glide from their previous position to the new one instead of
@@ -59,6 +72,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   Animation<LatLng>? _mapCenterAnimation;
   Animation<double>? _mapZoomAnimation;
+  Animation<double>? _bearingAnimation;
 
   @override
   void initState() {
@@ -70,6 +84,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _mapCenterController = AnimationController(vsync: this)
       ..addListener(_handleMapCenterTick)
       ..addStatusListener(_handleMapCenterStatus);
+    _bearingController = AnimationController(vsync: this)
+      ..addListener(_handleBearingTick)
+      ..addStatusListener(_handleBearingStatus);
     _syncMovementPulse();
     _syncMarkerMotions();
   }
@@ -87,6 +104,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _mapCenterController
       ..removeListener(_handleMapCenterTick)
       ..removeStatusListener(_handleMapCenterStatus)
+      ..dispose();
+    _bearingController
+      ..removeListener(_handleBearingTick)
+      ..removeStatusListener(_handleBearingStatus)
       ..dispose();
     for (final motion in _motions.values) {
       motion.dispose();
@@ -175,6 +196,23 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
   }
 
+  void _handleBearingTick() {
+    if (!mounted || !widget.isActive) {
+      return;
+    }
+    final animatedBearing = _bearingAnimation?.value;
+    if (animatedBearing == null) {
+      return;
+    }
+    _mapController.rotate(animatedBearing);
+  }
+
+  void _handleBearingStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _bearingAnimation = null;
+    }
+  }
+
   Duration _movementDuration(LatLng start, LatLng end) {
     final meters = _distance.as(LengthUnit.Meter, start, end);
     final milliseconds = (80 + math.sqrt(meters) * 12).clamp(80, 450);
@@ -242,6 +280,68 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
+  void _animateBearingToNorth() {
+    final currentBearing = _mapController.camera.rotation;
+    if (!currentBearing.isFinite) {
+      return;
+    }
+
+    _bearingController.stop();
+    _bearingAnimation =
+        Tween<double>(begin: currentBearing, end: 0.0).animate(
+          CurvedAnimation(
+            parent: _bearingController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
+    _bearingController.duration = const Duration(milliseconds: 600);
+    _bearingController.forward(from: 0);
+  }
+
+  void _handlePointerDown(PointerDownEvent event) {
+    _pointerLocations[event.pointer] = event.position;
+    _isRotationLocked = true;
+    _lastRotationAngle = null;
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    _pointerLocations[event.pointer] = event.position;
+
+    // Calculate rotation angle if we have two fingers
+    if (_pointerLocations.length >= 2) {
+      final positions = _pointerLocations.values.toList();
+      if (positions.length >= 2) {
+        final angle = _calculateRotationAngle(positions[0], positions[1]);
+        
+        if (_lastRotationAngle != null) {
+          final angleDelta = (angle - _lastRotationAngle!).abs();
+          // Normalize angle delta to 0-180 range
+          final normalizedDelta =
+              angleDelta > 180 ? 360 - angleDelta : angleDelta;
+          
+          if (normalizedDelta > _rotationThreshold && _isRotationLocked) {
+            _isRotationLocked = false;
+          }
+        }
+        _lastRotationAngle = angle;
+      }
+    }
+  }
+
+  void _handlePointerUp(PointerUpEvent event) {
+    _pointerLocations.remove(event.pointer);
+    if (_pointerLocations.isEmpty) {
+      _isRotationLocked = true;
+      _lastRotationAngle = null;
+    }
+  }
+
+  double _calculateRotationAngle(Offset p1, Offset p2) {
+    final dx = p2.dx - p1.dx;
+    final dy = p2.dy - p1.dy;
+    return math.atan2(dy, dx) * 180 / math.pi;
+  }
+
   void _handleMotionTick() {
     if (!mounted) return;
     setState(() {});
@@ -263,24 +363,33 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        FlutterMap(
-          mapController: _mapController,
-          options: MapOptions(
-            initialCenter: widget.center,
-            initialZoom: AppConstants.defaultZoom,
-            minZoom: AppConstants.minZoom,
-            maxZoom: AppConstants.maxZoom,
-            keepAlive: true,
-          ),
-          children: [
-            ..._buildLayers(),
-            MarkerLayer(
-              markers: [
-                ..._buildPeerMarkers(),
-                if (widget.selfProfile.lastLocation != null) _buildSelfMarker(),
-              ],
+        Listener(
+          onPointerDown: _handlePointerDown,
+          onPointerMove: _handlePointerMove,
+          onPointerUp: _handlePointerUp,
+          child: FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: widget.center,
+              initialZoom: AppConstants.defaultZoom,
+              minZoom: AppConstants.minZoom,
+              maxZoom: AppConstants.maxZoom,
+              keepAlive: true,
+              // Disable default rotation to handle it manually with threshold
+              interactionOptions: const InteractionOptions(
+                flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
+              ),
             ),
-          ],
+            children: [
+              ..._buildLayers(),
+              MarkerLayer(
+                markers: [
+                  ..._buildPeerMarkers(),
+                  if (widget.selfProfile.lastLocation != null) _buildSelfMarker(),
+                ],
+              ),
+            ],
+          ),
         ),
         TrackingUsersDrawer(
           selfProfile: widget.selfProfile,
@@ -294,22 +403,34 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         Positioned(
           top: 16,
           right: 16,
-          child: PopupMenuButton<MapLayer>(
-            initialValue: widget.selectedLayer,
-            onSelected: widget.onLayerSelected,
-            itemBuilder: (BuildContext context) => const [
-              PopupMenuItem(value: MapLayer.standard, child: Text('Standard')),
-              PopupMenuItem(
-                value: MapLayer.satellite,
-                child: Text('Satellite'),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 12,
+            children: [
+              PopupMenuButton<MapLayer>(
+                initialValue: widget.selectedLayer,
+                onSelected: widget.onLayerSelected,
+                itemBuilder: (BuildContext context) => const [
+                  PopupMenuItem(value: MapLayer.standard, child: Text('Standard')),
+                  PopupMenuItem(
+                    value: MapLayer.satellite,
+                    child: Text('Satellite'),
+                  ),
+                  PopupMenuItem(value: MapLayer.terrain, child: Text('Terrain')),
+                ],
+                child: FloatingActionButton(
+                  mini: true,
+                  onPressed: null,
+                  child: const Icon(Icons.layers),
+                ),
               ),
-              PopupMenuItem(value: MapLayer.terrain, child: Text('Terrain')),
+              FloatingActionButton(
+                mini: true,
+                onPressed: _animateBearingToNorth,
+                tooltip: 'Reset to North',
+                child: const Icon(Icons.compass_calibration),
+              ),
             ],
-            child: FloatingActionButton(
-              mini: true,
-              onPressed: null,
-              child: const Icon(Icons.layers),
-            ),
           ),
         ),
       ],
@@ -637,7 +758,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     if (heading == null || !heading.isFinite) {
       return null;
     }
-    return normalizeBearing(heading);
+    return _normalizeBearing(heading);
   }
 
   bool _isLocationStale(LocationPoint location) {
