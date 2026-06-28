@@ -16,6 +16,7 @@ const app = Fastify({ logger: true });
 const connectionManager = new ConnectionManager();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
+const lastKnownName = new Map<string, string>();
 const STATE_ID = 'foreground';
 
 const PacingMode = {
@@ -27,6 +28,7 @@ type PacingMode = (typeof PacingMode)[keyof typeof PacingMode];
 
 interface TicketEntry {
   userId: string;
+  displayName: string;
   expiresAt: number;
   used: boolean;
 }
@@ -358,8 +360,10 @@ app.post('/api/v1/streams/ticket', async (request, reply) => {
   }
 
   const ticket = crypto.randomUUID();
+  lastKnownName.set(identity.userId, identity.displayName);
   tickets.set(ticket, {
     userId: identity.userId,
+    displayName: identity.displayName,
     expiresAt: Date.now() + 60_000,
     used: false,
   });
@@ -383,6 +387,7 @@ app.post('/api/v1/location', async (request, reply) => {
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
+  lastKnownName.set(identity.userId, identity.displayName);
 
   for (const point of points) {
     await pool.query(
@@ -397,6 +402,7 @@ app.post('/api/v1/location', async (request, reply) => {
 
   const broadcastMessage = {
     user_id: identity.userId,
+    username: identity.displayName,
     latitude: latest.latitude,
     longitude: latest.longitude,
     speed: latest.speed,
@@ -436,6 +442,8 @@ app.register(async () => {
   entry.used = true;
   tickets.delete(ticket);
   const userId = entry.userId;
+  const displayName = entry.displayName;
+  lastKnownName.set(userId, displayName);
   connectionManager.add(userId, connection.socket);
   app.log.info({ userId, totalConnections: connectionManager.count }, '[ws] client connected');
   updateViewerState();
@@ -443,6 +451,7 @@ app.register(async () => {
   if (lastKnownLocation.size > 0) {
     const snapshot = Array.from(lastKnownLocation.entries()).map(([id, point]) => ({
       user_id: id,
+      username: lastKnownName.get(id) ?? id,
       latitude: point.latitude,
       longitude: point.longitude,
       speed: point.speed,
@@ -485,6 +494,7 @@ app.register(async () => {
 
     const broadcast = {
       user_id: userId,
+      username: displayName,
       latitude: point.latitude,
       longitude: point.longitude,
       speed: point.speed,

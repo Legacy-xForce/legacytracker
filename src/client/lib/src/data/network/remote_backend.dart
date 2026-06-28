@@ -219,9 +219,16 @@ class RemoteBackend implements Backend {
     );
 
     final existingProfile = _peerCache[remoteUserId];
-    final profile =
-        existingProfile ??
-        UserProfile(id: remoteUserId, name: remoteUserId, avatarUrl: '');
+    final incomingName = payload['username'] as String?;
+    final profile = existingProfile ??
+        UserProfile(
+          id: remoteUserId,
+          name: incomingName ?? remoteUserId,
+          avatarUrl: '',
+        );
+    if (incomingName != null && incomingName != remoteUserId) {
+      profile.name = incomingName;
+    }
     profile.lastLocation = point;
     profile.history = [point, ...profile.history].take(20).toList();
     profile.locationTrackingPaused =
