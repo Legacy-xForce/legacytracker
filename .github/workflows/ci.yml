@@ -66,9 +66,12 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Set image name
+        id: image
+        run: echo "name=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/legacytracker" >> "$GITHUB_OUTPUT"
       - name: Build and push Docker image
         uses: docker/build-push-action@v6
         with:
           context: src/server
           push: true
-          tags: ghcr.io/${{ github.repository_owner }}/legacytracker:latest
+          tags: ${{ steps.image.outputs.name }}:latest
