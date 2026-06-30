@@ -82,11 +82,11 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  void _switchToBackground() {
+  Future<void> _switchToBackground() async {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _stopBatteryMonitoring();
-    BackgroundTracker.start(baseUrl);
+    await BackgroundTracker.start(baseUrl);
   }
 
   void _switchToForeground() {

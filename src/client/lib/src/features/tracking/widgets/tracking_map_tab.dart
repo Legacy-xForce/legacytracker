@@ -74,6 +74,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   bool _isRotationLocked = true;
   static const double _rotationThreshold = 15.0; // degrees of twist to unlock
 
+  // Auto-follow: enabled when the user selects someone from the drawer,
+  // disabled as soon as they manually pan/zoom the map.
+  bool _autoFollow = false;
+
   // One motion per tracked marker (self + each peer), keyed by profile id, so
   // markers glide from their previous position to the new one instead of
   // teleporting whenever a fresh location arrives.
@@ -282,6 +286,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     widget.onUserSelected(profile);
+    setState(() => _autoFollow = true);
 
     _animateMapTo(
       LatLng(location.latitude, location.longitude),
@@ -364,6 +369,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   void _syncMapCameraToFollowedUser() {
     if (!mounted || !widget.isActive) return;
+    if (!_autoFollow) return;
     // Never move the camera while the user is touching the map: a move() during
     // a pinch/drag desyncs flutter_map's gesture math and the map can vanish.
     if (_pointerLocations.isNotEmpty) return;
@@ -399,6 +405,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               interactionOptions: const InteractionOptions(
                 flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
               ),
+              onPositionChanged: (camera, hasGesture) {
+                if (hasGesture && _autoFollow) {
+                  setState(() => _autoFollow = false);
+                }
+              },
             ),
             children: [
               ..._buildLayers(),
