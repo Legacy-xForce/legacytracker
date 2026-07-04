@@ -13,6 +13,9 @@ class LocationRepository {
 
   Stream<LocationPoint> get locationStream => locationService.locationStream;
 
+  Future<LocationPoint?> getCurrentLocation() =>
+      locationService.getCurrentLocation();
+
   Future<void> uploadLocation(UserProfile profile) async {
     await backend.sendLocation(profile);
   }

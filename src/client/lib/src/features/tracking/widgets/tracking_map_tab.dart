@@ -87,6 +87,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   Animation<double>? _mapZoomAnimation;
   Animation<double>? _bearingAnimation;
 
+  // MapOptions.initialCenter is only read once, when the map is first built —
+  // it's created before the device's real fix (fetched asynchronously) is
+  // available, so it starts on the fallback center. Jump the camera to the
+  // real fix the first time it arrives, unless the user has already panned
+  // away from the fallback themselves.
+  bool _didJumpToInitialFix = false;
+
   @override
   void initState() {
     super.initState();
@@ -109,7 +116,19 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     super.didUpdateWidget(oldWidget);
     _syncMovementPulse();
     _syncMarkerMotions();
+    _jumpToInitialFixIfNeeded(oldWidget);
+  }
 
+  void _jumpToInitialFixIfNeeded(TrackingMapTab oldWidget) {
+    if (_didJumpToInitialFix) return;
+    if (oldWidget.center.latitude == widget.center.latitude &&
+        oldWidget.center.longitude == widget.center.longitude) {
+      return;
+    }
+    // Don't fight the user if they've already started interacting with the map.
+    if (_pointerLocations.isNotEmpty) return;
+    _didJumpToInitialFix = true;
+    _mapController.move(widget.center, _currentZoom);
   }
 
   @override
@@ -769,9 +788,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              isCharging
-                                  ? '$displayBatteryLevel% ⚡'
-                                  : '$displayBatteryLevel%',
+                              '$displayBatteryLevel%',
                               style: const TextStyle(
                                 color: Colors.white,
                                 fontSize: 10,

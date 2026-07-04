@@ -67,6 +67,10 @@
 	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Legacytracker needs local network access to communicate with the tracking backend.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Legacytracker needs access to your photos so you can set a profile picture.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Legacytracker needs access to your camera so you can take a profile picture.</string>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

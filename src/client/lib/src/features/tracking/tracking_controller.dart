@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../core/constants.dart';
 import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/backend.dart';
@@ -62,7 +63,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
         lastLocation!.longitude.isFinite) {
       return LatLng(lastLocation!.latitude, lastLocation!.longitude);
     }
-    return const LatLng(37.7749, -122.4194);
+    return AppConstants.defaultMapCenter;
   }
 
   // ── App lifecycle ─────────────────────────────────────────────────────────
@@ -104,6 +105,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     if (!permissionGranted) {
       notifyListeners();
       return;
+    }
+
+    if (lastLocation == null) {
+      final initial = await locationRepository.getCurrentLocation();
+      if (initial != null && lastLocation == null) {
+        lastLocation = initial;
+        notifyListeners();
+      }
     }
 
     _startLocationStream();

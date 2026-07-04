@@ -10,6 +10,7 @@ import '../../mocks/mock_location_provider.dart';
 abstract class LocationService {
   Future<bool> requestPermission();
   Stream<LocationPoint> get locationStream;
+  Future<LocationPoint?> getCurrentLocation();
   Future<void> dispose();
 }
 
@@ -61,6 +62,26 @@ class GeolocatorLocationService implements LocationService {
   }
 
   @override
+  Future<LocationPoint?> getCurrentLocation() async {
+    try {
+      final last = await Geolocator.getLastKnownPosition();
+      final position = last ??
+          await Geolocator.getCurrentPosition(
+            desiredAccuracy: LocationAccuracy.best,
+            timeLimit: const Duration(seconds: 10),
+          );
+      return LocationPoint(
+        latitude: position.latitude,
+        longitude: position.longitude,
+        speed: position.speed < 0 ? 0.0 : position.speed,
+        heading: position.heading.isFinite ? position.heading : null,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     // Geolocator stream is managed by the package and does not require manual cleanup.
   }
@@ -76,6 +97,9 @@ class MockLocationService implements LocationService {
 
   @override
   Stream<LocationPoint> get locationStream => _provider.locationStream;
+
+  @override
+  Future<LocationPoint?> getCurrentLocation() async => _provider.current;
 
   @override
   Future<void> dispose() async {

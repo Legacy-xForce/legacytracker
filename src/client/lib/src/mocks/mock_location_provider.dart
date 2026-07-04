@@ -31,6 +31,8 @@ class MockLocationProvider {
 
   Stream<LocationPoint> get locationStream => _controller.stream;
 
+  LocationPoint get current => _current;
+
   Future<void> dispose() async {
     _timer?.cancel();
     await _controller.close();

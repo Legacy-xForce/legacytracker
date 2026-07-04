@@ -1,101 +1,62 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/auth_provider.dart';
+import '../local_avatar_store.dart';
 import '../tracking_controller.dart';
-import 'tracking_status_card.dart';
 
 class TrackingProfileTab extends StatelessWidget {
   const TrackingProfileTab({
     super.key,
     required this.controller,
     required this.nameController,
-    required this.avatarController,
     required this.onSaveProfile,
   });
 
   final TrackingController controller;
   final TextEditingController nameController;
-  final TextEditingController avatarController;
   final VoidCallback onSaveProfile;
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final avatarStore = context.watch<LocalAvatarStore>();
     final profile = auth.profile;
-    final notifications = auth.notifications;
+    final displayName = profile?.name ?? controller.selfProfile.name;
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 20.0),
+      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          TrackingStatusCard(controller: controller),
+          _AvatarPicker(
+            avatarBytes: avatarStore.bytes,
+            displayName: displayName,
+            onTap: () => _showAvatarOptions(context, avatarStore),
+          ),
           const SizedBox(height: 16),
-          ElevatedButton.icon(
-            onPressed: controller.isTracking ? controller.stopTracking : controller.startTracking,
-            icon: Icon(controller.isTracking ? Icons.pause : Icons.play_arrow),
-            label: Text(controller.isTracking ? 'Pause tracking' : 'Resume tracking'),
+          Text(displayName, style: Theme.of(context).textTheme.headlineSmall),
+          const SizedBox(height: 4),
+          Text(
+            'Username: ${auth.username ?? controller.selfProfile.id}',
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 24),
-          Text('Profile', style: Theme.of(context).textTheme.titleLarge),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              CircleAvatar(
-                radius: 38,
-                backgroundImage: profile != null && profile.avatarUrl.isNotEmpty
-                    ? NetworkImage(profile.avatarUrl)
-                    : null,
-                child: profile == null || profile.avatarUrl.isEmpty
-                    ? Text(
-                        profile != null && profile.name.isNotEmpty
-                            ? profile.name.characters.first.toUpperCase()
-                            : '?',
-                        style: const TextStyle(fontSize: 28),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      profile?.name ?? controller.selfProfile.name,
-                      style: Theme.of(context).textTheme.headlineSmall,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Username: ${auth.username ?? controller.selfProfile.id}',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Role: ${profile?.role ?? controller.selfProfile.role}',
-                      style: Theme.of(context).textTheme.bodyMedium,
-                    ),
-                  ],
-                ),
-              ),
-            ],
+          Text(
+            'Role: ${profile?.role ?? controller.selfProfile.role}',
+            style: Theme.of(context).textTheme.bodyMedium,
           ),
-          const SizedBox(height: 24),
-          Text('Update profile', style: Theme.of(context).textTheme.titleMedium),
+          const SizedBox(height: 32),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Text('Display name', style: Theme.of(context).textTheme.titleMedium),
+          ),
           const SizedBox(height: 12),
           TextField(
             controller: nameController,
             decoration: const InputDecoration(
               labelText: 'Display name',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: avatarController,
-            decoration: const InputDecoration(
-              labelText: 'Avatar URL',
               border: OutlineInputBorder(),
             ),
           ),
@@ -107,44 +68,7 @@ class TrackingProfileTab extends StatelessWidget {
               child: const Text('Save profile'),
             ),
           ),
-          const SizedBox(height: 24),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text('Notifications', style: Theme.of(context).textTheme.titleMedium),
-              TextButton(
-                onPressed: auth.refreshNotifications,
-                child: const Text('Refresh'),
-              ),
-            ],
-          ),
-          if (notifications.isEmpty)
-            const Padding(
-              padding: EdgeInsets.only(top: 8.0),
-              child: Text('No notifications yet.'),
-            )
-          else
-            ListView.separated(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              itemCount: notifications.length,
-              separatorBuilder: (context, index) => const Divider(height: 16),
-              itemBuilder: (context, index) {
-                final item = notifications[index];
-                return ListTile(
-                  title: Text(item.content),
-                  subtitle: Text(
-                    item.createdAt.toLocal().toString(),
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  trailing: TextButton(
-                    onPressed: item.read ? null : () => auth.markNotificationRead(item.id),
-                    child: Text(item.read ? 'Read' : 'Mark read'),
-                  ),
-                );
-              },
-            ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
           SizedBox(
             width: double.infinity,
             child: OutlinedButton(
@@ -155,6 +79,102 @@ class TrackingProfileTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 32),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _showAvatarOptions(
+    BuildContext context,
+    LocalAvatarStore avatarStore,
+  ) {
+    return showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.photo_library_outlined),
+                title: const Text('Choose from gallery'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  avatarStore.pickImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.photo_camera_outlined),
+                title: const Text('Take a photo'),
+                onTap: () {
+                  Navigator.of(sheetContext).pop();
+                  avatarStore.pickImage(ImageSource.camera);
+                },
+              ),
+              if (avatarStore.bytes != null)
+                ListTile(
+                  leading: const Icon(Icons.delete_outline),
+                  title: const Text('Remove photo'),
+                  onTap: () {
+                    Navigator.of(sheetContext).pop();
+                    avatarStore.clear();
+                  },
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _AvatarPicker extends StatelessWidget {
+  const _AvatarPicker({
+    required this.avatarBytes,
+    required this.displayName,
+    required this.onTap,
+  });
+
+  final Uint8List? avatarBytes;
+  final String displayName;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: 48,
+            backgroundImage: avatarBytes != null ? MemoryImage(avatarBytes!) : null,
+            child: avatarBytes == null
+                ? Text(
+                    displayName.isNotEmpty ? displayName.characters.first.toUpperCase() : '?',
+                    style: const TextStyle(fontSize: 32),
+                  )
+                : null,
+          ),
+          Positioned(
+            right: 0,
+            bottom: 0,
+            child: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.primary,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).scaffoldBackgroundColor,
+                  width: 2,
+                ),
+              ),
+              child: Icon(
+                Icons.camera_alt,
+                size: 16,
+                color: Theme.of(context).colorScheme.onPrimary,
+              ),
+            ),
+          ),
         ],
       ),
     );

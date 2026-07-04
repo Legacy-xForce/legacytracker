@@ -26,6 +26,10 @@
 	<string>$(PRODUCT_COPYRIGHT)</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>Legacytracker needs your location to show your position on the map.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Legacytracker needs access to your photos so you can set a profile picture.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Legacytracker needs access to your camera so you can take a profile picture.</string>
 	<key>NSMainNibFile</key>
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
