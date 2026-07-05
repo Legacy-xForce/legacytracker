@@ -7,6 +7,7 @@ import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
 import pool from './config/db';
 import ConnectionManager from './services/connection-manager';
 import { initializeFcm, broadcastPacingMode } from './services/fcm-service';
+import { buildSessions, type HistoryPoint } from './services/session-builder';
 
 const JWKS = createRemoteJWKSet(new URL('https://auth.legacy-group.tech/.well-known/jwks.json'), {
   timeoutDuration: 5000,
@@ -18,6 +19,8 @@ const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
 const lastKnownName = new Map<string, string>();
 const STATE_ID = 'foreground';
+const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 const PacingMode = {
   AGGRESSIVE: 'AGGRESSIVE',
@@ -428,6 +431,73 @@ app.post('/api/v1/location', async (request, reply) => {
   reply.header('X-Pacing-Mode', pacingMode);
 
   return reply.send({ received: points.length, pacing: pacingMode });
+});
+
+app.get('/api/v1/history', async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity) {
+    return reply.code(401).send({ error: 'Unauthorized' });
+  }
+
+  const query = request.query as Record<string, string | undefined>;
+  const userId = query.user_id && query.user_id.trim().length > 0 ? query.user_id.trim() : identity.userId;
+
+  const to = query.to ? new Date(query.to) : new Date();
+  const from = query.from
+    ? new Date(query.from)
+    : new Date(to.getTime() - DEFAULT_HISTORY_WINDOW_MS);
+
+  if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
+    return reply.code(400).send({ error: 'Invalid from/to timestamp' });
+  }
+  if (to.getTime() < from.getTime()) {
+    return reply.code(400).send({ error: '`to` must be after `from`' });
+  }
+
+  const clampedFrom = new Date(Math.max(from.getTime(), to.getTime() - MAX_HISTORY_WINDOW_MS));
+
+  const result = await pool.query(
+    `SELECT recorded_at,
+            ST_Y(location::geometry) AS latitude,
+            ST_X(location::geometry) AS longitude,
+            speed, heading
+     FROM location_history
+     WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+     ORDER BY recorded_at ASC`,
+    [userId, clampedFrom.toISOString(), to.toISOString()],
+  );
+
+  const points: HistoryPoint[] = result.rows.map((row) => ({
+    recordedAt: new Date(row.recorded_at).toISOString(),
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+    speed: Number(row.speed),
+    heading: row.heading === null ? null : Number(row.heading),
+  }));
+
+  const sessions = buildSessions(points);
+
+  return reply.send({
+    user_id: userId,
+    from: clampedFrom.toISOString(),
+    to: to.toISOString(),
+    sessions: sessions.map((session) => ({
+      start_at: session.startAt,
+      end_at: session.endAt,
+      duration_seconds: session.durationSeconds,
+      distance_meters: session.distanceMeters,
+      avg_speed: session.avgSpeed,
+      top_speed: session.topSpeed,
+      point_count: session.pointCount,
+      points: session.points.map((point) => ({
+        latitude: point.latitude,
+        longitude: point.longitude,
+        speed: point.speed,
+        heading: point.heading,
+        recorded_at: point.recordedAt,
+      })),
+    })),
+  });
 });
 
 // @fastify/websocket adds its `onRoute` hook only once the plugin finishes

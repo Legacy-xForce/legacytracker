@@ -1,9 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-import '../../../data/models/location_model.dart';
 import '../../../data/models/user_model.dart';
+import '../../auth/auth_provider.dart';
+import '../tracking_controller.dart';
+import 'location_history_screen.dart';
 import 'tracking_location_street_label.dart';
 
 class TrackingUsersDrawer extends StatefulWidget {
@@ -516,9 +519,9 @@ String _formatDuration(Duration duration) {
 }
 
 /// Inline detail view shown in place of the user list once a row is tapped.
-/// Speed/battery/duration come from live data; the trip-stats and location
-/// history sections are placeholders (flagged "Coming soon") until the
-/// backend exposes real trip data.
+/// Speed/battery/duration come from live data; the trip-stats section is
+/// still a placeholder (flagged "Coming soon") until the backend exposes
+/// real trip aggregates. Location history opens the real session view.
 class _UserDetailPane extends StatelessWidget {
   const _UserDetailPane({
     required this.user,
@@ -651,13 +654,23 @@ class _UserDetailPane extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 24),
-        const _SectionHeader(title: 'Location history', showSoonBadge: true),
+        const _SectionHeader(title: 'Location history'),
         const SizedBox(height: 10),
-        ...mock.mockHistory(loc).map(
-          (entry) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _HistoryTile(point: entry.point, minutesAgo: entry.minutesAgo),
-          ),
+        _HistoryEntryButton(
+          onTap: () {
+            final baseUrl = context.read<TrackingController>().baseUrl;
+            final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+            if (accessToken == null) return;
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => LocationHistoryScreen(
+                  user: profile,
+                  baseUrl: baseUrl,
+                  accessToken: accessToken,
+                ),
+              ),
+            );
+          },
         ),
       ],
     );
@@ -749,62 +762,49 @@ class _SectionHeader extends StatelessWidget {
   }
 }
 
-class _HistoryTile extends StatelessWidget {
-  const _HistoryTile({required this.point, required this.minutesAgo});
+class _HistoryEntryButton extends StatelessWidget {
+  const _HistoryEntryButton({required this.onTap});
 
-  final LocationPoint? point;
-  final int minutesAgo;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.3,
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.surfaceContainerHighest.withValues(
+            alpha: 0.3,
+          ),
+          borderRadius: BorderRadius.circular(14),
         ),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        children: [
-          Icon(
-            Icons.location_on_outlined,
-            size: 16,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: point == null
-                ? Text(
-                    'Stop $minutesAgo min ago',
-                    style: theme.textTheme.bodySmall,
-                  )
-                : LocationStreetLabel(
-                    location: point!,
-                    style: theme.textTheme.bodySmall,
-                    maxLines: 1,
-                    placeholder: 'Looking up street...',
-                  ),
-          ),
-          const SizedBox(width: 8),
-          Text(
-            '${minutesAgo}m ago',
-            style: theme.textTheme.labelSmall?.copyWith(
+        child: Row(
+          children: [
+            Icon(
+              Icons.history,
+              size: 18,
               color: theme.colorScheme.onSurfaceVariant,
             ),
-          ),
-        ],
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                'View sessions and replay',
+                style: theme.textTheme.bodySmall,
+              ),
+            ),
+            Icon(
+              Icons.chevron_right,
+              size: 18,
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
       ),
     );
   }
-}
-
-class _MockHistoryEntry {
-  const _MockHistoryEntry({required this.point, required this.minutesAgo});
-
-  final LocationPoint? point;
-  final int minutesAgo;
 }
 
 /// Deterministic per-user placeholder numbers so the same person doesn't
@@ -830,26 +830,5 @@ class _MockTripStats {
       avgSpeedKmh: 18 + random.nextInt(35),
       seed: id.hashCode,
     );
-  }
-
-  /// Nearby placeholder stops so the street lookup still resolves to a
-  /// plausible real address near the user's current position.
-  List<_MockHistoryEntry> mockHistory(LocationPoint? near) {
-    final random = math.Random(seed);
-    return List.generate(3, (i) {
-      if (near == null) {
-        return _MockHistoryEntry(point: null, minutesAgo: (i + 1) * 22);
-      }
-      double jitter() => (random.nextDouble() - 0.5) * 0.01;
-      return _MockHistoryEntry(
-        point: LocationPoint(
-          latitude: near.latitude + jitter(),
-          longitude: near.longitude + jitter(),
-          speed: (10 + random.nextInt(20)).toDouble(),
-          timestamp: near.timestamp.subtract(Duration(minutes: (i + 1) * 22)),
-        ),
-        minutesAgo: (i + 1) * 22,
-      );
-    });
   }
 }
