@@ -16,6 +16,9 @@ class LocationRepository {
   Future<LocationPoint?> getCurrentLocation() =>
       locationService.getCurrentLocation();
 
+  void setBatterySavingEnabled(bool enabled) =>
+      locationService.setBatterySavingEnabled(enabled);
+
   Future<void> uploadLocation(UserProfile profile) async {
     await backend.sendLocation(profile);
   }

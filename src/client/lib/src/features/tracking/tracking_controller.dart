@@ -18,13 +18,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     required this.baseUrl,
     BatteryService? batteryService,
     UserProfile? initialProfile,
-  })  : batteryService = batteryService ?? BatteryService(),
-        selfProfile = initialProfile ??
-            UserProfile(
-              id: 'me',
-              name: 'You',
-              avatarUrl: 'https://avatars.githubusercontent.com/u/38632219?v=4',
-            ) {
+  }) : batteryService = batteryService ?? BatteryService(),
+       selfProfile =
+           initialProfile ??
+           UserProfile(
+             id: 'me',
+             name: 'You',
+             avatarUrl: 'https://avatars.githubusercontent.com/u/38632219?v=4',
+           ) {
     WidgetsBinding.instance.addObserver(this);
     _peerSubscription = backend.peerStream.listen((data) {
       peers = data;
@@ -87,7 +88,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _stopBatteryMonitoring();
-    await BackgroundTracker.start(baseUrl);
+    await BackgroundTracker.start(
+      baseUrl,
+      batterySavingEnabled: selfProfile.batterySavingEnabled,
+    );
   }
 
   void _switchToForeground() {
@@ -106,6 +110,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       notifyListeners();
       return;
     }
+
+    locationRepository.setBatterySavingEnabled(
+      selfProfile.batterySavingEnabled,
+    );
 
     if (lastLocation == null) {
       final initial = await locationRepository.getCurrentLocation();
@@ -126,8 +134,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
 
   void _startLocationStream() {
     _locationSubscription?.cancel();
-    _locationSubscription =
-        locationRepository.locationStream.listen((point) {
+    locationRepository.setBatterySavingEnabled(
+      selfProfile.batterySavingEnabled,
+    );
+    _locationSubscription = locationRepository.locationStream.listen((point) {
       if (!point.latitude.isFinite || !point.longitude.isFinite) return;
 
       lastLocation = point;
@@ -152,11 +162,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   void _startBatteryMonitoring() {
     _refreshBattery();
     _batterySubscription?.cancel();
-    _batterySubscription =
-        batteryService.onChanged.listen((_) => _refreshBattery());
+    _batterySubscription = batteryService.onChanged.listen(
+      (_) => _refreshBattery(),
+    );
     _batteryRefreshTimer?.cancel();
     _batteryRefreshTimer = Timer.periodic(
-      const Duration(minutes: 1),
+      selfProfile.batterySavingEnabled
+          ? const Duration(minutes: 5)
+          : const Duration(minutes: 1),
       (_) => _refreshBattery(),
     );
   }
@@ -193,9 +206,23 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void setSelfProfile(UserProfile profile) {
+    final previousBatterySavingEnabled = selfProfile.batterySavingEnabled;
     selfProfile.name = profile.name;
     selfProfile.avatarUrl = profile.avatarUrl;
     selfProfile.role = profile.role;
+    selfProfile.batterySavingEnabled = profile.batterySavingEnabled;
+    if (previousBatterySavingEnabled != profile.batterySavingEnabled) {
+      locationRepository.setBatterySavingEnabled(profile.batterySavingEnabled);
+      unawaited(
+        BackgroundTracker.applyBatterySavingEnabled(
+          profile.batterySavingEnabled,
+        ),
+      );
+      if (isTracking) {
+        _startLocationStream();
+        _startBatteryMonitoring();
+      }
+    }
     notifyListeners();
   }
 

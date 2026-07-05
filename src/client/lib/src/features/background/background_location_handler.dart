@@ -6,6 +6,10 @@ import 'package:geolocator/geolocator.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/location_model.dart';
+import '../location/location_outbox.dart';
+import '../location/location_payload.dart';
+
 // Entry point called by flutter_foreground_task in its own isolate.
 @pragma('vm:entry-point')
 void backgroundTaskEntryPoint() {
@@ -13,9 +17,6 @@ void backgroundTaskEntryPoint() {
 }
 
 class BackgroundLocationHandler extends TaskHandler {
-  static const _passiveIntervalMs = 120000; // 2 minutes
-  static const _aggressiveIntervalMs = 5000; // 5 seconds
-
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {}
 
@@ -28,20 +29,56 @@ class BackgroundLocationHandler extends TaskHandler {
 
     final pacing = prefs.getString('pacing_mode') ?? 'PASSIVE';
     final isAggressive = pacing == 'AGGRESSIVE';
+    final batterySavingEnabled =
+        prefs.getBool('battery_saving_enabled') ?? false;
+    final outbox = LocationOutbox();
+    final queued = await outbox.drain();
 
+    Map<String, dynamic>? currentPayload;
     try {
       final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: isAggressive ? LocationAccuracy.high : LocationAccuracy.low,
+        desiredAccuracy: batterySavingEnabled
+            ? LocationAccuracy.low
+            : isAggressive
+            ? LocationAccuracy.high
+            : LocationAccuracy.low,
         timeLimit: const Duration(seconds: 15),
       );
-      await _uploadLocation(baseUrl, accessToken, position);
+      final battery = await _readBattery();
+      currentPayload = buildLocationPayload(
+        LocationPoint(
+          latitude: position.latitude,
+          longitude: position.longitude,
+          speed: position.speed >= 0 ? position.speed : 0.0,
+          heading: position.heading.isFinite ? position.heading : null,
+          timestamp: DateTime.now(),
+        ),
+        batteryLevel: battery.$1,
+        isCharging: battery.$2,
+      );
     } catch (_) {
-      // Silently ignore — GPS or network unavailable in background.
+      // GPS can be unavailable in background; queued points may still flush.
+    }
+
+    final batch = [...queued];
+    if (currentPayload != null) {
+      batch.add(currentPayload);
+    }
+    if (batch.isNotEmpty) {
+      try {
+        await _uploadLocation(baseUrl, accessToken, batch);
+      } catch (_) {
+        await outbox.write(batch);
+      }
     }
 
     // Adjust the repeat interval to match the current pacing mode.
-    final targetMs = isAggressive ? _aggressiveIntervalMs : _passiveIntervalMs;
-    final currentMs = prefs.getInt('bg_current_interval_ms') ?? _passiveIntervalMs;
+    final targetMs = isAggressive
+        ? _aggressiveIntervalMs(batterySavingEnabled)
+        : _passiveIntervalMs(batterySavingEnabled);
+    final currentMs =
+        prefs.getInt('bg_current_interval_ms') ??
+        _passiveIntervalMs(batterySavingEnabled);
     if (currentMs != targetMs) {
       await prefs.setInt('bg_current_interval_ms', targetMs);
       await FlutterForegroundTask.updateService(
@@ -66,30 +103,20 @@ class BackgroundLocationHandler extends TaskHandler {
   Future<void> _uploadLocation(
     String baseUrl,
     String accessToken,
-    Position position,
+    List<Map<String, dynamic>> payload,
   ) async {
-    final battery = await _readBattery();
     final uri = Uri.parse('$baseUrl/api/v1/location');
-    await http.post(
+    final response = await http.post(
       uri,
       headers: {
         'content-type': 'application/json',
         'authorization': 'Bearer $accessToken',
       },
-      body: jsonEncode([
-        {
-          'coords': {
-            'latitude': position.latitude,
-            'longitude': position.longitude,
-            'speed': position.speed >= 0 ? position.speed : 0.0,
-            'heading': position.heading.isFinite ? position.heading : null,
-          },
-          'timestamp': DateTime.now().toUtc().toIso8601String(),
-          'battery_level': ?battery.$1,
-          'is_charging': ?battery.$2,
-        }
-      ]),
+      body: jsonEncode(payload),
     );
+    if (response.statusCode < 200 || response.statusCode >= 300) {
+      throw Exception('Failed to upload background location batch');
+    }
   }
 
   /// Returns (level 0–100, isCharging), with null fields when unavailable.
@@ -105,4 +132,10 @@ class BackgroundLocationHandler extends TaskHandler {
       return (null, null);
     }
   }
+
+  int _passiveIntervalMs(bool batterySavingEnabled) =>
+      batterySavingEnabled ? 300000 : 120000;
+
+  int _aggressiveIntervalMs(bool batterySavingEnabled) =>
+      batterySavingEnabled ? 15000 : 5000;
 }

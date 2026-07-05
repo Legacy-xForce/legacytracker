@@ -11,24 +11,28 @@ abstract class LocationService {
   Future<bool> requestPermission();
   Stream<LocationPoint> get locationStream;
   Future<LocationPoint?> getCurrentLocation();
+  void setBatterySavingEnabled(bool enabled);
   Future<void> dispose();
 }
 
 class GeolocatorLocationService implements LocationService {
+  bool _batterySavingEnabled = false;
+
   LocationSettings get _settings {
+    final accuracy = _batterySavingEnabled
+        ? LocationAccuracy.medium
+        : LocationAccuracy.high;
+    final distanceFilter = _batterySavingEnabled ? 100 : 25;
     if (Platform.isIOS || Platform.isMacOS) {
       return AppleSettings(
-        accuracy: LocationAccuracy.bestForNavigation,
-        distanceFilter: 1,
+        accuracy: accuracy,
+        distanceFilter: distanceFilter,
         activityType: ActivityType.other,
-        pauseLocationUpdatesAutomatically: false,
+        pauseLocationUpdatesAutomatically: _batterySavingEnabled,
         allowBackgroundLocationUpdates: true,
       );
     }
-    return const LocationSettings(
-      accuracy: LocationAccuracy.bestForNavigation,
-      distanceFilter: 1,
-    );
+    return LocationSettings(accuracy: accuracy, distanceFilter: distanceFilter);
   }
 
   Stream<LocationPoint>? _locationStream;
@@ -65,9 +69,12 @@ class GeolocatorLocationService implements LocationService {
   Future<LocationPoint?> getCurrentLocation() async {
     try {
       final last = await Geolocator.getLastKnownPosition();
-      final position = last ??
+      final position =
+          last ??
           await Geolocator.getCurrentPosition(
-            desiredAccuracy: LocationAccuracy.best,
+            desiredAccuracy: _batterySavingEnabled
+                ? LocationAccuracy.low
+                : LocationAccuracy.best,
             timeLimit: const Duration(seconds: 10),
           );
       return LocationPoint(
@@ -79,6 +86,15 @@ class GeolocatorLocationService implements LocationService {
     } catch (_) {
       return null;
     }
+  }
+
+  @override
+  void setBatterySavingEnabled(bool enabled) {
+    if (_batterySavingEnabled == enabled) {
+      return;
+    }
+    _batterySavingEnabled = enabled;
+    _locationStream = null;
   }
 
   @override
@@ -100,6 +116,9 @@ class MockLocationService implements LocationService {
 
   @override
   Future<LocationPoint?> getCurrentLocation() async => _provider.current;
+
+  @override
+  void setBatterySavingEnabled(bool enabled) {}
 
   @override
   Future<void> dispose() async {

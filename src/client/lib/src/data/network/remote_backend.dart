@@ -8,6 +8,8 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
 import 'backend.dart';
+import '../../features/location/location_outbox.dart';
+import '../../features/location/location_payload.dart';
 
 class RemoteBackend implements Backend {
   RemoteBackend({
@@ -23,9 +25,14 @@ class RemoteBackend implements Backend {
   final StreamController<List<UserProfile>> _peerController =
       StreamController<List<UserProfile>>.broadcast();
   final Map<String, UserProfile> _peerCache = {};
+  final LocationOutbox _outbox = LocationOutbox();
   WebSocketChannel? _channel;
   String? _ticket;
   bool _initialized = false;
+  bool _disposed = false;
+  Timer? _reconnectTimer;
+  Timer? _outboxFlushTimer;
+  bool _flushingOutbox = false;
 
   @override
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
@@ -36,8 +43,13 @@ class RemoteBackend implements Backend {
       return;
     }
 
-    _ticket = await _requestTicket();
-    _connectWebSocket();
+    await _connectFreshWebSocket();
+    _outboxFlushTimer?.cancel();
+    _outboxFlushTimer = Timer.periodic(
+      const Duration(minutes: 1),
+      (_) => _flushPendingLocationUploads(),
+    );
+    unawaited(_flushPendingLocationUploads());
     _initialized = true;
   }
 
@@ -47,21 +59,40 @@ class RemoteBackend implements Backend {
     int? batteryLevel,
     bool? isCharging,
   }) {
-    if (_channel == null) return;
-    final payload = {
-      'type': 'location',
-      'coords': {
-        'latitude': point.latitude,
-        'longitude': point.longitude,
-        'speed': point.speed,
-        'heading': point.heading,
-      },
-      'timestamp': point.timestamp.toUtc().toIso8601String(),
-      'battery_level': ?batteryLevel,
-      'is_charging': ?isCharging,
-    };
+    if (_channel == null) {
+      unawaited(
+        _outbox.enqueue(
+          buildLocationPayload(
+            point,
+            batteryLevel: batteryLevel,
+            isCharging: isCharging,
+          ),
+        ),
+      );
+      unawaited(_flushPendingLocationUploads());
+      return;
+    }
+
+    final payload = buildRealtimeLocationPayload(
+      point,
+      batteryLevel: batteryLevel,
+      isCharging: isCharging,
+    );
     dev.log('[ws] sending: ${jsonEncode(payload)}', name: 'RemoteBackend');
-    _channel!.sink.add(jsonEncode(payload));
+    try {
+      _channel!.sink.add(jsonEncode(payload));
+    } catch (_) {
+      unawaited(
+        _outbox.enqueue(
+          buildLocationPayload(
+            point,
+            batteryLevel: batteryLevel,
+            isCharging: isCharging,
+          ),
+        ),
+      );
+      unawaited(_flushPendingLocationUploads());
+    }
   }
 
   @override
@@ -81,8 +112,8 @@ class RemoteBackend implements Backend {
           'heading': location.heading,
         },
         'timestamp': location.timestamp.toUtc().toIso8601String(),
-        'battery_level': ?profile.batteryLevel,
-        'is_charging': ?profile.isCharging,
+        if (profile.batteryLevel != null) 'battery_level': profile.batteryLevel,
+        if (profile.isCharging != null) 'is_charging': profile.isCharging,
       },
     ];
 
@@ -117,6 +148,11 @@ class RemoteBackend implements Backend {
 
   @override
   Future<void> dispose() async {
+    _disposed = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    _outboxFlushTimer?.cancel();
+    _outboxFlushTimer = null;
     _channel?.sink.close();
     _peerController.close();
     _httpClient.close();
@@ -165,6 +201,18 @@ class RemoteBackend implements Backend {
         _scheduleReconnect();
       },
     );
+  }
+
+  Future<void> _connectFreshWebSocket() async {
+    if (_disposed) {
+      return;
+    }
+
+    _ticket = await _requestTicket();
+    if (_disposed) {
+      return;
+    }
+    _connectWebSocket();
   }
 
   void _handleWebSocketMessage(dynamic message) {
@@ -228,7 +276,8 @@ class RemoteBackend implements Backend {
 
     final existingProfile = _peerCache[remoteUserId];
     final incomingName = payload['username'] as String?;
-    final profile = existingProfile ??
+    final profile =
+        existingProfile ??
         UserProfile(
           id: remoteUserId,
           name: incomingName ?? remoteUserId,
@@ -285,12 +334,54 @@ class RemoteBackend implements Backend {
   }
 
   void _scheduleReconnect() {
+    if (_disposed) {
+      return;
+    }
+
     _channel = null;
+    _reconnectTimer?.cancel();
     dev.log('[ws] reconnecting in 3s', name: 'RemoteBackend');
-    Future.delayed(const Duration(seconds: 3), () {
-      if (_ticket != null) {
-        _connectWebSocket();
-      }
+    _reconnectTimer = Timer(const Duration(seconds: 3), () {
+      _connectFreshWebSocket().catchError((error) {
+        dev.log('[ws] reconnect failed: $error', name: 'RemoteBackend');
+        _scheduleReconnect();
+      });
     });
+  }
+
+  Future<void> _flushPendingLocationUploads() async {
+    if (_disposed || _flushingOutbox) {
+      return;
+    }
+
+    _flushingOutbox = true;
+    List<Map<String, dynamic>> batch = [];
+    try {
+      batch = await _outbox.drain();
+      if (batch.isEmpty) {
+        return;
+      }
+
+      final uri = _apiUri('/api/v1/location');
+      final response = await _httpClient.post(
+        uri,
+        headers: {
+          'content-type': 'application/json',
+          'authorization': 'Bearer $accessToken',
+        },
+        body: jsonEncode(batch),
+      );
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        await _outbox.write(batch);
+      }
+    } catch (error) {
+      dev.log('[outbox] flush failed: $error', name: 'RemoteBackend');
+      if (batch.isNotEmpty) {
+        await _outbox.write(batch);
+      }
+    } finally {
+      _flushingOutbox = false;
+    }
   }
 }
