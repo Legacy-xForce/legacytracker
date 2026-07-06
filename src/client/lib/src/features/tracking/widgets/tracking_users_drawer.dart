@@ -3,7 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
+import '../../../data/network/history_service.dart';
 import '../../auth/auth_provider.dart';
 import '../tracking_controller.dart';
 import 'location_history_screen.dart';
@@ -519,10 +521,10 @@ String _formatDuration(Duration duration) {
 }
 
 /// Inline detail view shown in place of the user list once a row is tapped.
-/// Speed/battery/duration come from live data; the trip-stats section is
-/// still a placeholder (flagged "Coming soon") until the backend exposes
-/// real trip aggregates. Location history opens the real session view.
-class _UserDetailPane extends StatelessWidget {
+/// Speed/battery/duration come from live data; trip stats are derived from
+/// today's location-history sessions. Location history opens the real
+/// session view.
+class _UserDetailPane extends StatefulWidget {
   const _UserDetailPane({
     required this.user,
     required this.scrollController,
@@ -536,20 +538,48 @@ class _UserDetailPane extends StatelessWidget {
   final VoidCallback onBack;
 
   @override
+  State<_UserDetailPane> createState() => _UserDetailPaneState();
+}
+
+class _UserDetailPaneState extends State<_UserDetailPane> {
+  late final Future<List<LocationSession>> _todaySessions;
+
+  @override
+  void initState() {
+    super.initState();
+    _todaySessions = _loadTodaySessions();
+  }
+
+  Future<List<LocationSession>> _loadTodaySessions() {
+    final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+    if (accessToken == null) return Future.value(const []);
+
+    final baseUrl = context.read<TrackingController>().baseUrl;
+    final now = DateTime.now();
+    final from = DateTime(now.year, now.month, now.day);
+    final to = from.add(const Duration(days: 1));
+    return HistoryService(baseUrl: baseUrl).fetchHistory(
+      accessToken,
+      userId: widget.user.profile.id,
+      from: from,
+      to: to,
+    );
+  }
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final profile = user.profile;
+    final profile = widget.user.profile;
     final loc = profile.lastLocation;
-    final mock = _MockTripStats.forUser(profile.id);
 
     return ListView(
-      controller: scrollController,
-      padding: EdgeInsets.fromLTRB(16, 2, 16, 16 + bottomInset),
+      controller: widget.scrollController,
+      padding: EdgeInsets.fromLTRB(16, 2, 16, 16 + widget.bottomInset),
       children: [
         Row(
           children: [
             IconButton(
-              onPressed: onBack,
+              onPressed: widget.onBack,
               icon: const Icon(Icons.arrow_back),
               tooltip: 'Back to list',
               visualDensity: VisualDensity.compact,
@@ -570,7 +600,9 @@ class _UserDetailPane extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    user.isSelf ? '${profile.name} (you)' : profile.name,
+                    widget.user.isSelf
+                        ? '${profile.name} (you)'
+                        : profile.name,
                     style: theme.textTheme.titleMedium,
                   ),
                   if (loc != null)
@@ -624,34 +656,47 @@ class _UserDetailPane extends StatelessWidget {
         else
           Text('No recent location', style: theme.textTheme.bodyMedium),
         const SizedBox(height: 24),
-        const _SectionHeader(title: 'Trip stats', showSoonBadge: true),
+        const _SectionHeader(title: 'Trip stats'),
         const SizedBox(height: 10),
-        Row(
-          children: [
-            Expanded(
-              child: _StatCard(
-                icon: Icons.route_outlined,
-                label: 'Drives today',
-                value: '${mock.driveCount}',
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.trending_up_rounded,
-                label: 'Top speed',
-                value: '${mock.topSpeedKmh} km/h',
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: _StatCard(
-                icon: Icons.speed_outlined,
-                label: 'Avg speed',
-                value: '${mock.avgSpeedKmh} km/h',
-              ),
-            ),
-          ],
+        FutureBuilder<List<LocationSession>>(
+          future: _todaySessions,
+          builder: (context, snapshot) {
+            final loading = snapshot.connectionState != ConnectionState.done;
+            final summary = _TripStatsSummary.fromSessions(
+              snapshot.data ?? const [],
+            );
+            return Row(
+              children: [
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.route_outlined,
+                    label: 'Drives today',
+                    value: loading ? '…' : '${summary.driveCount}',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.trending_up_rounded,
+                    label: 'Top speed',
+                    value: loading
+                        ? '…'
+                        : '${summary.topSpeedKmh.round()} km/h',
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: _StatCard(
+                    icon: Icons.speed_outlined,
+                    label: 'Avg speed',
+                    value: loading
+                        ? '…'
+                        : '${summary.avgSpeedKmh.round()} km/h',
+                  ),
+                ),
+              ],
+            );
+          },
         ),
         const SizedBox(height: 24),
         const _SectionHeader(title: 'Location history'),
@@ -721,43 +766,16 @@ class _StatCard extends StatelessWidget {
 }
 
 class _SectionHeader extends StatelessWidget {
-  const _SectionHeader({required this.title, this.showSoonBadge = false});
+  const _SectionHeader({required this.title});
 
   final String title;
-  final bool showSoonBadge;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Row(
-      children: [
-        Text(
-          title,
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        if (showSoonBadge) ...[
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.amber.shade700.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: Colors.amber.shade700.withValues(alpha: 0.3),
-              ),
-            ),
-            child: Text(
-              'Coming soon',
-              style: theme.textTheme.labelSmall?.copyWith(
-                color: Colors.amber.shade800,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-        ],
-      ],
+    return Text(
+      title,
+      style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
     );
   }
 }
@@ -807,28 +825,49 @@ class _HistoryEntryButton extends StatelessWidget {
   }
 }
 
-/// Deterministic per-user placeholder numbers so the same person doesn't
-/// reshuffle their stats on every rebuild, while still varying across users.
-class _MockTripStats {
-  const _MockTripStats({
+/// Aggregate "trip" stats derived from a set of location-history sessions
+/// (one call to `/api/v1/history` for the day already returns these).
+class _TripStatsSummary {
+  const _TripStatsSummary({
     required this.driveCount,
     required this.topSpeedKmh,
     required this.avgSpeedKmh,
-    required this.seed,
   });
 
   final int driveCount;
-  final int topSpeedKmh;
-  final int avgSpeedKmh;
-  final int seed;
+  final double topSpeedKmh;
+  final double avgSpeedKmh;
 
-  static _MockTripStats forUser(String id) {
-    final random = math.Random(id.hashCode);
-    return _MockTripStats(
-      driveCount: 2 + random.nextInt(9),
-      topSpeedKmh: 45 + random.nextInt(70),
-      avgSpeedKmh: 18 + random.nextInt(35),
-      seed: id.hashCode,
+  static _TripStatsSummary fromSessions(List<LocationSession> sessions) {
+    if (sessions.isEmpty) {
+      return const _TripStatsSummary(
+        driveCount: 0,
+        topSpeedKmh: 0,
+        avgSpeedKmh: 0,
+      );
+    }
+
+    var topSpeedKmh = 0.0;
+    var weightedAvgSpeedKmh = 0.0;
+    var totalDurationSeconds = 0.0;
+    for (final session in sessions) {
+      topSpeedKmh = math.max(topSpeedKmh, session.topSpeedKmh);
+      weightedAvgSpeedKmh += session.avgSpeedKmh * session.durationSeconds;
+      totalDurationSeconds += session.durationSeconds;
+    }
+
+    // Duration-weighted average of each session's own average speed (a mean
+    // of its recorded point speeds), so long drives aren't diluted by short
+    // ones. Unlike distance/time, this can never exceed topSpeedKmh, since
+    // it's a weighted average of values that are each already <= it.
+    final avgSpeedKmh = totalDurationSeconds > 0
+        ? weightedAvgSpeedKmh / totalDurationSeconds
+        : 0.0;
+
+    return _TripStatsSummary(
+      driveCount: sessions.length,
+      topSpeedKmh: topSpeedKmh,
+      avgSpeedKmh: avgSpeedKmh,
     );
   }
 }

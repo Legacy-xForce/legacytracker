@@ -1,30 +1,33 @@
-import 'dotenv/config';
-import crypto from 'crypto';
-import Fastify, { FastifyRequest } from 'fastify';
-import cors from '@fastify/cors';
-import websocket from '@fastify/websocket';
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
-import pool from './config/db';
-import ConnectionManager from './services/connection-manager';
-import { initializeFcm, broadcastPacingMode } from './services/fcm-service';
-import { buildSessions, type HistoryPoint } from './services/session-builder';
+import "dotenv/config";
+import crypto from "crypto";
+import Fastify, { FastifyRequest } from "fastify";
+import cors from "@fastify/cors";
+import websocket from "@fastify/websocket";
+import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import pool from "./config/db";
+import ConnectionManager from "./services/connection-manager";
+import { initializeFcm, broadcastPacingMode } from "./services/fcm-service";
+import { buildSessions, type HistoryPoint } from "./services/session-builder";
 
-const JWKS = createRemoteJWKSet(new URL('https://auth.legacy-group.tech/.well-known/jwks.json'), {
-  timeoutDuration: 5000,
-});
+const JWKS = createRemoteJWKSet(
+  new URL("https://auth.legacy-group.tech/.well-known/jwks.json"),
+  {
+    timeoutDuration: 5000,
+  },
+);
 
 const app = Fastify({ logger: true });
 const connectionManager = new ConnectionManager();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
 const lastKnownName = new Map<string, string>();
-const STATE_ID = 'foreground';
+const STATE_ID = "foreground";
 const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 
 const PacingMode = {
-  AGGRESSIVE: 'AGGRESSIVE',
-  PASSIVE: 'PASSIVE',
+  AGGRESSIVE: "AGGRESSIVE",
+  PASSIVE: "PASSIVE",
 } as const;
 
 type PacingMode = (typeof PacingMode)[keyof typeof PacingMode];
@@ -60,12 +63,14 @@ interface LocationPayload {
 
 app.register(cors, {
   origin: true,
-  methods: ['GET', 'POST'],
+  methods: ["GET", "POST"],
 });
 app.register(websocket);
 
 function getPacingMode(): PacingMode {
-  return connectionManager.count > 0 ? PacingMode.AGGRESSIVE : PacingMode.PASSIVE;
+  return connectionManager.count > 0
+    ? PacingMode.AGGRESSIVE
+    : PacingMode.PASSIVE;
 }
 
 async function updateViewerState(): Promise<void> {
@@ -78,21 +83,23 @@ async function updateViewerState(): Promise<void> {
       [STATE_ID, connectionManager.count],
     );
   } catch (error) {
-    app.log.warn({ error }, 'Unable to synchronize viewer state with database');
+    app.log.warn({ error }, "Unable to synchronize viewer state with database");
   }
 
   // Push new pacing mode to all registered devices via FCM.
   try {
-    const result = await pool.query<{ token: string }>('SELECT token FROM user_fcm_tokens');
+    const result = await pool.query<{ token: string }>(
+      "SELECT token FROM user_fcm_tokens",
+    );
     const tokens = result.rows.map((r) => r.token);
     await broadcastPacingMode(tokens, getPacingMode());
   } catch (error) {
-    app.log.warn({ error }, 'Unable to broadcast pacing mode via FCM');
+    app.log.warn({ error }, "Unable to broadcast pacing mode via FCM");
   }
 }
 
 function normalizeNumber(value: unknown): number | null {
-  if (typeof value !== 'number' || !Number.isFinite(value)) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
     return null;
   }
   return value;
@@ -100,7 +107,7 @@ function normalizeNumber(value: unknown): number | null {
 
 function readStringClaim(payload: JWTPayload, claim: string): string | null {
   const value = payload[claim];
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return null;
   }
 
@@ -108,26 +115,55 @@ function readStringClaim(payload: JWTPayload, claim: string): string | null {
   return trimmed.length > 0 ? trimmed : null;
 }
 
-function getDisplayNameFromToken(payload: JWTPayload, fallbackId: string): string {
+function getDisplayNameFromToken(
+  payload: JWTPayload,
+  fallbackId: string,
+): string {
   const candidates = [
-    readStringClaim(payload, 'preferred_username'),
-    readStringClaim(payload, 'username'),
-    readStringClaim(payload, 'nickname'),
-    readStringClaim(payload, 'name'),
-    readStringClaim(payload, 'email'),
+    readStringClaim(payload, "preferred_username"),
+    readStringClaim(payload, "username"),
+    readStringClaim(payload, "nickname"),
+    readStringClaim(payload, "name"),
+    readStringClaim(payload, "email"),
   ];
 
-  return candidates.find((candidate) => candidate != null && candidate !== fallbackId) ?? fallbackId;
+  return (
+    candidates.find(
+      (candidate) => candidate != null && candidate !== fallbackId,
+    ) ?? fallbackId
+  );
 }
 
-async function getCurrentUserIdentity(request: FastifyRequest): Promise<{ userId: string; displayName: string } | null> {
-  const authHeader = request.headers['authorization'] ?? '';
-  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+function logUnauthorizedRequest(
+  request: FastifyRequest,
+  route: string,
+  reason: string,
+): void {
+  app.log.warn(
+    {
+      route,
+      method: request.method,
+      url: request.url,
+      ip: request.ip,
+      reason,
+    },
+    "Rejected unauthorized request",
+  );
+}
+
+async function getCurrentUserIdentity(
+  request: FastifyRequest,
+): Promise<{ userId: string; displayName: string } | null> {
+  const authHeader = request.headers["authorization"] ?? "";
+  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
   if (!token) return null;
 
   try {
-    const { payload } = await jwtVerify(token, JWKS, { algorithms: ['ES256'] });
-    const sub = typeof payload.sub === 'string' && payload.sub.length > 0 ? payload.sub : null;
+    const { payload } = await jwtVerify(token, JWKS, { algorithms: ["ES256"] });
+    const sub =
+      typeof payload.sub === "string" && payload.sub.length > 0
+        ? payload.sub
+        : null;
     if (!sub) {
       return null;
     }
@@ -143,7 +179,9 @@ async function getCurrentUserIdentity(request: FastifyRequest): Promise<{ userId
 
 async function ensureBackendSchema(): Promise<void> {
   try {
-    await pool.query("ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'");
+    await pool.query(
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'",
+    );
     await pool.query(`
       CREATE TABLE IF NOT EXISTS notifications (
         id bigserial PRIMARY KEY,
@@ -151,21 +189,20 @@ async function ensureBackendSchema(): Promise<void> {
         content text NOT NULL,
         read boolean NOT NULL DEFAULT false,
         created_at timestamptz NOT NULL DEFAULT now()
-      )`,
-    );
+      )`);
   } catch (error) {
-    app.log.warn({ error }, 'Unable to ensure backend schema is present');
+    app.log.warn({ error }, "Unable to ensure backend schema is present");
   }
 }
 
 function parseLocationItem(item: unknown): KnownLocation | null {
-  if (item == null || typeof item !== 'object') {
+  if (item == null || typeof item !== "object") {
     return null;
   }
 
   const payload = item as LocationPayload;
   const coords = payload.coords;
-  if (coords == null || typeof coords !== 'object') {
+  if (coords == null || typeof coords !== "object") {
     return null;
   }
 
@@ -177,15 +214,20 @@ function parseLocationItem(item: unknown): KnownLocation | null {
 
   const speed = normalizeNumber(coords.speed) ?? 0;
   const heading = normalizeNumber(coords.heading);
-  const timestamp = payload.timestamp ? new Date(payload.timestamp) : new Date();
+  const timestamp = payload.timestamp
+    ? new Date(payload.timestamp)
+    : new Date();
   if (Number.isNaN(timestamp.getTime())) {
     return null;
   }
 
   const batteryLevelRaw = normalizeNumber(payload.battery_level);
   const batteryLevel =
-    batteryLevelRaw === null ? null : Math.max(0, Math.min(100, Math.round(batteryLevelRaw)));
-  const isCharging = typeof payload.is_charging === 'boolean' ? payload.is_charging : null;
+    batteryLevelRaw === null
+      ? null
+      : Math.max(0, Math.min(100, Math.round(batteryLevelRaw)));
+  const isCharging =
+    typeof payload.is_charging === "boolean" ? payload.is_charging : null;
 
   return {
     latitude,
@@ -198,7 +240,10 @@ function parseLocationItem(item: unknown): KnownLocation | null {
   };
 }
 
-async function ensureUserExists(userId: string, displayName: string): Promise<void> {
+async function ensureUserExists(
+  userId: string,
+  displayName: string,
+): Promise<void> {
   await pool.query(
     `
       INSERT INTO users (id, name)
@@ -222,48 +267,59 @@ async function ensureUserExists(userId: string, displayName: string): Promise<vo
   );
 }
 
-app.get('/api/v1/profile', async (request, reply) => {
+app.get("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/profile",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
 
   const result = await pool.query(
-    'SELECT id, name, avatar_url, role FROM users WHERE id = $1',
+    "SELECT id, name, avatar_url, role FROM users WHERE id = $1",
     [identity.userId],
   );
 
   if (result.rowCount === 0) {
-    return reply.code(404).send({ error: 'User not found' });
+    return reply.code(404).send({ error: "User not found" });
   }
 
   const user = result.rows[0];
   return reply.send({
     id: user.id,
     name: user.name,
-    avatar_url: user.avatar_url ?? '',
-    role: user.role ?? 'user',
+    avatar_url: user.avatar_url ?? "",
+    role: user.role ?? "user",
   });
 });
 
-app.patch('/api/v1/profile', async (request, reply) => {
+app.patch("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/profile",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   const body = request.body as Record<string, unknown> | null;
   if (body == null) {
-    return reply.code(400).send({ error: 'Missing profile payload' });
+    return reply.code(400).send({ error: "Missing profile payload" });
   }
 
-  const name = typeof body.name === 'string' ? body.name.trim() : null;
-  const avatarUrl = typeof body.avatar_url === 'string' ? body.avatar_url.trim() : null;
+  const name = typeof body.name === "string" ? body.name.trim() : null;
+  const avatarUrl =
+    typeof body.avatar_url === "string" ? body.avatar_url.trim() : null;
 
   if (name == null && avatarUrl == null) {
-    return reply.code(400).send({ error: 'Missing profile update fields' });
+    return reply.code(400).send({ error: "Missing profile update fields" });
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -280,10 +336,13 @@ app.patch('/api/v1/profile', async (request, reply) => {
     params.push(avatarUrl);
   }
 
-  await pool.query(`UPDATE users SET ${updates.join(', ')} WHERE id = $1`, params);
+  await pool.query(
+    `UPDATE users SET ${updates.join(", ")} WHERE id = $1`,
+    params,
+  );
 
   const result = await pool.query(
-    'SELECT id, name, avatar_url, role FROM users WHERE id = $1',
+    "SELECT id, name, avatar_url, role FROM users WHERE id = $1",
     [identity.userId],
   );
 
@@ -291,68 +350,83 @@ app.patch('/api/v1/profile', async (request, reply) => {
   return reply.send({
     id: user.id,
     name: user.name,
-    avatar_url: user.avatar_url ?? '',
-    role: user.role ?? 'user',
+    avatar_url: user.avatar_url ?? "",
+    role: user.role ?? "user",
   });
 });
 
-app.get('/api/v1/notifications', async (request, reply) => {
+app.get("/api/v1/notifications", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/notifications",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
 
   const result = await pool.query(
-    'SELECT id, content, read, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC',
+    "SELECT id, content, read, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC",
     [identity.userId],
   );
 
   return reply.send({
     notifications: result.rows.map((notification) => ({
-      'id': notification.id,
-      'content': notification.content,
-      'read': notification.read,
-      'created_at': notification.created_at,
+      id: notification.id,
+      content: notification.content,
+      read: notification.read,
+      created_at: notification.created_at,
     })),
   });
 });
 
-app.post('/api/v1/notifications/read', async (request, reply) => {
+app.post("/api/v1/notifications/read", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/notifications/read",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   const body = request.body as Record<string, unknown> | null;
   if (body == null || body.notification_id == null) {
-    return reply.code(400).send({ error: 'Missing notification_id' });
+    return reply.code(400).send({ error: "Missing notification_id" });
   }
 
   const notificationId = Number(body.notification_id);
   if (!Number.isInteger(notificationId) || notificationId <= 0) {
-    return reply.code(400).send({ error: 'Invalid notification_id' });
+    return reply.code(400).send({ error: "Invalid notification_id" });
   }
 
   await pool.query(
-    'UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2',
+    "UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2",
     [notificationId, identity.userId],
   );
 
   return reply.send({ success: true });
 });
 
-app.post('/api/v1/fcm-token', async (request, reply) => {
+app.post("/api/v1/fcm-token", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/fcm-token",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   const body = request.body as Record<string, unknown> | null;
-  const token = typeof body?.token === 'string' ? body.token.trim() : null;
+  const token = typeof body?.token === "string" ? body.token.trim() : null;
   if (!token) {
-    return reply.code(400).send({ error: 'Missing token' });
+    return reply.code(400).send({ error: "Missing token" });
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -367,10 +441,15 @@ app.post('/api/v1/fcm-token', async (request, reply) => {
   return reply.send({ ok: true });
 });
 
-app.post('/api/v1/streams/ticket', async (request, reply) => {
+app.post("/api/v1/streams/ticket", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/streams/ticket",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   const ticket = crypto.randomUUID();
@@ -383,21 +462,32 @@ app.post('/api/v1/streams/ticket', async (request, reply) => {
   });
 
   await ensureUserExists(identity.userId, identity.displayName);
+  app.log.info(
+    { userId: identity.userId, displayName: identity.displayName },
+    "[ws] issued websocket ticket",
+  );
 
   return reply.send({ ticket });
 });
 
-app.post('/api/v1/location', async (request, reply) => {
+app.post("/api/v1/location", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/location",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   const body = request.body;
   const items = Array.isArray(body) ? body : [body];
-  const points = items.map(parseLocationItem).filter((point): point is KnownLocation => point !== null);
+  const points = items
+    .map(parseLocationItem)
+    .filter((point): point is KnownLocation => point !== null);
   if (points.length === 0) {
-    return reply.code(400).send({ error: 'Invalid location payload' });
+    return reply.code(400).send({ error: "Invalid location payload" });
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -407,12 +497,29 @@ app.post('/api/v1/location', async (request, reply) => {
     await pool.query(
       `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
        VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
-      [identity.userId, point.recordedAt, point.longitude, point.latitude, point.speed, point.heading],
+      [
+        identity.userId,
+        point.recordedAt,
+        point.longitude,
+        point.latitude,
+        point.speed,
+        point.heading,
+      ],
     );
   }
 
   const latest = points[points.length - 1];
   lastKnownLocation.set(identity.userId, latest);
+  app.log.info(
+    {
+      userId: identity.userId,
+      pointCount: points.length,
+      recordedAt: latest.recordedAt,
+      latitude: latest.latitude,
+      longitude: latest.longitude,
+    },
+    "[location] ingested location batch",
+  );
 
   const broadcastMessage = {
     user_id: identity.userId,
@@ -428,19 +535,27 @@ app.post('/api/v1/location', async (request, reply) => {
   connectionManager.broadcast(broadcastMessage);
 
   const pacingMode = getPacingMode();
-  reply.header('X-Pacing-Mode', pacingMode);
+  reply.header("X-Pacing-Mode", pacingMode);
 
   return reply.send({ received: points.length, pacing: pacingMode });
 });
 
-app.get('/api/v1/history', async (request, reply) => {
+app.get("/api/v1/history", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity) {
-    return reply.code(401).send({ error: 'Unauthorized' });
+    logUnauthorizedRequest(
+      request,
+      "/api/v1/history",
+      "missing or invalid bearer token",
+    );
+    return reply.code(401).send({ error: "Unauthorized" });
   }
 
   const query = request.query as Record<string, string | undefined>;
-  const userId = query.user_id && query.user_id.trim().length > 0 ? query.user_id.trim() : identity.userId;
+  const userId =
+    query.user_id && query.user_id.trim().length > 0
+      ? query.user_id.trim()
+      : identity.userId;
 
   const to = query.to ? new Date(query.to) : new Date();
   const from = query.from
@@ -448,13 +563,15 @@ app.get('/api/v1/history', async (request, reply) => {
     : new Date(to.getTime() - DEFAULT_HISTORY_WINDOW_MS);
 
   if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime())) {
-    return reply.code(400).send({ error: 'Invalid from/to timestamp' });
+    return reply.code(400).send({ error: "Invalid from/to timestamp" });
   }
   if (to.getTime() < from.getTime()) {
-    return reply.code(400).send({ error: '`to` must be after `from`' });
+    return reply.code(400).send({ error: "`to` must be after `from`" });
   }
 
-  const clampedFrom = new Date(Math.max(from.getTime(), to.getTime() - MAX_HISTORY_WINDOW_MS));
+  const clampedFrom = new Date(
+    Math.max(from.getTime(), to.getTime() - MAX_HISTORY_WINDOW_MS),
+  );
 
   const result = await pool.query(
     `SELECT recorded_at,
@@ -476,6 +593,17 @@ app.get('/api/v1/history', async (request, reply) => {
   }));
 
   const sessions = buildSessions(points);
+  app.log.info(
+    {
+      userId,
+      requestedBy: identity.userId,
+      pointCount: points.length,
+      sessionCount: sessions.length,
+      from: clampedFrom.toISOString(),
+      to: to.toISOString(),
+    },
+    "[history] served location history",
+  );
 
   return reply.send({
     user_id: userId,
@@ -508,95 +636,135 @@ app.get('/api/v1/history', async (request, reply) => {
 // blew up. Registering inside app.register() defers this route until after the
 // plugin has loaded, so it is correctly upgraded.
 app.register(async () => {
-  app.get('/api/v1/stream', { websocket: true }, (connection, req) => {
-  const urlParams = new URLSearchParams((req.url ?? '').split('?')[1] ?? '');
-  const ticket = urlParams.get('ticket') ?? '';
-  const entry = tickets.get(ticket);
+  app.get("/api/v1/stream", { websocket: true }, (connection, req) => {
+    const urlParams = new URLSearchParams((req.url ?? "").split("?")[1] ?? "");
+    const ticket = urlParams.get("ticket") ?? "";
+    const entry = tickets.get(ticket);
 
-  if (!entry || entry.used || entry.expiresAt < Date.now()) {
-    try {
-      connection.socket.close(1008, 'Unauthorized');
-    } catch {
-      connection.destroy();
-    }
-    return;
-  }
-
-  entry.used = true;
-  tickets.delete(ticket);
-  const userId = entry.userId;
-  const displayName = entry.displayName;
-  lastKnownName.set(userId, displayName);
-  connectionManager.add(userId, connection.socket);
-  app.log.info({ userId, totalConnections: connectionManager.count }, '[ws] client connected');
-  updateViewerState();
-
-  if (lastKnownLocation.size > 0) {
-    const snapshot = Array.from(lastKnownLocation.entries()).map(([id, point]) => ({
-      user_id: id,
-      username: lastKnownName.get(id) ?? id,
-      latitude: point.latitude,
-      longitude: point.longitude,
-      speed: point.speed,
-      heading: point.heading,
-      recorded_at: point.recordedAt,
-      battery_level: point.batteryLevel,
-      is_charging: point.isCharging,
-    }));
-    app.log.info({ userId, userCount: snapshot.length }, '[ws] sending snapshot');
-    connection.socket.send(JSON.stringify({ type: 'snapshot', users: snapshot }));
-  }
-
-  connection.socket.on('message', async (raw: Buffer | string) => {
-    const rawStr = raw.toString();
-    app.log.info({ userId, data: rawStr }, '[ws] message received');
-
-    let msg: unknown;
-    try {
-      msg = JSON.parse(rawStr);
-    } catch {
-      app.log.warn({ userId, data: rawStr }, '[ws] failed to parse message');
+    if (!entry || entry.used || entry.expiresAt < Date.now()) {
+      const reason = !entry
+        ? "unknown ticket"
+        : entry.used
+          ? "ticket already used"
+          : "ticket expired";
+      app.log.warn(
+        {
+          reason,
+          ticketPresent: ticket.length > 0,
+          remoteAddress: req.socket.remoteAddress,
+        },
+        "[ws] rejected websocket upgrade",
+      );
+      try {
+        connection.socket.close(1008, "Unauthorized");
+      } catch {
+        connection.destroy();
+      }
       return;
     }
 
-    if (typeof msg !== 'object' || msg === null || (msg as Record<string, unknown>)['type'] !== 'location') {
-      return;
-    }
-
-    const point = parseLocationItem(msg);
-    if (!point) {
-      app.log.warn({ userId, msg }, '[ws] invalid location payload');
-      return;
-    }
-
-    await pool.query(
-      `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
-       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
-      [userId, point.recordedAt, point.longitude, point.latitude, point.speed, point.heading],
+    entry.used = true;
+    tickets.delete(ticket);
+    const userId = entry.userId;
+    const displayName = entry.displayName;
+    lastKnownName.set(userId, displayName);
+    connectionManager.add(userId, connection.socket);
+    app.log.info(
+      { userId, totalConnections: connectionManager.count },
+      "[ws] client connected",
     );
-
-    lastKnownLocation.set(userId, point);
-
-    const broadcast = {
-      user_id: userId,
-      username: displayName,
-      latitude: point.latitude,
-      longitude: point.longitude,
-      speed: point.speed,
-      heading: point.heading,
-      recorded_at: point.recordedAt,
-      battery_level: point.batteryLevel,
-      is_charging: point.isCharging,
-    };
-    app.log.info({ broadcast, recipients: connectionManager.count }, '[ws] broadcasting location');
-    connectionManager.broadcast(broadcast);
-  });
-
-  connection.socket.on('close', () => {
-    app.log.info({ userId, totalConnections: connectionManager.count - 1 }, '[ws] client disconnected');
-    connectionManager.remove(userId);
     updateViewerState();
-  });
+
+    if (lastKnownLocation.size > 0) {
+      const snapshot = Array.from(lastKnownLocation.entries()).map(
+        ([id, point]) => ({
+          user_id: id,
+          username: lastKnownName.get(id) ?? id,
+          latitude: point.latitude,
+          longitude: point.longitude,
+          speed: point.speed,
+          heading: point.heading,
+          recorded_at: point.recordedAt,
+          battery_level: point.batteryLevel,
+          is_charging: point.isCharging,
+        }),
+      );
+      app.log.info(
+        { userId, userCount: snapshot.length },
+        "[ws] sending snapshot",
+      );
+      connection.socket.send(
+        JSON.stringify({ type: "snapshot", users: snapshot }),
+      );
+    }
+
+    connection.socket.on("message", async (raw: Buffer | string) => {
+      const rawStr = raw.toString();
+      app.log.info({ userId, data: rawStr }, "[ws] message received");
+
+      let msg: unknown;
+      try {
+        msg = JSON.parse(rawStr);
+      } catch {
+        app.log.warn({ userId, data: rawStr }, "[ws] failed to parse message");
+        return;
+      }
+
+      if (
+        typeof msg !== "object" ||
+        msg === null ||
+        (msg as Record<string, unknown>)["type"] !== "location"
+      ) {
+        return;
+      }
+
+      const point = parseLocationItem(msg);
+      if (!point) {
+        app.log.warn({ userId, msg }, "[ws] invalid location payload");
+        return;
+      }
+
+      await pool.query(
+        `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
+        [
+          userId,
+          point.recordedAt,
+          point.longitude,
+          point.latitude,
+          point.speed,
+          point.heading,
+        ],
+      );
+
+      lastKnownLocation.set(userId, point);
+
+      const broadcast = {
+        user_id: userId,
+        username: displayName,
+        latitude: point.latitude,
+        longitude: point.longitude,
+        speed: point.speed,
+        heading: point.heading,
+        recorded_at: point.recordedAt,
+        battery_level: point.batteryLevel,
+        is_charging: point.isCharging,
+      };
+      app.log.info(
+        { broadcast, recipients: connectionManager.count },
+        "[ws] broadcasting location",
+      );
+      connectionManager.broadcast(broadcast);
+    });
+
+    connection.socket.on("close", () => {
+      app.log.info(
+        { userId, totalConnections: connectionManager.count - 1 },
+        "[ws] client disconnected",
+      );
+      connectionManager.remove(userId);
+      updateViewerState();
+    });
   });
 });
 
@@ -606,7 +774,7 @@ const start = async (): Promise<void> => {
   try {
     initializeFcm();
     await ensureBackendSchema();
-    await app.listen({ port, host: '0.0.0.0' });
+    await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
   } catch (error) {
     app.log.error(error);
