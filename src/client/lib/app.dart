@@ -17,7 +17,7 @@ import 'src/data/models/user_model.dart';
 class App extends StatelessWidget {
   App({super.key});
 
-  static String _defaultBackendBaseUrl() => 'http://10.0.2.2:3000';
+  static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
 
   final AuthService authService = AuthService();
   final ProfileService profileService = ProfileService(baseUrl: _defaultBackendBaseUrl());
@@ -83,7 +83,7 @@ class AuthenticatedApp extends StatefulWidget {
 class _AuthenticatedAppState extends State<AuthenticatedApp> {
   TrackingController? _trackingController;
 
-  static String _defaultBackendBaseUrl() => 'http://10.0.2.2:3000';
+  static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
 
   @override
   void initState() {
