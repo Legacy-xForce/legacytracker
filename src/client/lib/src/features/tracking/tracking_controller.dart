@@ -84,18 +84,22 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  // The foreground service is started once, in [startTracking], while the app
+  // is still visible — Android denies a location-type foreground service its
+  // location capability if it's launched after the app has already gone to
+  // the background. Pause/resume only toggle the `app_foreground` flag the
+  // background isolate uses to avoid sending duplicate updates while the
+  // in-app realtime stream is already covering it; the service itself keeps
+  // running for the life of the tracking session.
   Future<void> _switchToBackground() async {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _stopBatteryMonitoring();
-    await BackgroundTracker.start(
-      baseUrl,
-      batterySavingEnabled: selfProfile.batterySavingEnabled,
-    );
+    await BackgroundTracker.setAppForeground(false);
   }
 
   void _switchToForeground() {
-    BackgroundTracker.stop();
+    BackgroundTracker.setAppForeground(true);
     _startLocationStream();
     _startBatteryMonitoring();
   }
@@ -122,6 +126,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
         notifyListeners();
       }
     }
+
+    // Start the background foreground-service now, while the app is still
+    // visible, so it retains its location capability for the rest of the
+    // tracking session regardless of later pause/resume cycles.
+    await BackgroundTracker.start(
+      baseUrl,
+      batterySavingEnabled: selfProfile.batterySavingEnabled,
+    );
 
     _startLocationStream();
     _startBatteryMonitoring();
@@ -195,6 +207,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     await _locationSubscription?.cancel();
     _locationSubscription = null;
     _stopBatteryMonitoring();
+    await BackgroundTracker.stop();
     isTracking = false;
     notifyListeners();
   }

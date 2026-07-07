@@ -43,6 +43,7 @@ class BackgroundTracker {
     await prefs.setString('bg_base_url', baseUrl);
     await prefs.setString('pacing_mode', 'PASSIVE');
     await prefs.setBool('battery_saving_enabled', batterySavingEnabled);
+    await prefs.setBool('app_foreground', true);
     await prefs.setInt(
       'bg_current_interval_ms',
       passiveIntervalMs(batterySavingEnabled),
@@ -74,6 +75,14 @@ class BackgroundTracker {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('pacing_mode', pacing);
     await _syncServiceInterval();
+  }
+
+  /// Called on every app pause/resume so the background isolate knows
+  /// whether the in-app realtime stream is already covering location
+  /// updates, without touching the (already-running) foreground service.
+  static Future<void> setAppForeground(bool foreground) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('app_foreground', foreground);
   }
 
   static Future<void> applyBatterySavingEnabled(bool enabled) async {

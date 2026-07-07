@@ -313,6 +313,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
+  void _recenterOnSelf() {
+    _focusUser(widget.selfProfile);
+    _animateBearingToNorth();
+  }
+
   void _animateBearingToNorth() {
     final currentBearing = _mapController.camera.rotation;
     if (!currentBearing.isFinite) {
@@ -476,9 +481,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               ),
               FloatingActionButton(
                 mini: true,
-                onPressed: _animateBearingToNorth,
-                tooltip: 'Reset to North',
-                child: const Icon(Icons.compass_calibration),
+                onPressed: _recenterOnSelf,
+                tooltip: 'My Location',
+                child: const Icon(Icons.my_location),
               ),
             ],
           ),

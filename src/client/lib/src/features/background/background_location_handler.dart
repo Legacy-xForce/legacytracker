@@ -23,6 +23,21 @@ class BackgroundLocationHandler extends TaskHandler {
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
     final prefs = await SharedPreferences.getInstance();
+    // This TaskHandler runs in its own long-lived isolate, separate from the
+    // main UI isolate and the FCM background-message isolate. shared_preferences
+    // caches all values in memory on the first getInstance() call per isolate
+    // and never re-reads them — without an explicit reload(), this isolate
+    // would keep seeing whatever `app_foreground`/`pacing_mode`/etc. looked
+    // like the moment the service started, forever.
+    await prefs.reload();
+
+    // While the app is visible, the in-app realtime stream (over the
+    // WebSocket) already covers location updates — skip this tick to avoid
+    // duplicate GPS polling/uploads. The service itself stays alive so it
+    // retains the location capability it was granted at start.
+    final appForeground = prefs.getBool('app_foreground') ?? false;
+    if (appForeground) return;
+
     final accessToken = prefs.getString('auth_access_token');
     final baseUrl = prefs.getString('bg_base_url');
     if (accessToken == null || baseUrl == null) return;
