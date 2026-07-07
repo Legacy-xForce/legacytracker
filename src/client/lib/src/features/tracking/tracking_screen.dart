@@ -124,8 +124,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
         ),
         bottomNavigationBar: NavigationBar(
           selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) =>
-              setState(() => _selectedIndex = index),
+          onDestinationSelected: (index) {
+            setState(() => _selectedIndex = index);
+            context.read<TrackingController>().setMapTabSelected(index == 0);
+          },
           destinations: const [
             NavigationDestination(
               icon: Icon(Icons.map_outlined),

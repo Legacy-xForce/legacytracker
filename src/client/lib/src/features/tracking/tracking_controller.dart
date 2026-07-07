@@ -95,13 +95,37 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     _locationSubscription?.cancel();
     _locationSubscription = null;
     _stopBatteryMonitoring();
+    _isAppForeground = false;
+    _syncMapActive();
     await BackgroundTracker.setAppForeground(false);
   }
 
   void _switchToForeground() {
+    _isAppForeground = true;
+    _syncMapActive();
     BackgroundTracker.setAppForeground(true);
     _startLocationStream();
     _startBatteryMonitoring();
+  }
+
+  // Whether TrackingScreen currently has its Map tab selected, and whether
+  // the app itself is in the foreground — combined, these decide whether the
+  // live map is actually visible to the user right now. Both default to true
+  // to match the app's initial state (Map is the landing tab, app opens
+  // foregrounded).
+  bool _isMapTabSelected = true;
+  bool _isAppForeground = true;
+
+  /// Forwarded from [TrackingScreen] whenever the Map tab becomes or stops
+  /// being the visible tab, so the server can scope AGGRESSIVE pacing pushes
+  /// to moments someone can actually see drivers move on the map.
+  void setMapTabSelected(bool selected) {
+    _isMapTabSelected = selected;
+    _syncMapActive();
+  }
+
+  void _syncMapActive() {
+    backend.setMapActive(_isAppForeground && _isMapTabSelected);
   }
 
   // ── Tracking ──────────────────────────────────────────────────────────────

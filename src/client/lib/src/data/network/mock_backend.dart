@@ -84,6 +84,9 @@ class MockBackend implements Backend {
   Future<void> registerFcmToken(String token) async {}
 
   @override
+  void setMapActive(bool active) {}
+
+  @override
   Future<void> dispose() async {
     _updateTimer?.cancel();
     _peerController.close();

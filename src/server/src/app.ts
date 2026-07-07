@@ -68,10 +68,17 @@ app.register(cors, {
 app.register(websocket);
 
 function getPacingMode(): PacingMode {
-  return connectionManager.count > 0
+  // Every connected viewer sees every driver's pin on the same live map —
+  // there's no per-driver subscription — so pacing is scoped to "is anyone's
+  // map tab actually in the foreground right now", not merely "is anyone
+  // connected at all" (e.g. sitting on their own Profile tab shouldn't keep
+  // every other driver's phone polling GPS at the aggressive rate).
+  return connectionManager.anyMapActive
     ? PacingMode.AGGRESSIVE
     : PacingMode.PASSIVE;
 }
+
+let lastBroadcastPacing: PacingMode | null = null;
 
 async function updateViewerState(): Promise<void> {
   try {
@@ -86,13 +93,22 @@ async function updateViewerState(): Promise<void> {
     app.log.warn({ error }, "Unable to synchronize viewer state with database");
   }
 
-  // Push new pacing mode to all registered devices via FCM.
+  // Push the new pacing mode to all registered devices via FCM, but only
+  // when it actually changed — map_active toggles can fire on every tab
+  // switch, and re-broadcasting an unchanged mode to every driver would be
+  // pure noise.
+  const pacingMode = getPacingMode();
+  if (pacingMode === lastBroadcastPacing) {
+    return;
+  }
+  lastBroadcastPacing = pacingMode;
+
   try {
     const result = await pool.query<{ token: string }>(
       "SELECT token FROM user_fcm_tokens",
     );
     const tokens = result.rows.map((r) => r.token);
-    await broadcastPacingMode(tokens, getPacingMode());
+    await broadcastPacingMode(tokens, pacingMode);
   } catch (error) {
     app.log.warn({ error }, "Unable to broadcast pacing mode via FCM");
   }
@@ -710,11 +726,23 @@ app.register(async () => {
         return;
       }
 
-      if (
-        typeof msg !== "object" ||
-        msg === null ||
-        (msg as Record<string, unknown>)["type"] !== "location"
-      ) {
+      if (typeof msg !== "object" || msg === null) {
+        return;
+      }
+
+      const msgType = (msg as Record<string, unknown>)["type"];
+
+      if (msgType === "map_active") {
+        const active = (msg as Record<string, unknown>)["active"];
+        if (typeof active !== "boolean") {
+          return;
+        }
+        connectionManager.setMapActive(userId, active);
+        void updateViewerState();
+        return;
+      }
+
+      if (msgType !== "location") {
         return;
       }
 

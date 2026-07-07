@@ -33,6 +33,11 @@ class RemoteBackend implements Backend {
   Timer? _reconnectTimer;
   Timer? _outboxFlushTimer;
   bool _flushingOutbox = false;
+  // Map tab is the default landing tab, so a freshly-opened session starts
+  // "active" — this mirrors the server's ConnectionManager default and keeps
+  // the two in sync without needing an extra message on the very first
+  // connect.
+  bool _mapActive = true;
 
   @override
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
@@ -61,15 +66,8 @@ class RemoteBackend implements Backend {
   }) {
     if (_channel == null) {
       unawaited(
-        _outbox.enqueue(
-          buildLocationPayload(
-            point,
-            batteryLevel: batteryLevel,
-            isCharging: isCharging,
-          ),
-        ),
+        _enqueueAndFlush(point, batteryLevel: batteryLevel, isCharging: isCharging),
       );
-      unawaited(_flushPendingLocationUploads());
       return;
     }
 
@@ -83,16 +81,28 @@ class RemoteBackend implements Backend {
       _channel!.sink.add(jsonEncode(payload));
     } catch (_) {
       unawaited(
-        _outbox.enqueue(
-          buildLocationPayload(
-            point,
-            batteryLevel: batteryLevel,
-            isCharging: isCharging,
-          ),
-        ),
+        _enqueueAndFlush(point, batteryLevel: batteryLevel, isCharging: isCharging),
       );
-      unawaited(_flushPendingLocationUploads());
     }
+  }
+
+  // `_outbox.enqueue` and `_flushPendingLocationUploads` both do their own
+  // read-modify-write against SharedPreferences. Firing them as two separate
+  // unawaited calls let them race: `drain()` would read the outbox *before*
+  // `enqueue()`'s write landed, then its trailing `remove()` would clear the
+  // key entirely — permanently discarding the point `enqueue` had just
+  // written, every single time, since the two calls contend for the same key
+  // on every call to this method. Awaiting the enqueue before flushing removes
+  // the race.
+  Future<void> _enqueueAndFlush(
+    LocationPoint point, {
+    int? batteryLevel,
+    bool? isCharging,
+  }) async {
+    await _outbox.enqueue(
+      buildLocationPayload(point, batteryLevel: batteryLevel, isCharging: isCharging),
+    );
+    await _flushPendingLocationUploads();
   }
 
   @override
@@ -147,6 +157,24 @@ class RemoteBackend implements Backend {
   }
 
   @override
+  void setMapActive(bool active) {
+    _mapActive = active;
+    _sendMapActive();
+  }
+
+  void _sendMapActive() {
+    if (_channel == null) {
+      return;
+    }
+    try {
+      _channel!.sink.add(jsonEncode({'type': 'map_active', 'active': _mapActive}));
+    } catch (_) {
+      // Best-effort; the current state is resent on the next successful
+      // connect, so a dropped send here just means a brief delay.
+    }
+  }
+
+  @override
   Future<void> dispose() async {
     _disposed = true;
     _reconnectTimer?.cancel();
@@ -187,6 +215,10 @@ class RemoteBackend implements Backend {
     final uri = _webSocketUri(_ticket!);
     dev.log('[ws] connecting to $uri', name: 'RemoteBackend');
     _channel = WebSocketChannel.connect(uri);
+    // The server only learns the map-active state via this message, so a
+    // fresh (or reconnected) socket needs to (re)announce it — the server
+    // has no memory of a dropped connection's last-known state.
+    _sendMapActive();
     _channel!.stream.listen(
       _handleWebSocketMessage,
       onError: (error) {
