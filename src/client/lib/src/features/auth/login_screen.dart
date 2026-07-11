@@ -106,7 +106,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
               const SizedBox(height: 16),
               const Text(
-                'Authentication is handled through the remote auth service. Your profile and notification settings are stored on the backend.',
+                'Authentication is handled through the remote auth service. Your profile is stored on the backend.',
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 24),

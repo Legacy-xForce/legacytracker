@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/user_model.dart';
-import '../../data/models/notification_model.dart';
 import '../../data/network/auth_service.dart';
 import '../../data/network/profile_service.dart';
 import '../../data/storage/token_storage.dart';
@@ -25,7 +24,6 @@ class AuthProvider extends ChangeNotifier {
   String? username;
   AuthTokens? tokens;
   UserProfile? profile;
-  List<NotificationItem> notifications = [];
   String? errorMessage;
 
   Future<void> _initialize() async {
@@ -97,34 +95,9 @@ class AuthProvider extends ChangeNotifier {
         name: name.trim(),
         avatarUrl: avatarUrl.trim(),
       );
-      notifications = await profileService.fetchNotifications(tokens!.accessToken);
     } finally {
       isLoading = false;
       notifyListeners();
-    }
-  }
-
-  Future<void> refreshNotifications() async {
-    if (username == null) {
-      return;
-    }
-    try {
-      notifications = await profileService.fetchNotifications(tokens!.accessToken);
-      notifyListeners();
-    } catch (_) {
-      // Keep existing notifications if refresh fails.
-    }
-  }
-
-  Future<void> markNotificationRead(int id) async {
-    if (username == null) {
-      return;
-    }
-    try {
-      await profileService.markNotificationRead(tokens!.accessToken, id);
-      await refreshNotifications();
-    } catch (_) {
-      // ignore notification update failures
     }
   }
 
@@ -152,7 +125,6 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     profile = await profileService.fetchProfile(tokens!.accessToken);
-    notifications = await profileService.fetchNotifications(tokens!.accessToken);
     notifyListeners();
   }
 
@@ -160,7 +132,6 @@ class AuthProvider extends ChangeNotifier {
     username = null;
     tokens = null;
     profile = null;
-    notifications = [];
     isAuthenticated = false;
     errorMessage = null;
     await _storage?.clear();

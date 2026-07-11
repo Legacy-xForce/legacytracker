@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models/notification_model.dart';
 import '../models/user_model.dart';
 
 class ProfileService {
@@ -87,50 +86,6 @@ class ProfileService {
       isCharging: data['is_charging'] as bool?,
       history: [],
     );
-  }
-
-  Future<List<NotificationItem>> fetchNotifications(String accessToken) async {
-    final response = await _httpClient
-        .get(
-          _apiUri('/api/v1/notifications'),
-          headers: _bearerHeaders(accessToken),
-        )
-        .timeout(
-          const Duration(seconds: 10),
-          onTimeout: () {
-            throw Exception(
-              'Unable to reach the server. Check your connection and try again.',
-            );
-          },
-        );
-
-    if (response.statusCode != 200) {
-      throw Exception('Unable to load notifications: ${response.body}');
-    }
-
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    final list = List<Map<String, dynamic>>.from(
-      data['notifications'] as List<dynamic>,
-    );
-    return list.map(NotificationItem.fromJson).toList();
-  }
-
-  Future<void> markNotificationRead(
-    String accessToken,
-    int notificationId,
-  ) async {
-    final response = await _httpClient.post(
-      _apiUri('/api/v1/notifications/read'),
-      headers: {
-        'content-type': 'application/json',
-        ..._bearerHeaders(accessToken),
-      },
-      body: jsonEncode({'notification_id': notificationId}),
-    );
-
-    if (response.statusCode != 200) {
-      throw Exception('Unable to update notification: ${response.body}');
-    }
   }
 
   Uri _apiUri(String path) {

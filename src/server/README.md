@@ -4,7 +4,7 @@ Node.js/TypeScript backend for the Legacy Tracker real-time location sharing app
 
 ## Features
 
-- REST API for user profiles and notifications
+- REST API for user profiles
 - Real-time location ingestion with WebSocket broadcast to connected viewers
 - Adaptive pacing: tells the client to report aggressively when viewers are connected, passively when none are
 - One-time ticket auth for WebSocket upgrades
@@ -59,13 +59,6 @@ All REST endpoints require an `Authorization: Bearer <access_token>` header. The
 |---------|--------------------|------------------------------------|
 | `GET`   | `/api/v1/profile`  | Fetch the current user's profile   |
 | `PATCH` | `/api/v1/profile`  | Update `name` and/or `avatar_url`  |
-
-### Notifications
-
-| Method | Path                           | Description                         |
-|--------|--------------------------------|-------------------------------------|
-| `GET`  | `/api/v1/notifications`        | List notifications (newest first)   |
-| `POST` | `/api/v1/notifications/read`   | Mark a notification as read (`{ "notification_id": <id> }`) |
 
 ### Location
 

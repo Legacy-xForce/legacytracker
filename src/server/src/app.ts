@@ -198,14 +198,6 @@ async function ensureBackendSchema(): Promise<void> {
     await pool.query(
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'",
     );
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS notifications (
-        id bigserial PRIMARY KEY,
-        user_id text NOT NULL REFERENCES users(id),
-        content text NOT NULL,
-        read boolean NOT NULL DEFAULT false,
-        created_at timestamptz NOT NULL DEFAULT now()
-      )`);
   } catch (error) {
     app.log.warn({ error }, "Unable to ensure backend schema is present");
   }
@@ -273,13 +265,6 @@ async function ensureUserExists(
       WHERE users.name = users.id AND EXCLUDED.name IS DISTINCT FROM users.id
     `,
     [userId, displayName],
-  );
-
-  await pool.query(
-    `INSERT INTO notifications (user_id, content)
-     SELECT $1, 'Welcome to Legacy Tracker. Manage your notifications from the profile page.'
-     WHERE NOT EXISTS (SELECT 1 FROM notifications WHERE user_id = $1)`,
-    [userId],
   );
 }
 
@@ -369,63 +354,6 @@ app.patch("/api/v1/profile", async (request, reply) => {
     avatar_url: user.avatar_url ?? "",
     role: user.role ?? "user",
   });
-});
-
-app.get("/api/v1/notifications", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/notifications",
-      "missing or invalid bearer token",
-    );
-    return reply.code(401).send({ error: "Unauthorized" });
-  }
-
-  await ensureUserExists(identity.userId, identity.displayName);
-
-  const result = await pool.query(
-    "SELECT id, content, read, created_at FROM notifications WHERE user_id = $1 ORDER BY created_at DESC",
-    [identity.userId],
-  );
-
-  return reply.send({
-    notifications: result.rows.map((notification) => ({
-      id: notification.id,
-      content: notification.content,
-      read: notification.read,
-      created_at: notification.created_at,
-    })),
-  });
-});
-
-app.post("/api/v1/notifications/read", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/notifications/read",
-      "missing or invalid bearer token",
-    );
-    return reply.code(401).send({ error: "Unauthorized" });
-  }
-
-  const body = request.body as Record<string, unknown> | null;
-  if (body == null || body.notification_id == null) {
-    return reply.code(400).send({ error: "Missing notification_id" });
-  }
-
-  const notificationId = Number(body.notification_id);
-  if (!Number.isInteger(notificationId) || notificationId <= 0) {
-    return reply.code(400).send({ error: "Invalid notification_id" });
-  }
-
-  await pool.query(
-    "UPDATE notifications SET read = true WHERE id = $1 AND user_id = $2",
-    [notificationId, identity.userId],
-  );
-
-  return reply.send({ success: true });
 });
 
 app.post("/api/v1/fcm-token", async (request, reply) => {
