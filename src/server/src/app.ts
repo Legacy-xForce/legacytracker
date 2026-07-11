@@ -580,7 +580,7 @@ app.get("/api/v1/history", async (request, reply) => {
 // blew up. Registering inside app.register() defers this route until after the
 // plugin has loaded, so it is correctly upgraded.
 app.register(async () => {
-  app.get("/api/v1/stream", { websocket: true }, (connection, req) => {
+  app.get("/api/v1/stream", { websocket: true }, async (connection, req) => {
     const urlParams = new URLSearchParams((req.url ?? "").split("?")[1] ?? "");
     const ticket = urlParams.get("ticket") ?? "";
     const entry = tickets.get(ticket);
@@ -619,28 +619,34 @@ app.register(async () => {
     );
     updateViewerState();
 
-    if (lastKnownLocation.size > 0) {
-      const snapshot = Array.from(lastKnownLocation.entries()).map(
-        ([id, point]) => ({
-          user_id: id,
-          username: lastKnownName.get(id) ?? id,
-          latitude: point.latitude,
-          longitude: point.longitude,
-          speed: point.speed,
-          heading: point.heading,
-          recorded_at: point.recordedAt,
-          battery_level: point.batteryLevel,
-          is_charging: point.isCharging,
-        }),
-      );
-      app.log.info(
-        { userId, userCount: snapshot.length },
-        "[ws] sending snapshot",
-      );
-      connection.socket.send(
-        JSON.stringify({ type: "snapshot", users: snapshot }),
-      );
-    }
+    // Every registered user should show up in the roster regardless of
+    // whether they've ever broadcast a location, so the snapshot is built
+    // from the `users` table (not just `lastKnownLocation`, which only ever
+    // holds entries for users seen since this process started).
+    const allUsers = await pool.query<{ id: string; name: string }>(
+      "SELECT id, name FROM users",
+    );
+    const snapshot = allUsers.rows.map((row) => {
+      const point = lastKnownLocation.get(row.id);
+      return {
+        user_id: row.id,
+        username: lastKnownName.get(row.id) ?? row.name,
+        latitude: point?.latitude ?? null,
+        longitude: point?.longitude ?? null,
+        speed: point?.speed ?? null,
+        heading: point?.heading ?? null,
+        recorded_at: point?.recordedAt ?? null,
+        battery_level: point?.batteryLevel ?? null,
+        is_charging: point?.isCharging ?? null,
+      };
+    });
+    app.log.info(
+      { userId, userCount: snapshot.length },
+      "[ws] sending snapshot",
+    );
+    connection.socket.send(
+      JSON.stringify({ type: "snapshot", users: snapshot }),
+    );
 
     connection.socket.on("message", async (raw: Buffer | string) => {
       const rawStr = raw.toString();

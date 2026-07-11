@@ -54,6 +54,20 @@ class BackgroundTracker {
       return;
     }
 
+    // Android 13+ requires this runtime permission to display the foreground
+    // service's notification; without it the OS can refuse to keep the
+    // service (and its location capability) alive in the background.
+    final notificationPermission =
+        await FlutterForegroundTask.checkNotificationPermission();
+    if (notificationPermission != NotificationPermission.granted) {
+      await FlutterForegroundTask.requestNotificationPermission();
+    }
+    final ignoringBatteryOptimizations =
+        await FlutterForegroundTask.isIgnoringBatteryOptimizations;
+    if (!ignoringBatteryOptimizations) {
+      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
+    }
+
     await FlutterForegroundTask.startService(
       serviceId: 7421,
       notificationTitle: 'Legacy Tracker',

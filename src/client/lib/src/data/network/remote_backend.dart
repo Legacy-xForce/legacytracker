@@ -286,26 +286,6 @@ class RemoteBackend implements Backend {
       return;
     }
 
-    final latitude = _parseDouble(payload['latitude']);
-    final longitude = _parseDouble(payload['longitude']);
-    if (latitude == null || longitude == null) {
-      return;
-    }
-
-    final speed = _parseDouble(payload['speed']) ?? 0.0;
-    final heading = _parseDouble(payload['heading']);
-    final recordedAt =
-        DateTime.tryParse(payload['recorded_at'] as String? ?? '') ??
-        DateTime.now();
-
-    final point = LocationPoint(
-      latitude: latitude,
-      longitude: longitude,
-      speed: speed,
-      heading: heading,
-      timestamp: recordedAt,
-    );
-
     final existingProfile = _peerCache[remoteUserId];
     final incomingName = payload['username'] as String?;
     final profile =
@@ -318,8 +298,29 @@ class RemoteBackend implements Backend {
     if (incomingName != null && incomingName != remoteUserId) {
       profile.name = incomingName;
     }
-    profile.lastLocation = point;
-    profile.history = [point, ...profile.history].take(20).toList();
+
+    // Roster-only snapshot entries (a user who has never broadcast a
+    // location) carry no latitude/longitude — register the peer without
+    // touching lastLocation rather than dropping them entirely.
+    final latitude = _parseDouble(payload['latitude']);
+    final longitude = _parseDouble(payload['longitude']);
+    if (latitude != null && longitude != null) {
+      final speed = _parseDouble(payload['speed']) ?? 0.0;
+      final heading = _parseDouble(payload['heading']);
+      final recordedAt =
+          DateTime.tryParse(payload['recorded_at'] as String? ?? '') ??
+          DateTime.now();
+
+      final point = LocationPoint(
+        latitude: latitude,
+        longitude: longitude,
+        speed: speed,
+        heading: heading,
+        timestamp: recordedAt,
+      );
+      profile.lastLocation = point;
+      profile.history = [point, ...profile.history].take(20).toList();
+    }
     profile.locationTrackingPaused =
         payload['location_tracking_paused'] as bool? ??
         profile.locationTrackingPaused;
