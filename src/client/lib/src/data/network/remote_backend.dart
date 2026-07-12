@@ -14,12 +14,15 @@ import '../../features/location/location_payload.dart';
 class RemoteBackend implements Backend {
   RemoteBackend({
     required this.baseUrl,
-    required this.accessToken,
+    required this.getAccessToken,
     required this.selfId,
   });
 
   final String baseUrl;
-  final String accessToken;
+  // A callback rather than a captured string — the access token can be
+  // refreshed by [AuthProvider] at any time (e.g. on app resume), and this
+  // backend instance lives far longer than any single token's validity.
+  final String Function() getAccessToken;
   final String selfId;
   final http.Client _httpClient = http.Client();
   final StreamController<List<UserProfile>> _peerController =
@@ -131,7 +134,7 @@ class RemoteBackend implements Backend {
       uri,
       headers: {
         'content-type': 'application/json',
-        'authorization': 'Bearer $accessToken',
+        'authorization': 'Bearer ${getAccessToken()}',
       },
       body: jsonEncode(payload),
     );
@@ -147,7 +150,7 @@ class RemoteBackend implements Backend {
         uri,
         headers: {
           'content-type': 'application/json',
-          'authorization': 'Bearer $accessToken',
+          'authorization': 'Bearer ${getAccessToken()}',
         },
         body: jsonEncode({'token': token}),
       );
@@ -190,11 +193,13 @@ class RemoteBackend implements Backend {
     final uri = _apiUri('/api/v1/streams/ticket');
     final response = await _httpClient.post(
       uri,
-      headers: {'authorization': 'Bearer $accessToken'},
+      headers: {'authorization': 'Bearer ${getAccessToken()}'},
     );
 
     if (response.statusCode < 200 || response.statusCode >= 300) {
-      throw Exception('Unable to obtain streaming ticket');
+      throw Exception(
+        'Unable to obtain streaming ticket (status ${response.statusCode})',
+      );
     }
 
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -400,7 +405,7 @@ class RemoteBackend implements Backend {
         uri,
         headers: {
           'content-type': 'application/json',
-          'authorization': 'Bearer $accessToken',
+          'authorization': 'Bearer ${getAccessToken()}',
         },
         body: jsonEncode(batch),
       );

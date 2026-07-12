@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -6,11 +8,12 @@ import '../../data/network/auth_service.dart';
 import '../../data/network/profile_service.dart';
 import '../../data/storage/token_storage.dart';
 
-class AuthProvider extends ChangeNotifier {
+class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   AuthProvider({
     required this.authService,
     required this.profileService,
   }) {
+    WidgetsBinding.instance.addObserver(this);
     _initialize();
   }
 
@@ -135,5 +138,32 @@ class AuthProvider extends ChangeNotifier {
     isAuthenticated = false;
     errorMessage = null;
     await _storage?.clear();
+  }
+
+  // The access token is short-lived; while the app sits backgrounded it can
+  // expire without anything noticing, since [_refreshTokensIfNeeded] is
+  // otherwise only checked at cold start. Re-checking on resume keeps
+  // [tokens] valid before any screen or background service tries to use it.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && isAuthenticated) {
+      unawaited(_refreshOnResume());
+    }
+  }
+
+  Future<void> _refreshOnResume() async {
+    try {
+      await _refreshTokensIfNeeded();
+      notifyListeners();
+    } catch (_) {
+      await _clearSession();
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
   }
 }

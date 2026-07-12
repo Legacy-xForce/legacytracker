@@ -52,7 +52,6 @@ class App extends StatelessWidget {
                 ? const Scaffold(body: Center(child: CircularProgressIndicator()))
                 : auth.isAuthenticated
                     ? AuthenticatedApp(
-                        accessToken: auth.tokens!.accessToken,
                         selfId: auth.profile?.id ?? '',
                         profile: auth.profile,
                       )
@@ -67,12 +66,10 @@ class App extends StatelessWidget {
 class AuthenticatedApp extends StatefulWidget {
   const AuthenticatedApp({
     super.key,
-    required this.accessToken,
     required this.selfId,
     required this.profile,
   });
 
-  final String accessToken;
   final String selfId;
   final UserProfile? profile;
 
@@ -82,12 +79,14 @@ class AuthenticatedApp extends StatefulWidget {
 
 class _AuthenticatedAppState extends State<AuthenticatedApp> {
   TrackingController? _trackingController;
+  late final AuthProvider _auth;
 
   static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
 
   @override
   void initState() {
     super.initState();
+    _auth = Provider.of<AuthProvider>(context, listen: false);
     _listenForFcmPacingUpdates();
     _registerFcmToken();
   }
@@ -110,7 +109,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
       final baseUrl = _defaultBackendBaseUrl();
       final backend = RemoteBackend(
         baseUrl: baseUrl,
-        accessToken: widget.accessToken,
+        getAccessToken: () => _auth.tokens!.accessToken,
         selfId: widget.selfId,
       );
       await backend.registerFcmToken(token);
@@ -120,7 +119,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         final b = RemoteBackend(
           baseUrl: baseUrl,
-          accessToken: widget.accessToken,
+          getAccessToken: () => _auth.tokens!.accessToken,
           selfId: widget.selfId,
         );
         await b.registerFcmToken(newToken);
@@ -135,13 +134,12 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     if (_trackingController == null) {
-      final auth = Provider.of<AuthProvider>(context, listen: false);
-      if (!auth.isAuthenticated) return;
+      if (!_auth.isAuthenticated) return;
 
       final baseUrl = _defaultBackendBaseUrl();
       final backend = RemoteBackend(
         baseUrl: baseUrl,
-        accessToken: widget.accessToken,
+        getAccessToken: () => _auth.tokens!.accessToken,
         selfId: widget.selfId,
       );
       _trackingController = TrackingController(

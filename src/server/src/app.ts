@@ -3,7 +3,7 @@ import crypto from "crypto";
 import Fastify, { FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from "jose";
+import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
 import pool from "./config/db";
 import ConnectionManager from "./services/connection-manager";
 import { initializeFcm, broadcastPacingMode } from "./services/fcm-service";
@@ -16,7 +16,19 @@ const JWKS = createRemoteJWKSet(
   },
 );
 
-const app = Fastify({ logger: true });
+const app = Fastify({
+  logger: {
+    level: process.env.LOG_LEVEL ?? "info",
+    transport: {
+      target: "pino-pretty",
+      options: {
+        colorize: process.env.LOG_COLOR !== "false",
+        translateTime: "yyyy-mm-dd HH:MM:ss.l",
+        ignore: "pid,hostname",
+      },
+    },
+  },
+});
 const connectionManager = new ConnectionManager();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
@@ -150,10 +162,14 @@ function getDisplayNameFromToken(
   );
 }
 
+type IdentityResult =
+  | { ok: true; userId: string; displayName: string }
+  | { ok: false; reason: string; detail?: string };
+
 function logUnauthorizedRequest(
   request: FastifyRequest,
   route: string,
-  reason: string,
+  failure: { reason: string; detail?: string },
 ): void {
   app.log.warn(
     {
@@ -161,7 +177,8 @@ function logUnauthorizedRequest(
       method: request.method,
       url: request.url,
       ip: request.ip,
-      reason,
+      reason: failure.reason,
+      detail: failure.detail,
     },
     "Rejected unauthorized request",
   );
@@ -169,10 +186,18 @@ function logUnauthorizedRequest(
 
 async function getCurrentUserIdentity(
   request: FastifyRequest,
-): Promise<{ userId: string; displayName: string } | null> {
-  const authHeader = request.headers["authorization"] ?? "";
-  const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token) return null;
+): Promise<IdentityResult> {
+  const authHeader = request.headers["authorization"];
+  if (!authHeader) {
+    return { ok: false, reason: "missing authorization header" };
+  }
+  if (!authHeader.startsWith("Bearer ")) {
+    return { ok: false, reason: "authorization header is not a bearer token" };
+  }
+  const token = authHeader.slice(7).trim();
+  if (!token) {
+    return { ok: false, reason: "empty bearer token" };
+  }
 
   try {
     const { payload } = await jwtVerify(token, JWKS, { algorithms: ["ES256"] });
@@ -181,15 +206,26 @@ async function getCurrentUserIdentity(
         ? payload.sub
         : null;
     if (!sub) {
-      return null;
+      return { ok: false, reason: "token is missing a subject claim" };
     }
 
     return {
+      ok: true,
       userId: sub,
       displayName: getDisplayNameFromToken(payload, sub),
     };
-  } catch {
-    return null;
+  } catch (error) {
+    const reason =
+      error instanceof joseErrors.JWTExpired
+        ? "token expired"
+        : error instanceof joseErrors.JWSSignatureVerificationFailed
+          ? "token signature invalid"
+          : "token verification failed";
+    return {
+      ok: false,
+      reason,
+      detail: error instanceof Error ? error.message : String(error),
+    };
   }
 }
 
@@ -270,12 +306,8 @@ async function ensureUserExists(
 
 app.get("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/profile",
-      "missing or invalid bearer token",
-    );
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/profile", identity);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 
@@ -301,12 +333,8 @@ app.get("/api/v1/profile", async (request, reply) => {
 
 app.patch("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/profile",
-      "missing or invalid bearer token",
-    );
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/profile", identity);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 
@@ -358,12 +386,8 @@ app.patch("/api/v1/profile", async (request, reply) => {
 
 app.post("/api/v1/fcm-token", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/fcm-token",
-      "missing or invalid bearer token",
-    );
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/fcm-token", identity);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 
@@ -387,12 +411,8 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
 
 app.post("/api/v1/streams/ticket", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/streams/ticket",
-      "missing or invalid bearer token",
-    );
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/streams/ticket", identity);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 
@@ -416,12 +436,8 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
 
 app.post("/api/v1/location", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/location",
-      "missing or invalid bearer token",
-    );
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/location", identity);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 
@@ -486,12 +502,8 @@ app.post("/api/v1/location", async (request, reply) => {
 
 app.get("/api/v1/history", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
-  if (!identity) {
-    logUnauthorizedRequest(
-      request,
-      "/api/v1/history",
-      "missing or invalid bearer token",
-    );
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/history", identity);
     return reply.code(401).send({ error: "Unauthorized" });
   }
 

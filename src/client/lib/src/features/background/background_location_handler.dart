@@ -66,7 +66,7 @@ class BackgroundLocationHandler extends TaskHandler {
           longitude: position.longitude,
           speed: position.speed >= 0 ? position.speed : 0.0,
           heading: position.heading.isFinite ? position.heading : null,
-          timestamp: DateTime.now(),
+          timestamp: position.timestamp,
         ),
         batteryLevel: battery.$1,
         isCharging: battery.$2,

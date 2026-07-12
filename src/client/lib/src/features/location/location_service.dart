@@ -60,6 +60,7 @@ class GeolocatorLocationService implements LocationService {
             // On iOS, speed is -1.0 when unavailable; clamp to zero.
             speed: position.speed < 0 ? 0.0 : position.speed,
             heading: position.heading.isFinite ? position.heading : null,
+            timestamp: position.timestamp,
           ),
         );
     return _locationStream!;
@@ -82,6 +83,7 @@ class GeolocatorLocationService implements LocationService {
         longitude: position.longitude,
         speed: position.speed < 0 ? 0.0 : position.speed,
         heading: position.heading.isFinite ? position.heading : null,
+        timestamp: position.timestamp,
       );
     } catch (_) {
       return null;
