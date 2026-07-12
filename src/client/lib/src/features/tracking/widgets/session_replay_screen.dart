@@ -1,10 +1,11 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
 import '../../../data/models/location_session.dart';
+import 'map_layers.dart';
+import 'tracked_user_marker.dart';
+import 'tracking_map_layer.dart';
 
 class SessionReplayScreen extends StatefulWidget {
   const SessionReplayScreen({
@@ -20,12 +21,23 @@ class SessionReplayScreen extends StatefulWidget {
   State<SessionReplayScreen> createState() => _SessionReplayScreenState();
 }
 
-class _SessionReplayScreenState extends State<SessionReplayScreen> {
-  static const _tickInterval = Duration(milliseconds: 400);
+class _SessionReplayScreenState extends State<SessionReplayScreen>
+    with SingleTickerProviderStateMixin {
+  // Bounds for how long a single point-to-point glide takes: long enough to
+  // read as continuous motion, short enough that a segment covering a long
+  // real-world gap (e.g. the user was stationary for an hour) doesn't stall
+  // playback.
+  static const _minSegmentDuration = Duration(milliseconds: 200);
+  static const _maxSegmentDuration = Duration(milliseconds: 2500);
 
   final MapController _mapController = MapController();
-  Timer? _ticker;
-  int _index = 0;
+  late final AnimationController _segmentController;
+  Animation<LatLng>? _segmentAnimation;
+
+  MapLayer _selectedLayer = MapLayer.standard;
+  double _playbackSpeed = 1.0;
+  int _segmentStart = 0;
+  LatLng? _displayedPoint;
   bool _isPlaying = false;
 
   late final List<LatLng> _route = widget.session.points
@@ -33,8 +45,20 @@ class _SessionReplayScreenState extends State<SessionReplayScreen> {
       .toList();
 
   @override
+  void initState() {
+    super.initState();
+    _segmentController = AnimationController(vsync: this)
+      ..addListener(_handleSegmentTick)
+      ..addStatusListener(_handleSegmentStatus);
+    _displayedPoint = _route.isNotEmpty ? _route.first : null;
+  }
+
+  @override
   void dispose() {
-    _ticker?.cancel();
+    _segmentController
+      ..removeListener(_handleSegmentTick)
+      ..removeStatusListener(_handleSegmentStatus)
+      ..dispose();
     super.dispose();
   }
 
@@ -42,34 +66,77 @@ class _SessionReplayScreenState extends State<SessionReplayScreen> {
 
   void _play() {
     if (widget.session.points.length < 2) return;
-    if (_index >= widget.session.points.length - 1) {
-      _index = 0;
+    if (_segmentStart >= widget.session.points.length - 1) {
+      _segmentStart = 0;
+      _displayedPoint = _route.first;
     }
     setState(() => _isPlaying = true);
-    _ticker?.cancel();
-    _ticker = Timer.periodic(_tickInterval, (_) {
-      if (_index >= widget.session.points.length - 1) {
-        _pause();
-        return;
-      }
-      setState(() => _index++);
-      _centerOnCurrent();
-    });
+    _playSegment();
+  }
+
+  void _playSegment() {
+    if (_segmentStart >= _route.length - 1) {
+      _pause();
+      return;
+    }
+    final start = _displayedPoint ?? _route[_segmentStart];
+    final end = _route[_segmentStart + 1];
+    _segmentAnimation = _LatLngTween(begin: start, end: end).animate(
+      // Linear: constant-speed travel between fixes, matching the live map's
+      // marker-glide behavior so chained segments don't stutter.
+      CurvedAnimation(parent: _segmentController, curve: Curves.linear),
+    );
+    _segmentController
+      ..duration = _segmentDuration(_segmentStart)
+      ..forward(from: 0);
+  }
+
+  Duration _segmentDuration(int index) {
+    final points = widget.session.points;
+    final realGap = points[index + 1].timestamp.difference(
+      points[index].timestamp,
+    );
+    final scaledMs = realGap.inMilliseconds / _playbackSpeed;
+    final clampedMs = scaledMs.clamp(
+      _minSegmentDuration.inMilliseconds.toDouble(),
+      _maxSegmentDuration.inMilliseconds.toDouble(),
+    );
+    return Duration(milliseconds: clampedMs.round());
+  }
+
+  void _handleSegmentTick() {
+    final animated = _segmentAnimation?.value;
+    if (animated == null || !mounted) return;
+    setState(() => _displayedPoint = animated);
+    _mapController.move(animated, _mapController.camera.zoom);
+  }
+
+  void _handleSegmentStatus(AnimationStatus status) {
+    if (status != AnimationStatus.completed) return;
+    _segmentStart++;
+    _displayedPoint = _route[_segmentStart];
+    if (_isPlaying) {
+      _playSegment();
+    }
   }
 
   void _pause() {
-    _ticker?.cancel();
+    _segmentController.stop();
     if (mounted) setState(() => _isPlaying = false);
   }
 
   void _seek(double value) {
     _pause();
-    setState(() => _index = value.round());
-    _centerOnCurrent();
+    final index = value.round();
+    setState(() {
+      _segmentStart = index;
+      _displayedPoint = _route[index];
+    });
+    _mapController.move(_route[index], _mapController.camera.zoom);
   }
 
-  void _centerOnCurrent() {
-    _mapController.move(_route[_index], _mapController.camera.zoom);
+  void _setPlaybackSpeed(double speed) {
+    setState(() => _playbackSpeed = speed);
   }
 
   @override
@@ -84,68 +151,84 @@ class _SessionReplayScreenState extends State<SessionReplayScreen> {
       );
     }
 
-    final current = points[_index];
+    final current = points[_segmentStart];
+    final currentPoint = _displayedPoint ?? _route[_segmentStart];
 
     return Scaffold(
       appBar: AppBar(title: Text('${widget.userName} · Replay')),
       body: Column(
         children: [
           Expanded(
-            child: FlutterMap(
-              mapController: _mapController,
-              options: MapOptions(initialCenter: _route.first, initialZoom: 15),
+            child: Stack(
               children: [
-                TileLayer(
-                  urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-                  subdomains: const ['a', 'b', 'c'],
-                  userAgentPackageName: 'com.example.legacytracker',
-                ),
-                PolylineLayer(
-                  polylines: [
-                    Polyline(
-                      points: _route,
-                      strokeWidth: 4,
-                      color: theme.colorScheme.primary,
-                    ),
-                  ],
-                ),
-                MarkerLayer(
-                  markers: [
-                    Marker(
-                      point: _route.first,
-                      width: 14,
-                      height: 14,
-                      child: const DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                    Marker(
-                      point: _route.last,
-                      width: 14,
-                      height: 14,
-                      child: const DecoratedBox(
-                        decoration: BoxDecoration(
-                          color: Colors.red,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ),
-                    Marker(
-                      point: _route[_index],
-                      width: 22,
-                      height: 22,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
+                FlutterMap(
+                  mapController: _mapController,
+                  options: MapOptions(
+                    initialCenter: _route.first,
+                    initialZoom: 15,
+                  ),
+                  children: [
+                    ...buildMapTileLayers(_selectedLayer),
+                    PolylineLayer(
+                      polylines: [
+                        Polyline(
+                          points: _route,
+                          strokeWidth: 4,
                           color: theme.colorScheme.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
                         ),
-                      ),
+                      ],
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        Marker(
+                          point: _route.first,
+                          width: 14,
+                          height: 14,
+                          child: const DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.green,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        Marker(
+                          point: _route.last,
+                          width: 14,
+                          height: 14,
+                          child: const DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: Colors.red,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                        ),
+                        Marker(
+                          point: currentPoint,
+                          width: TrackedUserMarker.width,
+                          height: TrackedUserMarker.height,
+                          child: TrackedUserMarker(
+                            name: widget.userName,
+                            speedKmh: current.speed * 3.6,
+                            isMoving: current.isMoving,
+                            heading: current.heading,
+                            tooltipMessage: widget.userName,
+                            beamColor: const Color(0xFF0985FB),
+                            ringColor: const Color(0xFF0985FB),
+                            badgeColor: Colors.teal.shade800,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
+                ),
+                Positioned(
+                  top: 16,
+                  right: 16,
+                  child: MapLayerButton(
+                    selectedLayer: _selectedLayer,
+                    onLayerSelected: (layer) =>
+                        setState(() => _selectedLayer = layer),
+                  ),
                 ),
               ],
             ),
@@ -173,20 +256,36 @@ class _SessionReplayScreenState extends State<SessionReplayScreen> {
                     ],
                   ),
                   Slider(
-                    value: _index.toDouble(),
+                    value: _segmentStart.toDouble(),
                     min: 0,
                     max: (points.length - 1).toDouble(),
                     divisions: points.length > 1 ? points.length - 1 : 1,
                     onChanged: points.length > 1 ? _seek : null,
                   ),
-                  IconButton(
-                    iconSize: 42,
-                    icon: Icon(
-                      _isPlaying
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_fill,
-                    ),
-                    onPressed: _togglePlay,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      SegmentedButton<double>(
+                        segments: const [
+                          ButtonSegment(value: 1.0, label: Text('1x')),
+                          ButtonSegment(value: 2.0, label: Text('2x')),
+                          ButtonSegment(value: 4.0, label: Text('4x')),
+                        ],
+                        selected: {_playbackSpeed},
+                        onSelectionChanged: (selection) =>
+                            _setPlaybackSpeed(selection.first),
+                      ),
+                      const SizedBox(width: 16),
+                      IconButton(
+                        iconSize: 42,
+                        icon: Icon(
+                          _isPlaying
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_fill,
+                        ),
+                        onPressed: _togglePlay,
+                      ),
+                    ],
                   ),
                 ],
               ),
@@ -194,6 +293,19 @@ class _SessionReplayScreenState extends State<SessionReplayScreen> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _LatLngTween extends Tween<LatLng> {
+  _LatLngTween({required LatLng begin, required LatLng end})
+    : super(begin: begin, end: end);
+
+  @override
+  LatLng lerp(double t) {
+    return LatLng(
+      begin!.latitude + (end!.latitude - begin!.latitude) * t,
+      begin!.longitude + (end!.longitude - begin!.longitude) * t,
     );
   }
 }

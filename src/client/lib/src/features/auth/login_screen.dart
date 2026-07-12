@@ -11,7 +11,7 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController(text: 'iQuick');
+  final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
@@ -104,12 +104,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   style: const TextStyle(color: Colors.redAccent),
                   textAlign: TextAlign.center,
                 ),
-              const SizedBox(height: 16),
-              const Text(
-                'Authentication is handled through the remote auth service. Your profile is stored on the backend.',
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
             ],
           ),
         ),
