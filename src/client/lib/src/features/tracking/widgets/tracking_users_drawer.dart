@@ -135,16 +135,18 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
         batteryLevel: widget.selfProfile.batteryLevel,
         isCharging: widget.selfProfile.isCharging,
       ),
-      ...widget.peers.map(
-        (peer) => _DrawerUser(
-          profile: peer,
-          trackingPaused: peer.locationTrackingPaused,
-          missingPermissions: peer.missingPermissions,
-          batterySavingEnabled: peer.batterySavingEnabled,
-          batteryLevel: peer.batteryLevel,
-          isCharging: peer.isCharging,
-        ),
-      ),
+      ...widget.peers
+          .where((peer) => peer.lastLocation != null)
+          .map(
+            (peer) => _DrawerUser(
+              profile: peer,
+              trackingPaused: peer.locationTrackingPaused,
+              missingPermissions: peer.missingPermissions,
+              batterySavingEnabled: peer.batterySavingEnabled,
+              batteryLevel: peer.batteryLevel,
+              isCharging: peer.isCharging,
+            ),
+          ),
     ];
 
     _DrawerUser? detailUser;
