@@ -30,6 +30,14 @@ class RemoteBackend implements Backend {
   final Map<String, UserProfile> _peerCache = {};
   final LocationOutbox _outbox = LocationOutbox();
   WebSocketChannel? _channel;
+  // `WebSocketChannel.connect` returns a channel synchronously, before the
+  // underlying socket has actually finished connecting — so `_channel` alone
+  // can't tell `sendLocationRealtime` whether it's safe to send. This tracks
+  // the point where the socket is confirmed open (via `.ready`), so a point
+  // sent while genuinely offline (connecting, or an already-open socket that
+  // just dropped) is queued to the outbox instead of silently lost to a
+  // `sink.add()` that doesn't throw synchronously.
+  bool _socketReady = false;
   String? _ticket;
   bool _initialized = false;
   bool _disposed = false;
@@ -67,7 +75,7 @@ class RemoteBackend implements Backend {
     int? batteryLevel,
     bool? isCharging,
   }) {
-    if (_channel == null) {
+    if (_channel == null || !_socketReady) {
       unawaited(
         _enqueueAndFlush(point, batteryLevel: batteryLevel, isCharging: isCharging),
       );
@@ -217,9 +225,20 @@ class RemoteBackend implements Backend {
     }
 
     _channel?.sink.close();
+    _socketReady = false;
     final uri = _webSocketUri(_ticket!);
+    final channel = WebSocketChannel.connect(uri);
+    _channel = channel;
     dev.log('[ws] connecting to $uri', name: 'RemoteBackend');
-    _channel = WebSocketChannel.connect(uri);
+    unawaited(
+      channel.ready.then((_) {
+        // A reconnect may have already superseded this channel by the time
+        // it finishes opening — only mark ready if it's still the current one.
+        if (!_disposed && identical(_channel, channel)) {
+          _socketReady = true;
+        }
+      }, onError: (_) {}), // Surfaces via the stream's onError below instead.
+    );
     // The server only learns the map-active state via this message, so a
     // fresh (or reconnected) socket needs to (re)announce it — the server
     // has no memory of a dropped connection's last-known state.
@@ -377,6 +396,7 @@ class RemoteBackend implements Backend {
     }
 
     _channel = null;
+    _socketReady = false;
     _reconnectTimer?.cancel();
     dev.log('[ws] reconnecting in 3s', name: 'RemoteBackend');
     _reconnectTimer = Timer(const Duration(seconds: 3), () {

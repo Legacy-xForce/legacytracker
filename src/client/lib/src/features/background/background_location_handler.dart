@@ -99,6 +99,7 @@ class BackgroundLocationHandler extends TaskHandler {
       await FlutterForegroundTask.updateService(
         foregroundTaskOptions: ForegroundTaskOptions(
           eventAction: ForegroundTaskEventAction.repeat(targetMs),
+          autoRunOnBoot: true,
           allowWakeLock: true,
         ),
       );

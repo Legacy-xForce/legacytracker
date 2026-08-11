@@ -28,7 +28,7 @@ class BackgroundTracker {
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.repeat(_passiveIntervalMs),
-        autoRunOnBoot: false,
+        autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: false,
       ),
@@ -134,6 +134,7 @@ class BackgroundTracker {
     await FlutterForegroundTask.updateService(
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.repeat(targetMs),
+        autoRunOnBoot: true,
         allowWakeLock: true,
       ),
     );

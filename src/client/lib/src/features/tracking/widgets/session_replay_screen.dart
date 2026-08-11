@@ -25,10 +25,16 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     with SingleTickerProviderStateMixin {
   // Bounds for how long a single point-to-point glide takes: long enough to
   // read as continuous motion, short enough that a segment covering a long
-  // real-world gap (e.g. the user was stationary for an hour) doesn't stall
-  // playback.
+  // distance (e.g. a GPS gap spanning kilometers) doesn't stall playback.
   static const _minSegmentDuration = Duration(milliseconds: 200);
   static const _maxSegmentDuration = Duration(milliseconds: 2500);
+
+  // Constant speed the marker travels along the path, independent of how
+  // fast the user was actually moving at that point — only the distance
+  // between consecutive fixes determines how long a segment takes.
+  static const _baseMetersPerSecond = 15.0;
+
+  static const _distance = Distance();
 
   final MapController _mapController = MapController();
   late final AnimationController _segmentController;
@@ -92,11 +98,9 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   }
 
   Duration _segmentDuration(int index) {
-    final points = widget.session.points;
-    final realGap = points[index + 1].timestamp.difference(
-      points[index].timestamp,
-    );
-    final scaledMs = realGap.inMilliseconds / _playbackSpeed;
+    final metersGap = _distance(_route[index], _route[index + 1]);
+    final scaledMs =
+        (metersGap / _baseMetersPerSecond) * 1000 / _playbackSpeed;
     final clampedMs = scaledMs.clamp(
       _minSegmentDuration.inMilliseconds.toDouble(),
       _maxSegmentDuration.inMilliseconds.toDouble(),
