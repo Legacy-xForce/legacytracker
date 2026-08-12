@@ -49,6 +49,26 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
   void initState() {
     super.initState();
     _sheetController.addListener(_handleSheetChanged);
+    _detailUserId = widget.selectedUserId;
+  }
+
+  @override
+  void didUpdateWidget(covariant TrackingUsersDrawer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A selection made outside the drawer (tapping a marker or a cluster face
+    // on the map) should open the same detail pane a drawer row tap would,
+    // instead of leaving the drawer showing just the list.
+    if (widget.selectedUserId != null &&
+        widget.selectedUserId != oldWidget.selectedUserId) {
+      setState(() => _detailUserId = widget.selectedUserId);
+      if (_sheetController.isAttached && _sheetController.size < _expandedSize) {
+        _sheetController.animateTo(
+          _expandedSize,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOutCubic,
+        );
+      }
+    }
   }
 
   @override

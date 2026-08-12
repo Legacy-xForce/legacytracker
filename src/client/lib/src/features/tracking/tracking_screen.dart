@@ -7,7 +7,6 @@ import 'local_avatar_store.dart';
 import 'widgets/tracking_map_layer.dart';
 import 'widgets/tracking_map_tab.dart';
 import 'widgets/tracking_profile_tab.dart';
-import 'widgets/tracking_user_bottom_sheet.dart';
 
 class TrackingScreen extends StatefulWidget {
   const TrackingScreen({super.key});
@@ -98,7 +97,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   onUserSelected: (user) {
                     setState(() => _selectedUserId = user.id);
                   },
-                  onUserTap: (user) => showTrackingUserBottomSheet(context, user),
                 ),
                 TrackingProfileTab(
                   controller: controller,

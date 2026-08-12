@@ -36,7 +36,6 @@ class TrackingMapTab extends StatefulWidget {
     required this.selectedUserId,
     required this.onLayerSelected,
     required this.onUserSelected,
-    required this.onUserTap,
   });
 
   final bool isActive;
@@ -50,7 +49,6 @@ class TrackingMapTab extends StatefulWidget {
   final String? selectedUserId;
   final ValueChanged<MapLayer> onLayerSelected;
   final ValueChanged<UserProfile> onUserSelected;
-  final ValueChanged<UserProfile> onUserTap;
 
   @override
   State<TrackingMapTab> createState() => _TrackingMapTabState();
@@ -266,7 +264,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   void _selectUser(UserProfile profile) {
     widget.onUserSelected(profile);
-    widget.onUserTap(profile);
   }
 
   void _focusUser(UserProfile profile) {
@@ -450,8 +447,12 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   /// Screen-pixel distance under which two markers are folded into one
   /// cluster bubble instead of being drawn as separate (overlapping,
-  /// indistinguishable) pins. Roughly the diameter of a single avatar circle.
-  static const double _clusterPixelRadius = 62;
+  /// indistinguishable) pins. Sized to the marker's full visual footprint —
+  /// the 60px avatar circle plus the speed/battery badges and pulse ring
+  /// that extend beyond it — not just the avatar itself, otherwise two
+  /// markers can visually collide (badges overlapping, one covering the
+  /// other's tap target) while staying just outside the threshold.
+  static const double _clusterPixelRadius = 96;
 
   List<Marker> _buildMarkers() {
     final clusters = _clusterEntries(_collectMarkerEntries());
@@ -573,16 +574,21 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   Marker _buildClusterMarker(List<_UserMarkerEntry> members) {
     return Marker(
       point: _centroid(members.map((m) => m.point)),
-      width: TrackedUserClusterMarker.width,
+      width: TrackedUserClusterMarker.widthFor(members.length),
       height: TrackedUserClusterMarker.height,
+      // The bubble's tail tip (its bottom-center point) is the part that
+      // should land exactly on the location, not the bubble body above it.
+      alignment: Alignment.bottomCenter,
       child: TrackedUserClusterMarker(
         avatarUrls: members.map((m) => m.profile.avatarUrl).toList(),
         names: members
             .map((m) => m.isSelf ? '${m.profile.name} (you)' : m.profile.name)
             .toList(),
-        isAnyMoving: members.any((m) => m.location.isMoving),
         isAllStale: members.every((m) => _isLocationStale(m.location)),
         onTap: () => _focusCluster(members),
+        onMemberTap: members
+            .map((m) => () => _selectUser(m.profile))
+            .toList(),
         ringColor: const Color(0xFF0985FB),
         badgeColor: Colors.grey.shade900,
       ),

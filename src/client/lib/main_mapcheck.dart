@@ -117,7 +117,6 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         selectedUserId: null,
         onLayerSelected: (l) => setState(() => _layer = l),
         onUserSelected: (_) {},
-        onUserTap: (_) {},
       ),
     );
   }
