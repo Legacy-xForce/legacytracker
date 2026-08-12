@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:battery_plus/battery_plus.dart';
@@ -7,6 +8,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/location_model.dart';
+import '../debug/debug_log_store.dart';
 import '../location/location_outbox.dart';
 import '../location/location_payload.dart';
 
@@ -42,6 +44,8 @@ class BackgroundLocationHandler extends TaskHandler {
     final baseUrl = prefs.getString('bg_base_url');
     if (accessToken == null || baseUrl == null) return;
 
+    unawaited(DebugLogStore.log('position', 'Background tick started'));
+
     final pacing = prefs.getString('pacing_mode') ?? 'PASSIVE';
     final isAggressive = pacing == 'AGGRESSIVE';
     final batterySavingEnabled =
@@ -71,8 +75,17 @@ class BackgroundLocationHandler extends TaskHandler {
         batteryLevel: battery.$1,
         isCharging: battery.$2,
       );
-    } catch (_) {
+      unawaited(
+        DebugLogStore.log(
+          'position',
+          'GPS fix: ${position.latitude.toStringAsFixed(5)}, '
+              '${position.longitude.toStringAsFixed(5)} '
+              '(pacing=$pacing, accuracy=${isAggressive ? 'high' : 'low'})',
+        ),
+      );
+    } catch (e) {
       // GPS can be unavailable in background; queued points may still flush.
+      unawaited(DebugLogStore.log('position', 'GPS fix failed: $e'));
     }
 
     final batch = [...queued];
@@ -82,8 +95,17 @@ class BackgroundLocationHandler extends TaskHandler {
     if (batch.isNotEmpty) {
       try {
         await _uploadLocation(baseUrl, accessToken, batch);
-      } catch (_) {
+        unawaited(
+          DebugLogStore.log('upload', 'Uploaded ${batch.length} point(s)'),
+        );
+      } catch (e) {
         await outbox.write(batch);
+        unawaited(
+          DebugLogStore.log(
+            'upload',
+            'Upload failed, queued ${batch.length} point(s): $e',
+          ),
+        );
       }
     }
 
@@ -101,6 +123,13 @@ class BackgroundLocationHandler extends TaskHandler {
           eventAction: ForegroundTaskEventAction.repeat(targetMs),
           autoRunOnBoot: true,
           allowWakeLock: true,
+        ),
+      );
+      unawaited(
+        DebugLogStore.log(
+          'pacing',
+          'Background interval changed: ${currentMs}ms -> ${targetMs}ms '
+              '(pacing=$pacing)',
         ),
       );
     }

@@ -6,6 +6,6 @@
     <uses-permission android:name="android.permission.INTERNET"/>
 
     <!-- Allow cleartext (http) traffic in debug builds so the app can reach
-         a local dev server (e.g. http://10.0.2.2:3000 on the Android emulator). -->
+         a local dev server (e.g. https://tracker.legacy-group.tech on the Android emulator). -->
     <application android:usesCleartextTraffic="true" />
 </manifest>

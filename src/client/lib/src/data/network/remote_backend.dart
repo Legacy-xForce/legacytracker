@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:developer' as dev;
 
 import 'package:http/http.dart' as http;
+import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../data/models/location_model.dart';
@@ -227,7 +228,19 @@ class RemoteBackend implements Backend {
     _channel?.sink.close();
     _socketReady = false;
     final uri = _webSocketUri(_ticket!);
-    final channel = WebSocketChannel.connect(uri);
+    // A plain WebSocketChannel.connect never notices a connection that goes
+    // silently dead (e.g. airplane mode, which often doesn't produce an
+    // immediate TCP RST) — `_socketReady` would stay true forever and
+    // sendLocationRealtime would keep "successfully" writing to a socket
+    // that's actually discarding everything, bypassing the outbox entirely.
+    // IOWebSocketChannel's pingInterval makes the underlying dart:io
+    // WebSocket send periodic pings and auto-close the connection if a pong
+    // doesn't come back in time, which drives onDone/_scheduleReconnect and
+    // flips _socketReady to false within one interval.
+    final channel = IOWebSocketChannel.connect(
+      uri,
+      pingInterval: const Duration(seconds: 15),
+    );
     _channel = channel;
     dev.log('[ws] connecting to $uri', name: 'RemoteBackend');
     unawaited(

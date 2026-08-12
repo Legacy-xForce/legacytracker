@@ -8,6 +8,7 @@ import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/backend.dart';
 import '../background/background_tracker.dart';
+import '../debug/debug_log_store.dart';
 import '../location/battery_service.dart';
 import '../location/location_repository.dart';
 
@@ -181,6 +182,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       selfProfile.lastLocation = point;
       selfProfile.history = history;
       notifyListeners();
+      unawaited(
+        DebugLogStore.log(
+          'position',
+          'Foreground fix: ${point.latitude.toStringAsFixed(5)}, '
+              '${point.longitude.toStringAsFixed(5)} '
+              '(speed=${point.speed.toStringAsFixed(1)}m/s)',
+        ),
+      );
 
       // Foreground: send realtime over the open WebSocket, tagging the device's
       // current power state so peers can render the battery badge.

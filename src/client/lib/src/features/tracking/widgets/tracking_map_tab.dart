@@ -433,6 +433,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                 onLayerSelected: widget.onLayerSelected,
               ),
               FloatingActionButton(
+                heroTag: 'recenter_fab',
                 mini: true,
                 onPressed: _recenterOnSelf,
                 tooltip: 'My Location',

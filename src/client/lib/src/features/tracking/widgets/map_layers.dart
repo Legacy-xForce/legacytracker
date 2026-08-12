@@ -62,6 +62,7 @@ class MapLayerButton extends StatelessWidget {
         PopupMenuItem(value: MapLayer.terrain, child: Text('Terrain')),
       ],
       child: FloatingActionButton(
+        heroTag: 'map_layer_fab',
         mini: true,
         onPressed: null,
         child: const Icon(Icons.layers),

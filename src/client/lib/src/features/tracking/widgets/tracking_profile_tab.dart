@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/auth_provider.dart';
+import '../../debug/debug_log_screen.dart';
 import '../local_avatar_store.dart';
 import '../tracking_controller.dart';
 
@@ -27,60 +28,78 @@ class TrackingProfileTab extends StatelessWidget {
     final profile = auth.profile;
     final displayName = profile?.name ?? controller.selfProfile.name;
 
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-      child: Column(
-        children: [
-          _AvatarPicker(
-            avatarBytes: avatarStore.bytes,
-            displayName: displayName,
-            onTap: () => _showAvatarOptions(context, avatarStore),
+    return Stack(
+      children: [
+        SingleChildScrollView(
+          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+          child: Column(
+            children: [
+              _AvatarPicker(
+                avatarBytes: avatarStore.bytes,
+                displayName: displayName,
+                onTap: () => _showAvatarOptions(context, avatarStore),
+              ),
+              const SizedBox(height: 16),
+              Text(displayName, style: Theme.of(context).textTheme.headlineSmall),
+              const SizedBox(height: 4),
+              Text(
+                'Username: ${auth.username ?? controller.selfProfile.id}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              Text(
+                'Role: ${profile?.role ?? controller.selfProfile.role}',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              const SizedBox(height: 32),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Display name', style: Theme.of(context).textTheme.titleMedium),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: nameController,
+                decoration: const InputDecoration(
+                  labelText: 'Display name',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  onPressed: onSaveProfile,
+                  child: const Text('Save profile'),
+                ),
+              ),
+              const SizedBox(height: 32),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () async {
+                    await auth.logout();
+                  },
+                  child: const Text('Logout'),
+                ),
+              ),
+              const SizedBox(height: 32),
+            ],
           ),
-          const SizedBox(height: 16),
-          Text(displayName, style: Theme.of(context).textTheme.headlineSmall),
-          const SizedBox(height: 4),
-          Text(
-            'Username: ${auth.username ?? controller.selfProfile.id}',
-            style: Theme.of(context).textTheme.bodyMedium,
+        ),
+        Positioned(
+          right: 16,
+          bottom: 0,
+          child: FloatingActionButton(
+            heroTag: 'debug_log_fab',
+            tooltip: 'Activity log',
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const DebugLogScreen()),
+              );
+            },
+            child: const Icon(Icons.bug_report_outlined),
           ),
-          Text(
-            'Role: ${profile?.role ?? controller.selfProfile.role}',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 32),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: Text('Display name', style: Theme.of(context).textTheme.titleMedium),
-          ),
-          const SizedBox(height: 12),
-          TextField(
-            controller: nameController,
-            decoration: const InputDecoration(
-              labelText: 'Display name',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: onSaveProfile,
-              child: const Text('Save profile'),
-            ),
-          ),
-          const SizedBox(height: 32),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton(
-              onPressed: () async {
-                await auth.logout();
-              },
-              child: const Text('Logout'),
-            ),
-          ),
-          const SizedBox(height: 32),
-        ],
-      ),
+        ),
+      ],
     );
   }
 

@@ -3,7 +3,7 @@
 // Usage: node test-location.mjs [--interval 3000] [--server http://localhost:3000]
 
 const AUTH_URL = 'https://auth.legacy-group.tech';
-const DEFAULT_SERVER = 'http://localhost:3000';
+const DEFAULT_SERVER = 'https://tracker.legacy-group.tech';
 const DEFAULT_INTERVAL_MS = 3000;
 
 const args = process.argv.slice(2);
@@ -15,25 +15,29 @@ const intervalMs = intervalIdx !== -1 ? Number(args[intervalIdx + 1]) : DEFAULT_
 // Route through central Turin — Piazza Castello → Via Po → Piazza Vittorio Veneto
 // → Lungo Po → Parco del Valentino → Via Nizza → back north.
 // Each waypoint: [lat, lng, headingDeg, speedMps]
+// const WAYPOINTS = [
+//   [45.07031, 7.68688, 180, 8.3],   // Piazza Castello
+//   [45.06820, 7.68680, 180, 9.0],   // Via Roma
+//   [45.06620, 7.68650, 170, 8.5],   // Piazza Carlo Felice
+//   [45.06450, 7.68700, 85,  9.5],   // turn east onto Via Lagrange
+//   [45.06460, 7.69100, 85,  9.0],   // Via Po mid
+//   [45.06480, 7.69350, 80,  8.0],   // approaching Piazza Vittorio Veneto
+//   [45.06450, 7.69500, 175, 6.5],   // Piazza Vittorio Veneto — slow to turn south
+//   [45.06200, 7.69480, 180, 7.5],   // Lungo Po Armando Diaz
+//   [45.05900, 7.69400, 200, 8.0],   // Parco del Valentino north
+//   [45.05600, 7.69200, 220, 7.0],   // Valentino deep south
+//   [45.05500, 7.68900, 270, 8.5],   // turn west
+//   [45.05500, 7.68400, 270, 9.0],   // Via Nizza heading west
+//   [45.05520, 7.68000, 350, 8.0],   // turn north
+//   [45.05800, 7.67980, 350, 9.5],   // going north along Corso Raffaello
+//   [45.06100, 7.68000, 5,   9.0],   // Corso Vittorio Emanuele II area
+//   [45.06400, 7.68050, 355, 8.5],   // approaching city centre from west
+//   [45.06700, 7.68100, 10,  8.0],   // Via XX Settembre
+//   [45.07031, 7.68688, 90,  7.0],   // back to Piazza Castello
+// ];
+
 const WAYPOINTS = [
-  [45.07031, 7.68688, 180, 8.3],   // Piazza Castello
-  [45.06820, 7.68680, 180, 9.0],   // Via Roma
-  [45.06620, 7.68650, 170, 8.5],   // Piazza Carlo Felice
-  [45.06450, 7.68700, 85,  9.5],   // turn east onto Via Lagrange
-  [45.06460, 7.69100, 85,  9.0],   // Via Po mid
-  [45.06480, 7.69350, 80,  8.0],   // approaching Piazza Vittorio Veneto
-  [45.06450, 7.69500, 175, 6.5],   // Piazza Vittorio Veneto — slow to turn south
-  [45.06200, 7.69480, 180, 7.5],   // Lungo Po Armando Diaz
-  [45.05900, 7.69400, 200, 8.0],   // Parco del Valentino north
-  [45.05600, 7.69200, 220, 7.0],   // Valentino deep south
-  [45.05500, 7.68900, 270, 8.5],   // turn west
-  [45.05500, 7.68400, 270, 9.0],   // Via Nizza heading west
-  [45.05520, 7.68000, 350, 8.0],   // turn north
-  [45.05800, 7.67980, 350, 9.5],   // going north along Corso Raffaello
-  [45.06100, 7.68000, 5,   9.0],   // Corso Vittorio Emanuele II area
-  [45.06400, 7.68050, 355, 8.5],   // approaching city centre from west
-  [45.06700, 7.68100, 10,  8.0],   // Via XX Settembre
-  [45.07031, 7.68688, 90,  7.0],   // back to Piazza Castello
+  [43.780582, 11.096397, 180, 2.3],   // Piazza Castello
 ];
 
 function lerp(a, b, t) {

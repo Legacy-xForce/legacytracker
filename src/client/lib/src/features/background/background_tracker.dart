@@ -1,6 +1,9 @@
+import 'dart:async';
+
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../debug/debug_log_store.dart';
 import 'background_location_handler.dart';
 
 /// Manages the lifecycle of the background location foreground service.
@@ -75,11 +78,13 @@ class BackgroundTracker {
       callback: backgroundTaskEntryPoint,
     );
     await _syncServiceInterval();
+    unawaited(DebugLogStore.log('lifecycle', 'Background service started'));
   }
 
   static Future<void> stop() async {
     if (await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.stopService();
+      unawaited(DebugLogStore.log('lifecycle', 'Background service stopped'));
     }
   }
 
@@ -87,8 +92,14 @@ class BackgroundTracker {
   /// the server signals a pacing mode change.
   static Future<void> applyPacingMode(String pacing) async {
     final prefs = await SharedPreferences.getInstance();
+    final previous = prefs.getString('pacing_mode');
     await prefs.setString('pacing_mode', pacing);
     await _syncServiceInterval();
+    if (previous != pacing) {
+      unawaited(
+        DebugLogStore.log('pacing', 'Pacing mode: $previous -> $pacing'),
+      );
+    }
   }
 
   /// Called on every app pause/resume so the background isolate knows
@@ -103,6 +114,9 @@ class BackgroundTracker {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('battery_saving_enabled', enabled);
     await _syncServiceInterval();
+    unawaited(
+      DebugLogStore.log('pacing', 'Battery saving: $enabled'),
+    );
   }
 
   static int passiveIntervalMs(bool batterySavingEnabled) =>
