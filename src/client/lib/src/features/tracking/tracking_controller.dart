@@ -11,6 +11,7 @@ import '../background/background_tracker.dart';
 import '../debug/debug_log_store.dart';
 import '../location/battery_service.dart';
 import '../location/location_repository.dart';
+import '../location/tracking_tuning.dart';
 
 class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   TrackingController({
@@ -45,6 +46,13 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   LocationPoint? lastLocation;
   List<LocationPoint> history = [];
   List<UserProfile> peers = [];
+
+  // Last point actually sent over the WebSocket — the movement gate compares
+  // against this so foreground traffic is shaped the same way background
+  // enqueues are.
+  double? _lastSentLat;
+  double? _lastSentLon;
+  int? _lastSentMs;
 
   StreamSubscription<List<UserProfile>>? _peerSubscription;
   StreamSubscription<LocationPoint>? _locationSubscription;
@@ -182,6 +190,24 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       selfProfile.lastLocation = point;
       selfProfile.history = history;
       notifyListeners();
+
+      // Movement gate: drop GPS jitter / cap highway spam so foreground WS
+      // traffic is shaped the same way background enqueues are.
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      if (!TrackingTuning.shouldEnqueue(
+        prevLat: _lastSentLat,
+        prevLon: _lastSentLon,
+        prevMs: _lastSentMs,
+        nextLat: point.latitude,
+        nextLon: point.longitude,
+        nextMs: nowMs,
+      )) {
+        return;
+      }
+      _lastSentLat = point.latitude;
+      _lastSentLon = point.longitude;
+      _lastSentMs = nowMs;
+
       unawaited(
         DebugLogStore.log(
           'position',

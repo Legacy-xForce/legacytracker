@@ -358,6 +358,11 @@ class RemoteBackend implements Backend {
       profile.lastLocation = point;
       profile.history = [point, ...profile.history].take(20).toList();
     }
+    final lastSeenRaw = payload['last_seen_at'] as String?;
+    if (lastSeenRaw != null) {
+      profile.lastSeenAt =
+          DateTime.tryParse(lastSeenRaw) ?? profile.lastSeenAt;
+    }
     profile.locationTrackingPaused =
         payload['location_tracking_paused'] as bool? ??
         profile.locationTrackingPaused;

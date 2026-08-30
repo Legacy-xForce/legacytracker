@@ -4,6 +4,7 @@ Map<String, dynamic> buildLocationPayload(
   LocationPoint point, {
   int? batteryLevel,
   bool? isCharging,
+  String? source,
 }) {
   final payload = <String, dynamic>{
     'coords': {
@@ -21,6 +22,10 @@ Map<String, dynamic> buildLocationPayload(
   if (isCharging != null) {
     payload['is_charging'] = isCharging;
   }
+  // 'move' | 'heartbeat' | 'foreground' — ignored by older servers.
+  if (source != null) {
+    payload['source'] = source;
+  }
 
   return payload;
 }
@@ -29,6 +34,7 @@ Map<String, dynamic> buildRealtimeLocationPayload(
   LocationPoint point, {
   int? batteryLevel,
   bool? isCharging,
+  String? source = 'foreground',
 }) {
   return {
     'type': 'location',
@@ -36,6 +42,7 @@ Map<String, dynamic> buildRealtimeLocationPayload(
       point,
       batteryLevel: batteryLevel,
       isCharging: isCharging,
+      source: source,
     ),
   };
 }

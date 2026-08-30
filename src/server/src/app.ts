@@ -59,6 +59,7 @@ interface KnownLocation {
   recordedAt: string;
   batteryLevel: number | null;
   isCharging: boolean | null;
+  source: string | null;
 }
 
 interface LocationPayload {
@@ -71,6 +72,7 @@ interface LocationPayload {
   timestamp?: string;
   battery_level?: number;
   is_charging?: boolean;
+  source?: string;
 }
 
 app.register(cors, {
@@ -234,6 +236,26 @@ async function ensureBackendSchema(): Promise<void> {
     await pool.query(
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'user'",
     );
+    await pool.query(
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz",
+    );
+    await pool.query(
+      "ALTER TABLE location_history ADD COLUMN IF NOT EXISTS source text",
+    );
+    // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
+    // otherwise the unique index can't be built and every ON CONFLICT insert
+    // below would then throw.
+    await pool.query(
+      `DELETE FROM location_history a
+       USING location_history b
+       WHERE a.user_id = b.user_id
+         AND a.recorded_at = b.recorded_at
+         AND a.id > b.id`,
+    );
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS location_history_user_recorded_uniq
+       ON location_history (user_id, recorded_at)`,
+    );
   } catch (error) {
     app.log.warn({ error }, "Unable to ensure backend schema is present");
   }
@@ -272,6 +294,10 @@ function parseLocationItem(item: unknown): KnownLocation | null {
       : Math.max(0, Math.min(100, Math.round(batteryLevelRaw)));
   const isCharging =
     typeof payload.is_charging === "boolean" ? payload.is_charging : null;
+  const source =
+    typeof payload.source === "string" && payload.source.trim().length > 0
+      ? payload.source.trim()
+      : null;
 
   return {
     latitude,
@@ -281,6 +307,7 @@ function parseLocationItem(item: unknown): KnownLocation | null {
     recordedAt: timestamp.toISOString(),
     batteryLevel,
     isCharging,
+    source,
   };
 }
 
@@ -301,6 +328,56 @@ async function ensureUserExists(
       WHERE users.name = users.id AND EXCLUDED.name IS DISTINCT FROM users.id
     `,
     [userId, displayName],
+  );
+}
+
+async function insertLocationBatch(
+  userId: string,
+  points: KnownLocation[],
+): Promise<void> {
+  // Single multi-row insert — an offline drive can flush hundreds of points
+  // at once and per-row round-trips add up. ON CONFLICT DO NOTHING against
+  // (user_id, recorded_at) makes a re-flush after a partial failure a no-op.
+  const rows = points.map((p) => ({
+    recorded_at: p.recordedAt,
+    lon: p.longitude,
+    lat: p.latitude,
+    speed: p.speed,
+    heading: p.heading,
+    source: p.source,
+  }));
+  await pool.query(
+    `INSERT INTO location_history (user_id, recorded_at, location, speed, heading, source)
+     SELECT $1, r.recorded_at,
+            ST_SetSRID(ST_MakePoint(r.lon, r.lat), 4326)::geography,
+            r.speed, r.heading, r.source
+     FROM jsonb_to_recordset($2::jsonb)
+       AS r(recorded_at timestamptz, lon float8, lat float8, speed float8,
+             heading float8, source text)
+     ON CONFLICT (user_id, recorded_at) DO NOTHING`,
+    [userId, JSON.stringify(rows)],
+  );
+}
+
+async function touchLastSeen(userId: string): Promise<void> {
+  try {
+    await pool.query("UPDATE users SET last_seen_at = now() WHERE id = $1", [
+      userId,
+    ]);
+  } catch (error) {
+    app.log.warn({ error, userId }, "Unable to update last_seen_at");
+  }
+}
+
+function isRedundantHeartbeat(
+  latest: KnownLocation,
+  previous: KnownLocation | undefined,
+): boolean {
+  return (
+    latest.source === "heartbeat" &&
+    previous != null &&
+    previous.latitude === latest.latitude &&
+    previous.longitude === latest.longitude
   );
 }
 
@@ -453,22 +530,11 @@ app.post("/api/v1/location", async (request, reply) => {
   await ensureUserExists(identity.userId, identity.displayName);
   lastKnownName.set(identity.userId, identity.displayName);
 
-  for (const point of points) {
-    await pool.query(
-      `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
-       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
-      [
-        identity.userId,
-        point.recordedAt,
-        point.longitude,
-        point.latitude,
-        point.speed,
-        point.heading,
-      ],
-    );
-  }
+  await insertLocationBatch(identity.userId, points);
+  await touchLastSeen(identity.userId);
 
   const latest = points[points.length - 1];
+  const previous = lastKnownLocation.get(identity.userId);
   lastKnownLocation.set(identity.userId, latest);
   app.log.info(
     {
@@ -491,8 +557,13 @@ app.post("/api/v1/location", async (request, reply) => {
     recorded_at: latest.recordedAt,
     battery_level: latest.batteryLevel,
     is_charging: latest.isCharging,
+    last_seen_at: new Date().toISOString(),
   };
-  connectionManager.broadcast(broadcastMessage);
+  // A stationary heartbeat at the same spot carries no new information for
+  // viewers — skip it to avoid pin jitter.
+  if (!isRedundantHeartbeat(latest, previous)) {
+    connectionManager.broadcast(broadcastMessage);
+  }
 
   const pacingMode = getPacingMode();
   reply.header("X-Pacing-Mode", pacingMode);
@@ -635,9 +706,11 @@ app.register(async () => {
     // whether they've ever broadcast a location, so the snapshot is built
     // from the `users` table (not just `lastKnownLocation`, which only ever
     // holds entries for users seen since this process started).
-    const allUsers = await pool.query<{ id: string; name: string }>(
-      "SELECT id, name FROM users",
-    );
+    const allUsers = await pool.query<{
+      id: string;
+      name: string;
+      last_seen_at: Date | null;
+    }>("SELECT id, name, last_seen_at FROM users");
     const snapshot = allUsers.rows.map((row) => {
       const point = lastKnownLocation.get(row.id);
       return {
@@ -650,6 +723,9 @@ app.register(async () => {
         recorded_at: point?.recordedAt ?? null,
         battery_level: point?.batteryLevel ?? null,
         is_charging: point?.isCharging ?? null,
+        last_seen_at: row.last_seen_at
+          ? new Date(row.last_seen_at).toISOString()
+          : null,
       };
     });
     app.log.info(
@@ -698,20 +774,15 @@ app.register(async () => {
         return;
       }
 
-      await pool.query(
-        `INSERT INTO location_history (user_id, recorded_at, location, speed, heading)
-       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography, $5, $6)`,
-        [
-          userId,
-          point.recordedAt,
-          point.longitude,
-          point.latitude,
-          point.speed,
-          point.heading,
-        ],
-      );
+      await insertLocationBatch(userId, [point]);
+      await touchLastSeen(userId);
 
+      const previous = lastKnownLocation.get(userId);
       lastKnownLocation.set(userId, point);
+
+      if (isRedundantHeartbeat(point, previous)) {
+        return;
+      }
 
       const broadcast = {
         user_id: userId,
@@ -723,6 +794,7 @@ app.register(async () => {
         recorded_at: point.recordedAt,
         battery_level: point.batteryLevel,
         is_charging: point.isCharging,
+        last_seen_at: new Date().toISOString(),
       };
       app.log.info(
         { broadcast, recipients: connectionManager.count },

@@ -4,6 +4,7 @@ import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../debug/debug_log_store.dart';
+import '../location/tracking_tuning.dart';
 import 'background_location_handler.dart';
 
 /// Manages the lifecycle of the background location foreground service.
@@ -11,10 +12,6 @@ import 'background_location_handler.dart';
 /// Call [initialize] once before [runApp], then [start] / [stop] in response
 /// to app lifecycle changes in [TrackingController].
 class BackgroundTracker {
-  static const _passiveIntervalMs = 120000;
-  static const _batterySavingPassiveIntervalMs = 300000;
-  static const _batterySavingAggressiveIntervalMs = 15000;
-
   static void initialize() {
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
@@ -30,7 +27,9 @@ class BackgroundTracker {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(_passiveIntervalMs),
+        eventAction: ForegroundTaskEventAction.repeat(
+          TrackingTuning.passiveFlushMs,
+        ),
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: false,
@@ -135,12 +134,16 @@ class BackgroundTracker {
   }
 
   static int passiveIntervalMs(bool batterySavingEnabled) =>
-      batterySavingEnabled
-      ? _batterySavingPassiveIntervalMs
-      : _passiveIntervalMs;
+      TrackingTuning.flushIntervalFor(
+        aggressive: false,
+        batterySaving: batterySavingEnabled,
+      );
 
   static int aggressiveIntervalMs(bool batterySavingEnabled) =>
-      batterySavingEnabled ? _batterySavingAggressiveIntervalMs : 5000;
+      TrackingTuning.flushIntervalFor(
+        aggressive: true,
+        batterySaving: batterySavingEnabled,
+      );
 
   static Future<void> _syncServiceInterval() async {
     if (!await FlutterForegroundTask.isRunningService) {
