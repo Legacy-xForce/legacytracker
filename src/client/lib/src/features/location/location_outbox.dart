@@ -6,7 +6,7 @@ class LocationOutbox {
   LocationOutbox({this.preferences});
 
   static const String storageKey = 'pending_location_points';
-  static const int maxQueuedPoints = 200;
+  static const int maxQueuedPoints = 500;
 
   final SharedPreferences? preferences;
 
@@ -53,6 +53,21 @@ class LocationOutbox {
     final items = await read();
     final prefs = await _prefs();
     await prefs.remove(storageKey);
-    return items;
+    return _dedup(items);
+  }
+
+  /// Drops consecutive points that carry an identical coords+timestamp — a
+  /// partial re-flush (write() after a failed upload) can otherwise re-queue
+  /// points that were already accepted.
+  static List<Map<String, dynamic>> _dedup(List<Map<String, dynamic>> items) {
+    final result = <Map<String, dynamic>>[];
+    String? lastKey;
+    for (final item in items) {
+      final key = jsonEncode([item['coords'], item['timestamp']]);
+      if (key == lastKey) continue;
+      lastKey = key;
+      result.add(item);
+    }
+    return result;
   }
 }

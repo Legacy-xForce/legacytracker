@@ -1,11 +1,11 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:geolocator/geolocator.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../data/models/location_model.dart';
 import '../../mocks/mock_location_provider.dart';
+import 'tracking_tuning.dart';
 
 abstract class LocationService {
   Future<bool> requestPermission();
@@ -18,22 +18,14 @@ abstract class LocationService {
 class GeolocatorLocationService implements LocationService {
   bool _batterySavingEnabled = false;
 
-  LocationSettings get _settings {
-    final accuracy = _batterySavingEnabled
-        ? LocationAccuracy.medium
-        : LocationAccuracy.high;
-    final distanceFilter = _batterySavingEnabled ? 100 : 25;
-    if (Platform.isIOS || Platform.isMacOS) {
-      return AppleSettings(
-        accuracy: accuracy,
-        distanceFilter: distanceFilter,
-        activityType: ActivityType.other,
-        pauseLocationUpdatesAutomatically: _batterySavingEnabled,
-        allowBackgroundLocationUpdates: true,
+  // Foreground (app visible) is treated as AGGRESSIVE unless the user opted
+  // into battery saving — someone is likely watching the live map. The
+  // per-point movement gate in TrackingController is what actually bounds WS
+  // traffic; distanceFilter/accuracy here just keep the radio honest.
+  LocationSettings get _settings => TrackingTuning.settingsFor(
+        aggressive: !_batterySavingEnabled,
+        batterySaving: _batterySavingEnabled,
       );
-    }
-    return LocationSettings(accuracy: accuracy, distanceFilter: distanceFilter);
-  }
 
   Stream<LocationPoint>? _locationStream;
 

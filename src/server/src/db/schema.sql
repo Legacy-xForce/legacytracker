@@ -5,6 +5,7 @@ CREATE TABLE IF NOT EXISTS users (
   name text NOT NULL,
   avatar_url text,
   role text NOT NULL DEFAULT 'user',
+  last_seen_at timestamptz,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
@@ -28,11 +29,16 @@ CREATE TABLE IF NOT EXISTS location_history (
   location geography(Point, 4326) NOT NULL,
   speed double precision NOT NULL DEFAULT 0,
   heading double precision,
+  source text,
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS location_history_user_recorded_at_idx
   ON location_history (user_id, recorded_at DESC);
+
+-- Idempotent re-flush after a partial upload failure.
+CREATE UNIQUE INDEX IF NOT EXISTS location_history_user_recorded_uniq
+  ON location_history (user_id, recorded_at);
 
 CREATE INDEX IF NOT EXISTS location_history_location_gist_idx
   ON location_history USING GIST (location);

@@ -19,6 +19,25 @@ void main() {
     expect(queued.single['foo'], 'bar');
   });
 
+  test('drain drops consecutive duplicate coords+timestamp', () async {
+    final outbox = LocationOutbox();
+    final point = {
+      'coords': {'latitude': 45.0, 'longitude': 7.0},
+      'timestamp': '2026-08-30T00:00:00.000Z',
+    };
+    final other = {
+      'coords': {'latitude': 45.1, 'longitude': 7.0},
+      'timestamp': '2026-08-30T00:00:05.000Z',
+    };
+    await outbox.write([point, point, other, other, point]);
+
+    final drained = await outbox.drain();
+    expect(drained, hasLength(3));
+    expect(drained[0]['coords']['latitude'], 45.0);
+    expect(drained[1]['coords']['latitude'], 45.1);
+    expect(drained[2]['coords']['latitude'], 45.0);
+  });
+
   test('write trims the oldest queued locations', () async {
     final outbox = LocationOutbox();
     final payloads = List.generate(
