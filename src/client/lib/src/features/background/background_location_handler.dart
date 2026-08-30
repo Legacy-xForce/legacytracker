@@ -20,10 +20,15 @@ void backgroundTaskEntryPoint() {
 
 class BackgroundLocationHandler extends TaskHandler {
   @override
-  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {}
+  Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
+    unawaited(
+      DebugLogStore.log('lifecycle', 'Background task started (via $starter)'),
+    );
+  }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
+    unawaited(DebugLogStore.markTick());
     final prefs = await SharedPreferences.getInstance();
     // This TaskHandler runs in its own long-lived isolate, separate from the
     // main UI isolate and the FCM background-message isolate. shared_preferences
@@ -38,11 +43,25 @@ class BackgroundLocationHandler extends TaskHandler {
     // duplicate GPS polling/uploads. The service itself stays alive so it
     // retains the location capability it was granted at start.
     final appForeground = prefs.getBool('app_foreground') ?? false;
-    if (appForeground) return;
+    if (appForeground) {
+      unawaited(
+        DebugLogStore.log('lifecycle', 'Tick skipped: app in foreground'),
+      );
+      return;
+    }
 
     final accessToken = prefs.getString('auth_access_token');
     final baseUrl = prefs.getString('bg_base_url');
-    if (accessToken == null || baseUrl == null) return;
+    if (accessToken == null || baseUrl == null) {
+      unawaited(
+        DebugLogStore.log(
+          'lifecycle',
+          'Tick skipped: not signed in '
+              '(token=${accessToken != null}, baseUrl=${baseUrl != null})',
+        ),
+      );
+      return;
+    }
 
     unawaited(DebugLogStore.log('position', 'Background tick started'));
 
@@ -95,6 +114,7 @@ class BackgroundLocationHandler extends TaskHandler {
     if (batch.isNotEmpty) {
       try {
         await _uploadLocation(baseUrl, accessToken, batch);
+        unawaited(DebugLogStore.markSuccess());
         unawaited(
           DebugLogStore.log('upload', 'Uploaded ${batch.length} point(s)'),
         );
@@ -143,7 +163,9 @@ class BackgroundLocationHandler extends TaskHandler {
   }
 
   @override
-  Future<void> onDestroy(DateTime timestamp) async {}
+  Future<void> onDestroy(DateTime timestamp) async {
+    unawaited(DebugLogStore.log('lifecycle', 'Background task destroyed'));
+  }
 
   Future<void> _uploadLocation(
     String baseUrl,

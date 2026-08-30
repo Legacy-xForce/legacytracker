@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import 'debug_log_store.dart';
 
@@ -11,6 +12,7 @@ class DebugLogScreen extends StatefulWidget {
 
 class _DebugLogScreenState extends State<DebugLogScreen> {
   List<Map<String, dynamic>> _entries = [];
+  DebugLogSummary _summary = const DebugLogSummary();
   String? _categoryFilter;
   bool _loading = true;
 
@@ -22,11 +24,42 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
 
   Future<void> _load() async {
     final entries = await DebugLogStore.readAll();
+    final summary = await DebugLogStore.summary();
     if (!mounted) return;
     setState(() {
       _entries = entries.reversed.toList();
+      _summary = summary;
       _loading = false;
     });
+  }
+
+  Future<void> _copy() async {
+    await Clipboard.setData(ClipboardData(text: _report()));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('Activity log copied to clipboard')),
+    );
+  }
+
+  String _report() {
+    final s = _summary;
+    final buffer = StringBuffer()
+      ..writeln('== Activity log ==')
+      ..writeln('generated: ${DateTime.now().toIso8601String()}')
+      ..writeln('service running: ${s.serviceRunning}')
+      ..writeln('app foreground: ${s.appForeground}')
+      ..writeln('pacing mode: ${s.pacingMode}')
+      ..writeln('interval ms: ${s.intervalMs ?? "—"}')
+      ..writeln('last tick: ${s.lastTick?.toIso8601String() ?? "never"}')
+      ..writeln('last success: ${s.lastSuccess?.toIso8601String() ?? "never"}')
+      ..writeln('entries: ${_entries.length}')
+      ..writeln();
+    for (final e in _entries) {
+      buffer.writeln(
+        '${e['ts'] ?? '?'}  [${e['cat'] ?? '?'}]  ${e['msg'] ?? ''}',
+      );
+    }
+    return buffer.toString();
   }
 
   Future<void> _clear() async {
@@ -65,6 +98,11 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
         title: const Text('Activity log'),
         actions: [
           IconButton(
+            tooltip: 'Copy to clipboard',
+            icon: const Icon(Icons.copy_all),
+            onPressed: _loading ? null : _copy,
+          ),
+          IconButton(
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
             onPressed: _load,
@@ -80,6 +118,8 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
           ? const Center(child: CircularProgressIndicator())
           : Column(
               children: [
+                _SummaryHeader(summary: _summary),
+                const Divider(height: 1),
                 if (categories.isNotEmpty)
                   SizedBox(
                     height: 48,
@@ -140,6 +180,58 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${local.year}-${two(local.month)}-${two(local.day)} '
         '${two(local.hour)}:${two(local.minute)}:${two(local.second)}';
+  }
+}
+
+class _SummaryHeader extends StatelessWidget {
+  const _SummaryHeader({required this.summary});
+
+  final DebugLogSummary summary;
+
+  @override
+  Widget build(BuildContext context) {
+    final style = Theme.of(context).textTheme.bodySmall;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _row('Service', summary.serviceRunning ? 'running' : 'stopped', style),
+          _row('App', summary.appForeground ? 'foreground' : 'background', style),
+          _row(
+            'Pacing',
+            summary.intervalMs == null
+                ? summary.pacingMode
+                : '${summary.pacingMode} · ${(summary.intervalMs! / 1000).round()}s',
+            style,
+          ),
+          _row('Last tick', _ago(summary.lastTick), style),
+          _row('Last success', _ago(summary.lastSuccess), style),
+        ],
+      ),
+    );
+  }
+
+  Widget _row(String label, String value, TextStyle? style) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 1),
+    child: Row(
+      children: [
+        SizedBox(width: 96, child: Text(label, style: style)),
+        Text(
+          value,
+          style: style?.copyWith(fontWeight: FontWeight.bold),
+        ),
+      ],
+    ),
+  );
+
+  String _ago(DateTime? t) {
+    if (t == null) return 'never';
+    final d = DateTime.now().difference(t.toLocal());
+    if (d.inSeconds < 60) return '${d.inSeconds}s ago';
+    if (d.inMinutes < 60) return '${d.inMinutes}m ago';
+    if (d.inHours < 24) return '${d.inHours}h ago';
+    return '${d.inDays}d ago';
   }
 }
 

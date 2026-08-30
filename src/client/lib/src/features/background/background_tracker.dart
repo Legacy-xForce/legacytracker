@@ -53,6 +53,7 @@ class BackgroundTracker {
     );
 
     if (await FlutterForegroundTask.isRunningService) {
+      await prefs.setBool('bg_service_running', true);
       await _syncServiceInterval();
       return;
     }
@@ -71,14 +72,26 @@ class BackgroundTracker {
       await FlutterForegroundTask.requestIgnoreBatteryOptimization();
     }
 
-    await FlutterForegroundTask.startService(
+    final result = await FlutterForegroundTask.startService(
       serviceId: 7421,
       notificationTitle: 'Legacy Tracker',
       notificationText: 'Sharing location in the background',
       callback: backgroundTaskEntryPoint,
     );
+    final started = result is ServiceRequestSuccess;
+    await prefs.setBool('bg_service_running', started);
     await _syncServiceInterval();
-    unawaited(DebugLogStore.log('lifecycle', 'Background service started'));
+    if (started) {
+      unawaited(DebugLogStore.log('lifecycle', 'Background service started'));
+    } else {
+      unawaited(
+        DebugLogStore.log(
+          'lifecycle',
+          'Background service failed to start: '
+              '${(result as ServiceRequestFailure).error}',
+        ),
+      );
+    }
   }
 
   static Future<void> stop() async {
@@ -86,6 +99,8 @@ class BackgroundTracker {
       await FlutterForegroundTask.stopService();
       unawaited(DebugLogStore.log('lifecycle', 'Background service stopped'));
     }
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('bg_service_running', false);
   }
 
   /// Called by the FCM handler (and optionally from the main isolate) when

@@ -14,6 +14,8 @@ class DebugLogStore {
   DebugLogStore._();
 
   static const String _storageKey = 'debug_activity_log';
+  static const String _lastTickKey = 'debug_last_tick';
+  static const String _lastSuccessKey = 'debug_last_success';
   static const int maxEntries = 300;
 
   static Future<void> log(String category, String message) async {
@@ -36,9 +38,38 @@ class DebugLogStore {
     return _read(prefs);
   }
 
+  /// Heartbeat markers for the summary header: the last time the background
+  /// task woke up ([markTick]) and the last time it actually got a location
+  /// out ([markSuccess]). A recent tick with a stale success points at GPS or
+  /// upload failures; a stale tick points at the service being killed.
+  static Future<void> markTick() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastTickKey, DateTime.now().toIso8601String());
+  }
+
+  static Future<void> markSuccess() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_lastSuccessKey, DateTime.now().toIso8601String());
+  }
+
+  static Future<DebugLogSummary> summary() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    return DebugLogSummary(
+      lastTick: DateTime.tryParse(prefs.getString(_lastTickKey) ?? ''),
+      lastSuccess: DateTime.tryParse(prefs.getString(_lastSuccessKey) ?? ''),
+      serviceRunning: prefs.getBool('bg_service_running') ?? false,
+      appForeground: prefs.getBool('app_foreground') ?? false,
+      pacingMode: prefs.getString('pacing_mode') ?? 'PASSIVE',
+      intervalMs: prefs.getInt('bg_current_interval_ms'),
+    );
+  }
+
   static Future<void> clear() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_storageKey);
+    await prefs.remove(_lastTickKey);
+    await prefs.remove(_lastSuccessKey);
   }
 
   static List<Map<String, dynamic>> _read(SharedPreferences prefs) {
@@ -53,4 +84,23 @@ class DebugLogStore {
         .map((item) => Map<String, dynamic>.from(item))
         .toList();
   }
+}
+
+/// Snapshot of background-tracking state for the activity log's header.
+class DebugLogSummary {
+  const DebugLogSummary({
+    this.lastTick,
+    this.lastSuccess,
+    this.serviceRunning = false,
+    this.appForeground = false,
+    this.pacingMode = 'PASSIVE',
+    this.intervalMs,
+  });
+
+  final DateTime? lastTick;
+  final DateTime? lastSuccess;
+  final bool serviceRunning;
+  final bool appForeground;
+  final String pacingMode;
+  final int? intervalMs;
 }
