@@ -1,0 +1,205 @@
+# Location tracking
+
+How Legacy Tracker records, stores and shares positions. Supersedes
+`PLAN-movement-based-tracking.md` (the `flutter_foreground_task` design).
+
+## Goals
+
+- Track continuously — app open, in the background, swiped away, after a reboot.
+- No permanent notification.
+- Battery: GPS only while actually moving; no polling.
+- Replay accuracy: the drawn route stays within a few metres of the real one.
+- Nothing lost offline; points upload in batches when the network returns.
+- Realtime only while someone is looking at the map.
+
+## Why the previous design was replaced
+
+| Problem | Cause |
+|---|---|
+| Permanent notification | One foreground service running 24/7, notification permission requested explicitly. |
+| Battery drain while parked | `allowWakeLock: true` held a `PARTIAL_WAKE_LOCK` for the service's whole life (CPU never slept), plus a continuous position stream and a headless Flutter engine. |
+| Tracking dies for good | Everything depended on that one service. Once it was stopped (notification dismissed / "Stop" in Active apps / OEM killer) nothing could restart it: no geofence, no activity trigger; the restart alarm can't start a location FGS from the background on Android 12+. |
+| iOS stops after the first stop | `pauseLocationUpdatesAutomatically: true` in PASSIVE: iOS pauses when parked and never resumes on its own; nothing (region/significant-change) relaunched or resumed the app. |
+| Poor replay | PASSIVE (the default — nobody watching) used `LocationAccuracy.medium` = Wi-Fi/cell positioning (40–100 m+) with a 50 m filter: corners cut, parked drift recorded as movement. |
+| Lost points | Outbox was a JSON string in SharedPreferences rewritten per point, shared by two isolates without locking; `write(batch)` after a failed upload overwrote points queued meanwhile; 500-point cap; background uploads used a JWT that expires and was never refreshed. |
+| Stale positions after restart | WS snapshot came from server memory only. |
+| iOS pushes | Background pushes sent with `apns-priority: 10` (must be 5 + `apns-push-type: background`). |
+
+## Architecture
+
+```
+            OS triggers (no GPS, ~free)                       Server
+  geofence exit · activity: vehicle/bike/run ·        ┌──────────────────────┐
+  network fix far away · reboot · FCM "live"          │ POST /api/v1/location │
+                    │                                 │  (device token)       │
+                    ▼                                 │  store ← trip points  │
+  ┌───────────── native TrackingEngine ─────────────┐ │  broadcast ← newest   │
+  │ STATIONARY ──trigger──▶ MOVING ──5 min still──▶  │ │  live_ttl_s in reply  │
+  │ (no GPS)               (GPS 1 Hz, Android:       │ └──────────▲───────────┘
+  │                         short-lived FGS)         │            │ batched / live
+  │                    PathSampler → SQLite queue ───┼────────────┘
+  │   Uploader: every 5 min or 200 pts while moving, │
+  │   at trip end, on reconnect (WorkManager/BGTask),│      FCM: live / idle
+  │   immediately while live                         │◀── (only while a map
+  └──────────────────────────────────────────────────┘     is open somewhere)
+                    ▲  method/event channel (only while the UI is up)
+                 Flutter UI: map, status card, debug log
+```
+
+The engine is **native** (`android/app/src/main/kotlin/.../tracking/`,
+`ios/Runner/TrackingEngine.swift`) and runs without any Flutter engine, so OS
+wake-ups cost milliseconds of native code instead of booting Dart.
+
+### States and triggers
+
+| | Android | iOS |
+|---|---|---|
+| Stationary → moving | Geofence exit (150 m around the parking spot, `INITIAL_TRIGGER_EXIT` on re-arm); Activity Recognition `IN_VEHICLE`/`ON_BICYCLE`/`RUNNING` enter; balanced-power fix > 150 m away (15 min, piggybacks other apps); app open & moved > 60 m | Region exit (150 m) — relaunches a terminated app; significant-location-change; visit departure; app open & moved > 60 m |
+| Moving | FLP high accuracy, 2 s (batched 30 s), 1 s while live/visible, 5 s in battery saver; foreground service | Standard updates, best accuracy, `pausesLocationUpdatesAutomatically = false` |
+| Moving → stationary | Every fix within 40 m (or 1.5× accuracy) of the stop's first fix *and* centre for 5 min (2 min if activity says STILL); or no fix for 5 min | Same |
+| Wake-up safety net | WorkManager watchdog every 30 min (re-arm, resume a killed trip, heartbeat, flush); boot/app-update receiver | BGAppRefresh (opportunistic) |
+
+Walking does not start a trip by itself (that would run GPS for every walk
+around the house); leaving the 150 m geofence does.
+
+### The Android notification
+
+Android only allows continuous background GPS inside a foreground service, and
+that service must post a notification — no app (Life360 included) gets around
+it. Here it exists **only while a trip is being recorded**, on a
+minimum-importance channel (no status-bar icon, no sound, collapsed), with
+deferred display so a ~10 s ping usually never shows it. The app no longer asks
+for notification permission: on Android 13+ without it the service runs with
+no visible notification at all. On 14+ it can be swiped away without stopping
+the trip.
+
+## Sampling: which points are stored
+
+The GPS delivers ~1 fix/s while moving. Replay draws straight lines between
+stored points, so the error that matters is the gap between those lines and the
+road. `PathSampler` (an online "opening window" line simplification) stores a
+fix only when needed:
+
+1. **Deviation** — a fix seen since the last stored point lies > **ε = 5 m**
+   from the straight line to the current fix → store the last fix before the
+   bend. This puts a vertex at every turn regardless of speed.
+2. **Max spacing** — straight travel reached **n = clamp(8 s × speed, 30 m, 200 m)**
+   (50 km/h → 111 m, highway → 200 m, walking → 30 m). Bounds staleness and
+   what a crash/kill can lose.
+3. **Speed change** — |Δv| ≥ max(3 m/s, 30 %) → the replay's km/h readout
+   follows braking and acceleration.
+4. Never closer than **10 m** (GPS jitter floor).
+
+Why these numbers: a chord of length *c* over a curve of radius *R* deviates by
+≈ c²/8R. Drivers take curves at lateral acceleration ≲ 3 m/s², so R ≳ v²/3 and
+a fixed time spacing of √(8ε/a) ≈ 3.6 s would be needed to hold ε = 5 m with a
+plain filter — wasteful on straights. Testing the actual deviation instead
+stores points only where the road bends. ε = 5 m is at the level of GPS noise
+(below a lane width, ~1.5 px at replay zoom 15).
+
+Fixes worse than 40 m accuracy are not stored; implausible jumps (> 90 m/s)
+are dropped. Each trip starts with a `trip_start` point at the parking spot
+(timestamp estimated from distance/speed to the first fix) and ends with a
+`trip_end` point at the arrival time, so replays start and end where the car
+was parked.
+
+Simulated mixed drive with correlated GPS noise (`DriveSimulationTest`: city,
+red light, 12 m-radius junction turn, roundabout, highway bend, exit ramp):
+
+| | points stored | mean error | max error |
+|---|---|---|---|
+| This sampler | 53 of 359 fixes | 1.0 m | 6.3 m |
+| Old PASSIVE filter (50 m), given ideal GPS | 80 | 6.2 m | 46.9 m |
+| Old AGGRESSIVE filter (12 m + 3 s) | 102 | 1.5 m | 10.3 m |
+
+## Uploading and offline
+
+- Points go into SQLite (WAL) the moment they're recorded; a row is deleted
+  only after the server acknowledged it. The server's `(user_id, recorded_at)`
+  unique index makes re-sends harmless, so every failure degrades to "send
+  again later". Cap: 100 000 points.
+- Not live: upload when the oldest point is 5 min old or 200 are waiting, at
+  every trip end, and when the app opens. Failures back off (30 s → 10 min)
+  and hand over to WorkManager (Android, network constraint) / BGAppRefresh +
+  network monitor (iOS).
+- Credentials: the app exchanges its JWT once for a **device token**
+  (`POST /api/v1/devices`), which the engine sends as `Authorization: Device …`.
+  Background uploads therefore never depend on a short-lived JWT or on
+  refreshing a rotating refresh token from two places. Sign-out uploads what's
+  left, wipes the queue and revokes the token.
+
+## Live mode ("someone opened the app")
+
+1. A viewer's map becomes visible → WS `map_active` → server `LiveController`.
+2. Server sends a high-priority data-only FCM `lt_cmd=live, lt_ttl=600`
+   (60 s TTL; iOS: `apns-push-type: background`, priority 5).
+3. Each device, natively (Android: receiver on the FCM broadcast; iOS:
+   `didReceiveRemoteNotification`):
+   - parked → takes one fresh fix (short foreground service / background GPS,
+     ≤ 15 s) and uploads it immediately; if it turns out to have moved, it
+     becomes a trip;
+   - moving → streams a broadcast-only `live` point every ≥ 2.5 s and ≥ 8 m
+     (30 s keep-alive), plus its recorded points immediately.
+4. Viewers see the server snapshot instantly (latest stored point per user,
+   even after a server restart), then fresh fixes within seconds.
+5. While viewers remain, `live` is re-sent every 4 min (renewals don't re-ping
+   parked devices); with no viewers for 45 s the server sends `idle`. Devices
+   also expire live mode on their own after the TTL, and every upload response
+   carries `live_ttl_s`, so a lost push never leaves a phone streaming.
+
+`live` points are never stored — recorded points already describe the path.
+
+Parked devices check in every ~30 min (re-sending the parking spot with its
+original timestamp: nothing new stored, but `last_seen_at` and battery
+refresh). Markers grey out after 90 min without contact — not by position age,
+since a parked user's last point is old by design.
+
+## Server protocol changes
+
+| | |
+|---|---|
+| `POST /api/v1/devices` (JWT) | `{platform, replaces?}` → `{device_id, device_token}` |
+| `DELETE /api/v1/devices/:id` | JWT, or the device's own token |
+| `POST /api/v1/location` | Also accepts `Authorization: Device <token>`; `coords.accuracy`; `source` ∈ `move`, `trip_start`, `trip_end`, `ping`, `heartbeat`, `live` (not stored); response adds `stored`, `live_ttl_s`; broadcast only moves a marker forward in time |
+| FCM data | `lt_cmd` (`live`/`idle`), `lt_ttl`; `pacing` kept for older builds |
+| History | `trip_start`/`trip_end` delimit sessions; silent stops (≥ 10 min, < 75 m) split; `heartbeat`/`ping` excluded; average speed = distance / time |
+| Schema | `location_history.accuracy`, `users.battery_level/is_charging`, `devices` (created by `ensureBackendSchema()` on boot) |
+
+## Rollout
+
+1. Deploy the server first. It stays compatible with current app builds (JWT
+   uploads, WS `location` messages and the `pacing` push field still work).
+2. Ship the app. On first launch it uploads anything left in the old
+   SharedPreferences outbox and removes the old keys; the old notification
+   channel is deleted.
+
+## On-device checklist
+
+The Kotlin engine is compiled and its sampling/stop logic unit-tested; the
+Swift engine has not been compiled (needs Xcode). Verify on real devices:
+
+- [ ] iOS: builds; "Always" prompt flow; drive with the app swiped away →
+      trip recorded and uploaded; parked overnight → resumes next morning.
+- [ ] Android 13/14/15 (Pixel + one aggressive OEM): drive with the app swiped
+      away; reboot while parked then drive; airplane mode during a drive →
+      batch arrives after.
+- [ ] Notification shows only during trips; swiping it doesn't stop the trip.
+- [ ] Open the map on phone A while B is parked/driving → B updates within
+      seconds; close A → B returns to batching (debug log: "Live mode off").
+- [ ] Battery over a normal day vs the previous build (Settings → Battery).
+- [ ] Profile tab status card flags missing "Allow all the time" / precise /
+      physical activity / battery optimization.
+
+## Known limits
+
+- Force-stop (Settings → Force stop) disables all of this until the app is
+  opened again — Android removes alarms, geofences and jobs.
+- iOS force-quit: region/significant-change relaunches generally still work,
+  but silent pushes are not delivered to a force-quit app.
+- FCM may deprioritise high-priority messages that never show a notification,
+  so "instant" can occasionally become "next upload". Moving devices still
+  converge through `live_ttl_s` on their next upload.
+- Trip start: before the geofence exit or activity event fires (typically
+  < 1–2 min), the route is a straight line from the parking spot.
+- Approximate location (Android 12+/iOS 14+) makes routes useless; the status
+  card asks for precise location.

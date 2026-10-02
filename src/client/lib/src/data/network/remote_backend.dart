@@ -9,8 +9,6 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
 import 'backend.dart';
-import '../../features/location/location_outbox.dart';
-import '../../features/location/location_payload.dart';
 
 class RemoteBackend implements Backend {
   RemoteBackend({
@@ -29,22 +27,14 @@ class RemoteBackend implements Backend {
   final StreamController<List<UserProfile>> _peerController =
       StreamController<List<UserProfile>>.broadcast();
   final Map<String, UserProfile> _peerCache = {};
-  final LocationOutbox _outbox = LocationOutbox();
   WebSocketChannel? _channel;
-  // `WebSocketChannel.connect` returns a channel synchronously, before the
-  // underlying socket has actually finished connecting — so `_channel` alone
-  // can't tell `sendLocationRealtime` whether it's safe to send. This tracks
-  // the point where the socket is confirmed open (via `.ready`), so a point
-  // sent while genuinely offline (connecting, or an already-open socket that
-  // just dropped) is queued to the outbox instead of silently lost to a
-  // `sink.add()` that doesn't throw synchronously.
-  bool _socketReady = false;
   String? _ticket;
   bool _initialized = false;
   bool _disposed = false;
+  // While the app is in the background nobody is looking at the map: keeping
+  // the socket (and its 15 s keep-alive pings) open would only cost battery.
+  bool _suspended = false;
   Timer? _reconnectTimer;
-  Timer? _outboxFlushTimer;
-  bool _flushingOutbox = false;
   // Map tab is the default landing tab, so a freshly-opened session starts
   // "active" — this mirrors the server's ConnectionManager default and keeps
   // the two in sync without needing an extra message on the very first
@@ -61,94 +51,7 @@ class RemoteBackend implements Backend {
     }
 
     await _connectFreshWebSocket();
-    _outboxFlushTimer?.cancel();
-    _outboxFlushTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => _flushPendingLocationUploads(),
-    );
-    unawaited(_flushPendingLocationUploads());
     _initialized = true;
-  }
-
-  @override
-  void sendLocationRealtime(
-    LocationPoint point, {
-    int? batteryLevel,
-    bool? isCharging,
-  }) {
-    if (_channel == null || !_socketReady) {
-      unawaited(
-        _enqueueAndFlush(point, batteryLevel: batteryLevel, isCharging: isCharging),
-      );
-      return;
-    }
-
-    final payload = buildRealtimeLocationPayload(
-      point,
-      batteryLevel: batteryLevel,
-      isCharging: isCharging,
-    );
-    dev.log('[ws] sending: ${jsonEncode(payload)}', name: 'RemoteBackend');
-    try {
-      _channel!.sink.add(jsonEncode(payload));
-    } catch (_) {
-      unawaited(
-        _enqueueAndFlush(point, batteryLevel: batteryLevel, isCharging: isCharging),
-      );
-    }
-  }
-
-  // `_outbox.enqueue` and `_flushPendingLocationUploads` both do their own
-  // read-modify-write against SharedPreferences. Firing them as two separate
-  // unawaited calls let them race: `drain()` would read the outbox *before*
-  // `enqueue()`'s write landed, then its trailing `remove()` would clear the
-  // key entirely — permanently discarding the point `enqueue` had just
-  // written, every single time, since the two calls contend for the same key
-  // on every call to this method. Awaiting the enqueue before flushing removes
-  // the race.
-  Future<void> _enqueueAndFlush(
-    LocationPoint point, {
-    int? batteryLevel,
-    bool? isCharging,
-  }) async {
-    await _outbox.enqueue(
-      buildLocationPayload(point, batteryLevel: batteryLevel, isCharging: isCharging),
-    );
-    await _flushPendingLocationUploads();
-  }
-
-  @override
-  Future<bool> sendLocation(UserProfile profile) async {
-    final location = profile.lastLocation;
-    if (location == null) {
-      return false;
-    }
-
-    final uri = _apiUri('/api/v1/location');
-    final payload = [
-      {
-        'coords': {
-          'latitude': location.latitude,
-          'longitude': location.longitude,
-          'speed': location.speed,
-          'heading': location.heading,
-        },
-        'timestamp': location.timestamp.toUtc().toIso8601String(),
-        if (profile.batteryLevel != null) 'battery_level': profile.batteryLevel,
-        if (profile.isCharging != null) 'is_charging': profile.isCharging,
-      },
-    ];
-
-    final response = await _httpClient.post(
-      uri,
-      headers: {
-        'content-type': 'application/json',
-        'authorization': 'Bearer ${getAccessToken()}',
-      },
-      body: jsonEncode(payload),
-    );
-
-    return response.statusCode >= 200 && response.statusCode < 300;
   }
 
   @override
@@ -187,12 +90,33 @@ class RemoteBackend implements Backend {
   }
 
   @override
+  void suspend() {
+    if (_suspended) return;
+    _suspended = true;
+    _reconnectTimer?.cancel();
+    _reconnectTimer = null;
+    final channel = _channel;
+    _channel = null;
+    channel?.sink.close();
+  }
+
+  @override
+  void resume() {
+    if (!_suspended) return;
+    _suspended = false;
+    if (!_initialized || _disposed) return;
+    // A fresh connection also brings a fresh snapshot of everyone.
+    _connectFreshWebSocket().catchError((Object error) {
+      dev.log('[ws] resume failed: $error', name: 'RemoteBackend');
+      _scheduleReconnect();
+    });
+  }
+
+  @override
   Future<void> dispose() async {
     _disposed = true;
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
-    _outboxFlushTimer?.cancel();
-    _outboxFlushTimer = null;
     _channel?.sink.close();
     _peerController.close();
     _httpClient.close();
@@ -226,43 +150,32 @@ class RemoteBackend implements Backend {
     }
 
     _channel?.sink.close();
-    _socketReady = false;
     final uri = _webSocketUri(_ticket!);
     // A plain WebSocketChannel.connect never notices a connection that goes
     // silently dead (e.g. airplane mode, which often doesn't produce an
-    // immediate TCP RST) — `_socketReady` would stay true forever and
-    // sendLocationRealtime would keep "successfully" writing to a socket
-    // that's actually discarding everything, bypassing the outbox entirely.
+    // immediate TCP RST), so peer updates would just stop arriving.
     // IOWebSocketChannel's pingInterval makes the underlying dart:io
     // WebSocket send periodic pings and auto-close the connection if a pong
-    // doesn't come back in time, which drives onDone/_scheduleReconnect and
-    // flips _socketReady to false within one interval.
+    // doesn't come back in time, which drives onDone/_scheduleReconnect.
     final channel = IOWebSocketChannel.connect(
       uri,
       pingInterval: const Duration(seconds: 15),
     );
     _channel = channel;
     dev.log('[ws] connecting to $uri', name: 'RemoteBackend');
-    unawaited(
-      channel.ready.then((_) {
-        // A reconnect may have already superseded this channel by the time
-        // it finishes opening — only mark ready if it's still the current one.
-        if (!_disposed && identical(_channel, channel)) {
-          _socketReady = true;
-        }
-      }, onError: (_) {}), // Surfaces via the stream's onError below instead.
-    );
     // The server only learns the map-active state via this message, so a
     // fresh (or reconnected) socket needs to (re)announce it — the server
     // has no memory of a dropped connection's last-known state.
     _sendMapActive();
-    _channel!.stream.listen(
+    channel.stream.listen(
       _handleWebSocketMessage,
       onError: (error) {
         dev.log('[ws] error: $error', name: 'RemoteBackend');
-        _scheduleReconnect();
+        // Ignore a superseded socket (e.g. one closed by suspend()).
+        if (identical(_channel, channel)) _scheduleReconnect();
       },
       onDone: () {
+        if (!identical(_channel, channel)) return;
         dev.log(
           '[ws] connection closed, scheduling reconnect',
           name: 'RemoteBackend',
@@ -273,12 +186,12 @@ class RemoteBackend implements Backend {
   }
 
   Future<void> _connectFreshWebSocket() async {
-    if (_disposed) {
+    if (_disposed || _suspended) {
       return;
     }
 
     _ticket = await _requestTicket();
-    if (_disposed) {
+    if (_disposed || _suspended) {
       return;
     }
     _connectWebSocket();
@@ -409,12 +322,11 @@ class RemoteBackend implements Backend {
   }
 
   void _scheduleReconnect() {
-    if (_disposed) {
+    if (_disposed || _suspended) {
       return;
     }
 
     _channel = null;
-    _socketReady = false;
     _reconnectTimer?.cancel();
     dev.log('[ws] reconnecting in 3s', name: 'RemoteBackend');
     _reconnectTimer = Timer(const Duration(seconds: 3), () {
@@ -423,41 +335,5 @@ class RemoteBackend implements Backend {
         _scheduleReconnect();
       });
     });
-  }
-
-  Future<void> _flushPendingLocationUploads() async {
-    if (_disposed || _flushingOutbox) {
-      return;
-    }
-
-    _flushingOutbox = true;
-    List<Map<String, dynamic>> batch = [];
-    try {
-      batch = await _outbox.drain();
-      if (batch.isEmpty) {
-        return;
-      }
-
-      final uri = _apiUri('/api/v1/location');
-      final response = await _httpClient.post(
-        uri,
-        headers: {
-          'content-type': 'application/json',
-          'authorization': 'Bearer ${getAccessToken()}',
-        },
-        body: jsonEncode(batch),
-      );
-
-      if (response.statusCode < 200 || response.statusCode >= 300) {
-        await _outbox.write(batch);
-      }
-    } catch (error) {
-      dev.log('[outbox] flush failed: $error', name: 'RemoteBackend');
-      if (batch.isNotEmpty) {
-        await _outbox.write(batch);
-      }
-    } finally {
-      _flushingOutbox = false;
-    }
   }
 }

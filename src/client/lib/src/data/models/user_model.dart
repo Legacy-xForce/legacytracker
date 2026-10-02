@@ -13,9 +13,8 @@ class UserProfile {
   LocationPoint? lastLocation;
   List<LocationPoint> history;
 
-  /// Server-reported time this user last sent any location (move, foreground,
-  /// or stationary heartbeat). Paired with the ≤5-min heartbeat, a genuinely
-  /// online user keeps this fresh even while parked.
+  /// Server-reported time this user's device last reached the server (trip
+  /// upload, live point, on-demand ping or parked heartbeat).
   DateTime? lastSeenAt;
 
   UserProfile({
@@ -36,9 +35,12 @@ class UserProfile {
   bool get hasAnyStatus =>
       locationTrackingPaused || missingPermissions || batterySavingEnabled;
 
-  /// Whether this user's last report is old enough that their marker should
-  /// be treated as stale (greyed out).
-  static const staleThreshold = Duration(minutes: 15);
+  /// Whether we haven't heard from this user's device for long enough that
+  /// their marker should be greyed out. Parked devices check in about every
+  /// half hour (longer in deep Doze) and answer a live ping within seconds
+  /// of someone opening the map, so silence beyond this means the phone is
+  /// off, offline or not sharing.
+  static const staleThreshold = Duration(minutes: 90);
 
   bool get isStale {
     final seen = lastSeenAt;

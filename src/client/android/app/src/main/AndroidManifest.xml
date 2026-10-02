@@ -1,7 +1,13 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
+    <!-- Motion detection (vehicle / bicycle / still) wakes trip recording
+         without GPS. Runtime permission on Android 10+; the gms one covers 9-. -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
+    <uses-permission android:name="com.google.android.gms.permission.ACTIVITY_RECOGNITION" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
@@ -34,12 +40,38 @@
             </intent-filter>
         </activity>
 
-        <!-- flutter_foreground_task: location foreground service -->
+        <!-- Native tracking engine (see tracking/TrackingEngine.kt). The
+             foreground service runs only while a trip is being recorded. -->
         <service
-            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:name=".tracking.TripService"
             android:foregroundServiceType="location"
             android:stopWithTask="false"
             android:exported="false" />
+
+        <receiver
+            android:name=".tracking.TrackingReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".tracking.BootReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="android.intent.action.QUICKBOOT_POWERON" />
+            </intent-filter>
+        </receiver>
+
+        <!-- Server tracking commands (FCM data message `lt_cmd`), handled
+             natively alongside firebase_messaging's own receiver. -->
+        <receiver
+            android:name=".tracking.PushCommandReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+            </intent-filter>
+        </receiver>
 
         <meta-data
             android:name="flutterEmbedding"

@@ -6,7 +6,9 @@ import websocket from "@fastify/websocket";
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
 import pool from "./config/db";
 import ConnectionManager from "./services/connection-manager";
-import { initializeFcm, broadcastPacingMode } from "./services/fcm-service";
+import { DeviceAuth } from "./services/device-auth";
+import { initializeFcm, sendTrackingCommand } from "./services/fcm-service";
+import { LiveController, type TrackingCommand } from "./services/live-controller";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
 
 const JWKS = createRemoteJWKSet(
@@ -30,12 +32,20 @@ const app = Fastify({
   },
 });
 const connectionManager = new ConnectionManager();
+const deviceAuth = new DeviceAuth(pool);
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
 const lastKnownName = new Map<string, string>();
 const STATE_ID = "foreground";
 const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Live mode: devices stream in realtime only while someone has the map open.
+// `live` expires on the device after LIVE_TTL_SECONDS unless renewed, so a
+// lost `idle` push can't leave phones streaming indefinitely.
+const LIVE_TTL_SECONDS = 600;
+const LIVE_RENEW_INTERVAL_MS = 4 * 60_000;
+const LIVE_OFF_DEBOUNCE_MS = 45_000;
 
 const PacingMode = {
   AGGRESSIVE: "AGGRESSIVE",
@@ -56,6 +66,7 @@ interface KnownLocation {
   longitude: number;
   speed: number;
   heading: number | null;
+  accuracy: number | null;
   recordedAt: string;
   batteryLevel: number | null;
   isCharging: boolean | null;
@@ -68,6 +79,7 @@ interface LocationPayload {
     longitude?: number;
     speed?: number;
     heading?: number;
+    accuracy?: number;
   };
   timestamp?: string;
   battery_level?: number;
@@ -77,24 +89,49 @@ interface LocationPayload {
 
 app.register(cors, {
   origin: true,
-  methods: ["GET", "POST"],
+  methods: ["GET", "POST", "PATCH", "DELETE"],
 });
 app.register(websocket);
 
-function getPacingMode(): PacingMode {
-  // Every connected viewer sees every driver's pin on the same live map —
-  // there's no per-driver subscription — so pacing is scoped to "is anyone's
-  // map tab actually in the foreground right now", not merely "is anyone
-  // connected at all" (e.g. sitting on their own Profile tab shouldn't keep
-  // every other driver's phone polling GPS at the aggressive rate).
-  return connectionManager.anyMapActive
-    ? PacingMode.AGGRESSIVE
-    : PacingMode.PASSIVE;
+async function sendLiveCommand(
+  command: TrackingCommand,
+  ttlSeconds: number,
+): Promise<void> {
+  const result = await pool.query<{ token: string }>(
+    "SELECT token FROM user_fcm_tokens",
+  );
+  const tokens = result.rows.map((r) => r.token);
+  const invalid = await sendTrackingCommand(tokens, command, ttlSeconds);
+  app.log.info(
+    { command, ttlSeconds, devices: tokens.length, pruned: invalid.length },
+    "[live] sent tracking command",
+  );
+  if (invalid.length > 0) {
+    await pool.query("DELETE FROM user_fcm_tokens WHERE token = ANY($1)", [
+      invalid,
+    ]);
+  }
 }
 
-let lastBroadcastPacing: PacingMode | null = null;
+// Every connected viewer sees every driver's pin on the same live map —
+// there's no per-driver subscription — so live mode is scoped to "is
+// anyone's map tab actually in the foreground right now", not merely "is
+// anyone connected at all".
+const liveController = new LiveController({
+  ttlSeconds: LIVE_TTL_SECONDS,
+  renewIntervalMs: LIVE_RENEW_INTERVAL_MS,
+  offDebounceMs: LIVE_OFF_DEBOUNCE_MS,
+  send: sendLiveCommand,
+  onError: (error) =>
+    app.log.warn({ error }, "Unable to send tracking command via FCM"),
+});
+
+function getPacingMode(): PacingMode {
+  return liveController.isActive ? PacingMode.AGGRESSIVE : PacingMode.PASSIVE;
+}
 
 async function updateViewerState(): Promise<void> {
+  liveController.update(connectionManager.activeMapCount);
   try {
     await pool.query(
       `INSERT INTO viewer_state (id, active_viewers)
@@ -105,26 +142,6 @@ async function updateViewerState(): Promise<void> {
     );
   } catch (error) {
     app.log.warn({ error }, "Unable to synchronize viewer state with database");
-  }
-
-  // Push the new pacing mode to all registered devices via FCM, but only
-  // when it actually changed — map_active toggles can fire on every tab
-  // switch, and re-broadcasting an unchanged mode to every driver would be
-  // pure noise.
-  const pacingMode = getPacingMode();
-  if (pacingMode === lastBroadcastPacing) {
-    return;
-  }
-  lastBroadcastPacing = pacingMode;
-
-  try {
-    const result = await pool.query<{ token: string }>(
-      "SELECT token FROM user_fcm_tokens",
-    );
-    const tokens = result.rows.map((r) => r.token);
-    await broadcastPacingMode(tokens, pacingMode);
-  } catch (error) {
-    app.log.warn({ error }, "Unable to broadcast pacing mode via FCM");
   }
 }
 
@@ -231,6 +248,40 @@ async function getCurrentUserIdentity(
   }
 }
 
+type IngestIdentity =
+  | { ok: true; userId: string; displayName: string; deviceId: string | null }
+  | { ok: false; reason: string; detail?: string };
+
+/**
+ * Identity for location ingest: the native tracking engine authenticates
+ * with its long-lived device token (`Authorization: Device <token>`); older
+ * clients and the app itself still use the user's JWT.
+ */
+async function getIngestIdentity(
+  request: FastifyRequest,
+): Promise<IngestIdentity> {
+  const authHeader = request.headers["authorization"];
+  if (typeof authHeader === "string" && authHeader.startsWith("Device ")) {
+    const token = authHeader.slice(7).trim();
+    if (!token) {
+      return { ok: false, reason: "empty device token" };
+    }
+    const device = await deviceAuth.verify(token);
+    if (!device) {
+      return { ok: false, reason: "unknown or revoked device token" };
+    }
+    return {
+      ok: true,
+      userId: device.userId,
+      displayName: lastKnownName.get(device.userId) ?? device.userName,
+      deviceId: device.deviceId,
+    };
+  }
+
+  const identity = await getCurrentUserIdentity(request);
+  return identity.ok ? { ...identity, deviceId: null } : identity;
+}
+
 async function ensureBackendSchema(): Promise<void> {
   try {
     await pool.query(
@@ -240,7 +291,30 @@ async function ensureBackendSchema(): Promise<void> {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at timestamptz",
     );
     await pool.query(
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS battery_level integer",
+    );
+    await pool.query(
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_charging boolean",
+    );
+    await pool.query(
       "ALTER TABLE location_history ADD COLUMN IF NOT EXISTS source text",
+    );
+    await pool.query(
+      "ALTER TABLE location_history ADD COLUMN IF NOT EXISTS accuracy double precision",
+    );
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS devices (
+         id text PRIMARY KEY,
+         user_id text NOT NULL REFERENCES users(id),
+         token_hash text NOT NULL UNIQUE,
+         platform text,
+         created_at timestamptz NOT NULL DEFAULT now(),
+         last_seen_at timestamptz,
+         revoked_at timestamptz
+       )`,
+    );
+    await pool.query(
+      "CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id)",
     );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert
@@ -280,6 +354,9 @@ function parseLocationItem(item: unknown): KnownLocation | null {
 
   const speed = normalizeNumber(coords.speed) ?? 0;
   const heading = normalizeNumber(coords.heading);
+  const accuracyRaw = normalizeNumber(coords.accuracy);
+  const accuracy =
+    accuracyRaw !== null && accuracyRaw >= 0 ? accuracyRaw : null;
   const timestamp = payload.timestamp
     ? new Date(payload.timestamp)
     : new Date();
@@ -304,6 +381,7 @@ function parseLocationItem(item: unknown): KnownLocation | null {
     longitude,
     speed,
     heading: heading === null ? null : heading,
+    accuracy,
     recordedAt: timestamp.toISOString(),
     batteryLevel,
     isCharging,
@@ -344,41 +422,106 @@ async function insertLocationBatch(
     lat: p.latitude,
     speed: p.speed,
     heading: p.heading,
+    accuracy: p.accuracy,
     source: p.source,
   }));
   await pool.query(
-    `INSERT INTO location_history (user_id, recorded_at, location, speed, heading, source)
+    `INSERT INTO location_history (user_id, recorded_at, location, speed, heading, accuracy, source)
      SELECT $1, r.recorded_at,
             ST_SetSRID(ST_MakePoint(r.lon, r.lat), 4326)::geography,
-            r.speed, r.heading, r.source
+            r.speed, r.heading, r.accuracy, r.source
      FROM jsonb_to_recordset($2::jsonb)
        AS r(recorded_at timestamptz, lon float8, lat float8, speed float8,
-             heading float8, source text)
+             heading float8, accuracy float8, source text)
      ON CONFLICT (user_id, recorded_at) DO NOTHING`,
     [userId, JSON.stringify(rows)],
   );
 }
 
-async function touchLastSeen(userId: string): Promise<void> {
+async function touchLastSeen(
+  userId: string,
+  batteryLevel: number | null,
+  isCharging: boolean | null,
+): Promise<void> {
   try {
-    await pool.query("UPDATE users SET last_seen_at = now() WHERE id = $1", [
-      userId,
-    ]);
+    await pool.query(
+      `UPDATE users
+       SET last_seen_at = now(),
+           battery_level = COALESCE($2, battery_level),
+           is_charging = COALESCE($3, is_charging)
+       WHERE id = $1`,
+      [userId, batteryLevel, isCharging],
+    );
   } catch (error) {
     app.log.warn({ error, userId }, "Unable to update last_seen_at");
   }
 }
 
-function isRedundantHeartbeat(
+function isSamePosition(
   latest: KnownLocation,
   previous: KnownLocation | undefined,
 ): boolean {
   return (
-    latest.source === "heartbeat" &&
     previous != null &&
     previous.latitude === latest.latitude &&
     previous.longitude === latest.longitude
   );
+}
+
+/**
+ * Stores and fans out a set of points from one user.
+ *
+ * `live` points (streamed only while someone watches) are broadcast but never
+ * stored — the engine's recorded points already describe the path to within
+ * a few metres. Batches can arrive out of order (an offline backlog after a
+ * newer live point), so the broadcast only moves a viewer's marker forward in
+ * time; anything else just refreshes presence (last seen + battery).
+ */
+async function ingestPoints(
+  userId: string,
+  displayName: string,
+  points: KnownLocation[],
+): Promise<{ stored: number }> {
+  points.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+  const stored = points.filter((p) => p.source !== "live");
+  if (stored.length > 0) {
+    await insertLocationBatch(userId, stored);
+  }
+
+  const newest = points[points.length - 1];
+  await touchLastSeen(userId, newest.batteryLevel, newest.isCharging);
+
+  const previous = lastKnownLocation.get(userId);
+  const isNewer = previous == null || newest.recordedAt >= previous.recordedAt;
+  if (isNewer) {
+    lastKnownLocation.set(userId, newest);
+  }
+
+  const lastSeenAt = new Date().toISOString();
+  if (isNewer && !isSamePosition(newest, previous)) {
+    connectionManager.broadcast({
+      user_id: userId,
+      username: displayName,
+      latitude: newest.latitude,
+      longitude: newest.longitude,
+      speed: newest.speed,
+      heading: newest.heading,
+      recorded_at: newest.recordedAt,
+      battery_level: newest.batteryLevel,
+      is_charging: newest.isCharging,
+      last_seen_at: lastSeenAt,
+    });
+  } else {
+    connectionManager.broadcast({
+      user_id: userId,
+      username: displayName,
+      battery_level: newest.batteryLevel,
+      is_charging: newest.isCharging,
+      last_seen_at: lastSeenAt,
+    });
+  }
+
+  return { stored: stored.length };
 }
 
 app.get("/api/v1/profile", async (request, reply) => {
@@ -486,6 +629,54 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
   return reply.send({ ok: true });
 });
 
+// Exchanges a valid user JWT for a long-lived device token the native
+// tracking engine uploads with. `replaces` revokes the device's previous
+// token (re-registration after reinstall / token loss).
+app.post("/api/v1/devices", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/devices", identity);
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+
+  const body = (request.body ?? {}) as Record<string, unknown>;
+  const platform =
+    typeof body.platform === "string" ? body.platform.slice(0, 32) : null;
+  const replaces =
+    typeof body.replaces === "string" && body.replaces.length > 0
+      ? body.replaces
+      : null;
+
+  await ensureUserExists(identity.userId, identity.displayName);
+  const { deviceId, token } = await deviceAuth.register(
+    identity.userId,
+    platform,
+    replaces,
+  );
+  app.log.info(
+    { userId: identity.userId, deviceId, platform },
+    "[devices] registered device",
+  );
+  return reply.send({ device_id: deviceId, device_token: token });
+});
+
+app.delete("/api/v1/devices/:id", async (request, reply) => {
+  const identity = await getIngestIdentity(request);
+  if (!identity.ok) {
+    logUnauthorizedRequest(request, "/api/v1/devices/:id", identity);
+    return reply.code(401).send({ error: "Unauthorized" });
+  }
+
+  const { id } = request.params as { id: string };
+  // A device token may only revoke itself; a user JWT may revoke any of the
+  // user's devices.
+  if (identity.deviceId !== null && identity.deviceId !== id) {
+    return reply.code(403).send({ error: "Forbidden" });
+  }
+  const revoked = await deviceAuth.revoke(id, identity.userId);
+  return reply.send({ revoked });
+});
+
 app.post("/api/v1/streams/ticket", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
@@ -512,7 +703,7 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
 });
 
 app.post("/api/v1/location", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
+  const identity = await getIngestIdentity(request);
   if (!identity.ok) {
     logUnauthorizedRequest(request, "/api/v1/location", identity);
     return reply.code(401).send({ error: "Unauthorized" });
@@ -527,48 +718,42 @@ app.post("/api/v1/location", async (request, reply) => {
     return reply.code(400).send({ error: "Invalid location payload" });
   }
 
-  await ensureUserExists(identity.userId, identity.displayName);
-  lastKnownName.set(identity.userId, identity.displayName);
+  if (identity.deviceId === null) {
+    await ensureUserExists(identity.userId, identity.displayName);
+    lastKnownName.set(identity.userId, identity.displayName);
+  } else {
+    await deviceAuth.touch(identity.deviceId);
+  }
 
-  await insertLocationBatch(identity.userId, points);
-  await touchLastSeen(identity.userId);
-
+  const { stored } = await ingestPoints(
+    identity.userId,
+    identity.displayName,
+    points,
+  );
   const latest = points[points.length - 1];
-  const previous = lastKnownLocation.get(identity.userId);
-  lastKnownLocation.set(identity.userId, latest);
   app.log.info(
     {
       userId: identity.userId,
+      deviceId: identity.deviceId,
       pointCount: points.length,
+      stored,
+      source: latest.source,
       recordedAt: latest.recordedAt,
-      latitude: latest.latitude,
-      longitude: latest.longitude,
     },
     "[location] ingested location batch",
   );
 
-  const broadcastMessage = {
-    user_id: identity.userId,
-    username: identity.displayName,
-    latitude: latest.latitude,
-    longitude: latest.longitude,
-    speed: latest.speed,
-    heading: latest.heading,
-    recorded_at: latest.recordedAt,
-    battery_level: latest.batteryLevel,
-    is_charging: latest.isCharging,
-    last_seen_at: new Date().toISOString(),
-  };
-  // A stationary heartbeat at the same spot carries no new information for
-  // viewers — skip it to avoid pin jitter.
-  if (!isRedundantHeartbeat(latest, previous)) {
-    connectionManager.broadcast(broadcastMessage);
-  }
-
   const pacingMode = getPacingMode();
   reply.header("X-Pacing-Mode", pacingMode);
 
-  return reply.send({ received: points.length, pacing: pacingMode });
+  // `live_ttl_s` piggybacks the live state on every upload, so a device that
+  // missed the push still converges within one upload.
+  return reply.send({
+    received: points.length,
+    stored,
+    pacing: pacingMode,
+    live_ttl_s: liveController.ttlSeconds,
+  });
 });
 
 app.get("/api/v1/history", async (request, reply) => {
@@ -604,7 +789,7 @@ app.get("/api/v1/history", async (request, reply) => {
     `SELECT recorded_at,
             ST_Y(location::geometry) AS latitude,
             ST_X(location::geometry) AS longitude,
-            speed, heading
+            speed, heading, accuracy, source
      FROM location_history
      WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
      ORDER BY recorded_at ASC`,
@@ -617,6 +802,8 @@ app.get("/api/v1/history", async (request, reply) => {
     longitude: Number(row.longitude),
     speed: Number(row.speed),
     heading: row.heading === null ? null : Number(row.heading),
+    accuracy: row.accuracy === null ? null : Number(row.accuracy),
+    source: row.source ?? null,
   }));
 
   const sessions = buildSessions(points);
@@ -649,6 +836,7 @@ app.get("/api/v1/history", async (request, reply) => {
         longitude: point.longitude,
         speed: point.speed,
         heading: point.heading,
+        accuracy: point.accuracy ?? null,
         recorded_at: point.recordedAt,
       })),
     })),
@@ -704,25 +892,53 @@ app.register(async () => {
 
     // Every registered user should show up in the roster regardless of
     // whether they've ever broadcast a location, so the snapshot is built
-    // from the `users` table (not just `lastKnownLocation`, which only ever
-    // holds entries for users seen since this process started).
+    // from the `users` table. Positions come from the newest of the in-memory
+    // last-known point (includes unstored live points) and the latest stored
+    // row — the latter keeps the map populated instantly after a restart,
+    // even for users who are parked and therefore not sending anything.
     const allUsers = await pool.query<{
       id: string;
       name: string;
       last_seen_at: Date | null;
-    }>("SELECT id, name, last_seen_at FROM users");
+      battery_level: number | null;
+      is_charging: boolean | null;
+      recorded_at: Date | null;
+      latitude: number | null;
+      longitude: number | null;
+      speed: number | null;
+      heading: number | null;
+    }>(
+      `SELECT u.id, u.name, u.last_seen_at, u.battery_level, u.is_charging,
+              l.recorded_at, l.latitude, l.longitude, l.speed, l.heading
+       FROM users u
+       LEFT JOIN LATERAL (
+         SELECT recorded_at,
+                ST_Y(location::geometry) AS latitude,
+                ST_X(location::geometry) AS longitude,
+                speed, heading
+         FROM location_history
+         WHERE user_id = u.id
+         ORDER BY recorded_at DESC
+         LIMIT 1
+       ) l ON true`,
+    );
     const snapshot = allUsers.rows.map((row) => {
-      const point = lastKnownLocation.get(row.id);
+      const memory = lastKnownLocation.get(row.id);
+      const storedAt = row.recorded_at
+        ? new Date(row.recorded_at).toISOString()
+        : null;
+      const useMemory =
+        memory != null && (storedAt == null || memory.recordedAt >= storedAt);
       return {
         user_id: row.id,
         username: lastKnownName.get(row.id) ?? row.name,
-        latitude: point?.latitude ?? null,
-        longitude: point?.longitude ?? null,
-        speed: point?.speed ?? null,
-        heading: point?.heading ?? null,
-        recorded_at: point?.recordedAt ?? null,
-        battery_level: point?.batteryLevel ?? null,
-        is_charging: point?.isCharging ?? null,
+        latitude: useMemory ? memory.latitude : row.latitude,
+        longitude: useMemory ? memory.longitude : row.longitude,
+        speed: useMemory ? memory.speed : row.speed,
+        heading: useMemory ? memory.heading : row.heading,
+        recorded_at: useMemory ? memory.recordedAt : storedAt,
+        battery_level: memory?.batteryLevel ?? row.battery_level,
+        is_charging: memory?.isCharging ?? row.is_charging,
         last_seen_at: row.last_seen_at
           ? new Date(row.last_seen_at).toISOString()
           : null,
@@ -768,39 +984,15 @@ app.register(async () => {
         return;
       }
 
+      // Legacy path: builds before the native tracking engine streamed
+      // foreground fixes over the socket. Current builds upload over HTTP.
       const point = parseLocationItem(msg);
       if (!point) {
         app.log.warn({ userId, msg }, "[ws] invalid location payload");
         return;
       }
 
-      await insertLocationBatch(userId, [point]);
-      await touchLastSeen(userId);
-
-      const previous = lastKnownLocation.get(userId);
-      lastKnownLocation.set(userId, point);
-
-      if (isRedundantHeartbeat(point, previous)) {
-        return;
-      }
-
-      const broadcast = {
-        user_id: userId,
-        username: displayName,
-        latitude: point.latitude,
-        longitude: point.longitude,
-        speed: point.speed,
-        heading: point.heading,
-        recorded_at: point.recordedAt,
-        battery_level: point.batteryLevel,
-        is_charging: point.isCharging,
-        last_seen_at: new Date().toISOString(),
-      };
-      app.log.info(
-        { broadcast, recipients: connectionManager.count },
-        "[ws] broadcasting location",
-      );
-      connectionManager.broadcast(broadcast);
+      await ingestPoints(userId, displayName, [point]);
     });
 
     connection.socket.on("close", () => {

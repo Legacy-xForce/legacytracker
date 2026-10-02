@@ -8,6 +8,7 @@ import '../../auth/auth_provider.dart';
 import '../../debug/debug_log_screen.dart';
 import '../local_avatar_store.dart';
 import '../tracking_controller.dart';
+import 'tracking_status_card.dart';
 
 class TrackingProfileTab extends StatelessWidget {
   const TrackingProfileTab({
@@ -50,6 +51,8 @@ class TrackingProfileTab extends StatelessWidget {
                 'Role: ${profile?.role ?? controller.selfProfile.role}',
                 style: Theme.of(context).textTheme.bodyMedium,
               ),
+              const SizedBox(height: 24),
+              TrackingStatusCard(controller: controller),
               const SizedBox(height: 32),
               Align(
                 alignment: Alignment.centerLeft,

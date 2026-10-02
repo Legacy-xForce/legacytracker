@@ -3,13 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'src/data/network/auth_service.dart';
+import 'src/data/network/device_service.dart';
 import 'src/data/network/profile_service.dart';
 import 'src/data/network/remote_backend.dart';
 import 'src/features/auth/auth_provider.dart';
 import 'src/features/auth/login_screen.dart';
-import 'src/features/background/background_tracker.dart';
-import 'src/features/location/location_repository.dart';
-import 'src/features/location/location_service.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
 import 'src/data/models/user_model.dart';
@@ -21,6 +19,7 @@ class App extends StatelessWidget {
 
   final AuthService authService = AuthService();
   final ProfileService profileService = ProfileService(baseUrl: _defaultBackendBaseUrl());
+  final DeviceService deviceService = DeviceService(baseUrl: _defaultBackendBaseUrl());
 
   @override
   Widget build(BuildContext context) {
@@ -30,6 +29,7 @@ class App extends StatelessWidget {
           create: (_) => AuthProvider(
             authService: authService,
             profileService: profileService,
+            deviceService: deviceService,
           ),
         ),
       ],
@@ -87,18 +87,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
   void initState() {
     super.initState();
     _auth = Provider.of<AuthProvider>(context, listen: false);
-    _listenForFcmPacingUpdates();
     _registerFcmToken();
-  }
-
-  void _listenForFcmPacingUpdates() {
-    // Foreground FCM messages — app is open, update pacing prefs immediately.
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      final pacing = message.data['pacing'] as String?;
-      if (pacing != null) {
-        BackgroundTracker.applyPacingMode(pacing);
-      }
-    });
   }
 
   Future<void> _registerFcmToken() async {
@@ -143,12 +132,9 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
         selfId: widget.selfId,
       );
       _trackingController = TrackingController(
-        locationRepository: LocationRepository(
-          locationService: GeolocatorLocationService(),
-          backend: backend,
-        ),
         backend: backend,
         baseUrl: baseUrl,
+        getAccessToken: () => _auth.tokens?.accessToken,
         initialProfile: widget.profile ?? UserProfile(id: widget.selfId, name: widget.selfId),
       );
     }

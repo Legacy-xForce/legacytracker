@@ -8,12 +8,17 @@ const MIN_SESSION_DISTANCE_METERS = 50;
 // MIN_SESSION_DISTANCE_METERS.
 const MIN_SESSION_TOP_SPEED = 2.0;
 
+// Liveness/on-demand fixes taken while stationary — never part of a trip.
+const NON_TRIP_SOURCES = new Set(["heartbeat", "ping"]);
+
 export interface HistoryPoint {
   recordedAt: string;
   latitude: number;
   longitude: number;
   speed: number;
   heading: number | null;
+  accuracy?: number | null;
+  source?: string | null;
 }
 
 export interface LocationSession {
@@ -37,6 +42,10 @@ function haversineMeters(a: HistoryPoint, b: HistoryPoint): number {
   const h =
     Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
+}
+
+function minutesBetween(a: HistoryPoint, b: HistoryPoint): number {
+  return (new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()) / 60000;
 }
 
 function summarize(points: HistoryPoint[]): LocationSession | null {
@@ -71,7 +80,9 @@ function summarize(points: HistoryPoint[]): LocationSession | null {
     endAt,
     durationSeconds,
     distanceMeters,
-    avgSpeed: speedSum / points.length,
+    // Points are recorded adaptively (dense in turns, sparse on straights),
+    // so a per-sample mean would be biased towards slow, twisty stretches.
+    avgSpeed: durationSeconds > 0 ? distanceMeters / durationSeconds : speedSum / points.length,
     topSpeed,
     pointCount: points.length,
     points,
@@ -79,11 +90,17 @@ function summarize(points: HistoryPoint[]): LocationSession | null {
 }
 
 /**
- * Groups time-ordered points into movement sessions, splitting on long gaps
- * (tracking paused) or a sustained stop (staying within STOP_RADIUS_METERS of
- * an anchor for at least STOP_MIN_MINUTES).
+ * Groups time-ordered points into movement sessions.
+ *
+ * Points from the native tracking engine carry explicit `trip_start` /
+ * `trip_end` markers, which are authoritative. For older data (and as a
+ * safety net) sessions also split on long gaps, on a stop with no points in
+ * between (the engine records nothing while parked), or on a sustained stop
+ * cluster (staying within STOP_RADIUS_METERS of an anchor for at least
+ * STOP_MIN_MINUTES).
  */
-export function buildSessions(points: HistoryPoint[]): LocationSession[] {
+export function buildSessions(allPoints: HistoryPoint[]): LocationSession[] {
+  const points = allPoints.filter((p) => !NON_TRIP_SOURCES.has(p.source ?? ""));
   const sessions: LocationSession[] = [];
   let current: HistoryPoint[] = [];
   let stopAnchor: HistoryPoint | null = null;
@@ -100,16 +117,33 @@ export function buildSessions(points: HistoryPoint[]): LocationSession[] {
   };
 
   for (const point of points) {
+    if (point.source === "trip_start" && current.length > 0) {
+      flush();
+    }
+
     if (current.length === 0) {
       current.push(point);
+      if (point.source === "trip_end") {
+        flush();
+      }
       continue;
     }
 
     const previous = current[current.length - 1];
-    const gapMinutes =
-      (new Date(point.recordedAt).getTime() - new Date(previous.recordedAt).getTime()) / 60000;
+    const gapMinutes = minutesBetween(previous, point);
 
     if (gapMinutes > SESSION_GAP_MINUTES) {
+      flush();
+      current.push(point);
+      continue;
+    }
+
+    // Parked with nothing recorded in between: a long silence that ends
+    // where it started is a stop, not a slow stretch of the same trip.
+    if (
+      gapMinutes >= STOP_MIN_MINUTES &&
+      haversineMeters(previous, point) <= STOP_RADIUS_METERS
+    ) {
       flush();
       current.push(point);
       continue;
@@ -122,9 +156,7 @@ export function buildSessions(points: HistoryPoint[]): LocationSession[] {
 
     if (haversineMeters(stopAnchor, point) > STOP_RADIUS_METERS) {
       // Left the stop cluster: if it lasted long enough, end the session here.
-      const stopDurationMinutes =
-        (new Date(previous.recordedAt).getTime() - new Date(stopAnchor.recordedAt).getTime()) /
-        60000;
+      const stopDurationMinutes = minutesBetween(stopAnchor, previous);
       if (stopDurationMinutes >= STOP_MIN_MINUTES) {
         const sessionPoints = current.slice(0, stopStartIndex + 1);
         const session = summarize(sessionPoints);
@@ -140,6 +172,10 @@ export function buildSessions(points: HistoryPoint[]): LocationSession[] {
     }
 
     current.push(point);
+
+    if (point.source === "trip_end") {
+      flush();
+    }
   }
 
   flush();

@@ -585,7 +585,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         names: members
             .map((m) => m.isSelf ? '${m.profile.name} (you)' : m.profile.name)
             .toList(),
-        isAllStale: members.every((m) => _isLocationStale(m.location)),
+        isAllStale: members.every((m) => _isStale(m.profile)),
         onTap: () => _focusCluster(members),
         onMemberTap: members
             .map((m) => () => _selectUser(m.profile))
@@ -654,7 +654,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         speedKmh: location.speed * 3.6,
         isMoving: location.isMoving,
         heading: location.heading,
-        isStale: _isLocationStale(location),
+        isStale: _isStale(profile),
         batteryLevel: profile.batteryLevel,
         isCharging: profile.isCharging ?? false,
         isSelected: isSelected,
@@ -667,9 +667,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
-  bool _isLocationStale(LocationPoint location) {
-    return DateTime.now().difference(location.timestamp) >
-        const Duration(minutes: 2);
+  /// Greyed out when we haven't heard from the device in a while. Uses the
+  /// server's last-seen time, not the position's age: a parked user's last
+  /// point is old by design (nothing is recorded while stationary) yet they
+  /// are still online, refreshing last-seen with heartbeats and live pings.
+  bool _isStale(UserProfile profile) {
+    if (profile.id == widget.selfProfile.id) return false;
+    return profile.isStale;
   }
 }
 

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
@@ -23,10 +25,15 @@ class SessionReplayScreen extends StatefulWidget {
 
 class _SessionReplayScreenState extends State<SessionReplayScreen>
     with SingleTickerProviderStateMixin {
-  // Fixed time per point-to-point glide, completely independent of the
-  // distance between fixes (and therefore of the recorded real speed) — a
-  // 200 km/h segment and a 10 km/h segment take exactly the same time.
-  static const _baseSegmentDuration = Duration(milliseconds: 120);
+  // Constant on-screen speed, independent of the recorded real speed. Points
+  // are stored adaptively — dense through turns, sparse on straights — so
+  // each glide lasts in proportion to the distance it covers; a fixed time
+  // per segment would race down straights and crawl through corners. The
+  // pace is set so a whole session plays in about this long at 1x.
+  static const _targetPlayback = Duration(seconds: 40);
+  static const _minPaceMetersPerSecond = 5.0;
+  static const _minSegmentMs = 16.0; // one frame
+  static const _maxSegmentMs = 3000.0; // e.g. across a GPS gap
 
   final MapController _mapController = MapController();
   late final AnimationController _segmentController;
@@ -41,6 +48,17 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   late final List<LatLng> _route = widget.session.points
       .map((p) => LatLng(p.latitude, p.longitude))
       .toList();
+
+  late final List<double> _segmentMeters = [
+    for (var i = 1; i < _route.length; i++)
+      const Distance().as(LengthUnit.Meter, _route[i - 1], _route[i]),
+  ];
+
+  late final double _paceMetersPerSecond = math.max(
+    _segmentMeters.fold<double>(0, (sum, m) => sum + m) /
+        _targetPlayback.inSeconds,
+    _minPaceMetersPerSecond,
+  );
 
   @override
   void initState() {
@@ -90,8 +108,12 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   }
 
   Duration _segmentDuration(int index) {
-    final ms = _baseSegmentDuration.inMilliseconds / _playbackSpeed;
-    return Duration(milliseconds: ms.round());
+    final meters = index < _segmentMeters.length ? _segmentMeters[index] : 0.0;
+    final ms = (meters / _paceMetersPerSecond * 1000).clamp(
+      _minSegmentMs,
+      _maxSegmentMs,
+    );
+    return Duration(milliseconds: (ms / _playbackSpeed).round());
   }
 
   void _handleSegmentTick() {

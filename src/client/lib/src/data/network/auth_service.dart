@@ -4,6 +4,17 @@ import 'package:http/http.dart' as http;
 
 import '../storage/token_storage.dart';
 
+/// The auth server definitively refused the session (invalid or expired
+/// refresh token) — as opposed to a network failure, which is transient.
+class AuthRejectedException implements Exception {
+  AuthRejectedException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
 class AuthService {
   AuthService({http.Client? httpClient, String? baseUrl})
       : _httpClient = httpClient ?? http.Client(),
@@ -34,6 +45,9 @@ class AuthService {
       body: jsonEncode({'refresh_token': refreshToken}),
     );
 
+    if (response.statusCode >= 400 && response.statusCode < 500) {
+      throw AuthRejectedException('Token refresh rejected (${response.statusCode})');
+    }
     if (response.statusCode != 200) {
       throw Exception('Token refresh failed: ${response.body.isEmpty ? response.reasonPhrase : response.body}');
     }

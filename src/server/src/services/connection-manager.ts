@@ -49,14 +49,15 @@ class ConnectionManager {
     return this.clients.size;
   }
 
-  /** True if any connected viewer currently has the map tab in the foreground. */
-  get anyMapActive(): boolean {
+  /** Number of connected viewers that currently have the map tab in the foreground. */
+  get activeMapCount(): number {
+    let count = 0;
     for (const entry of this.clients.values()) {
       if (entry.mapActive) {
-        return true;
+        count += 1;
       }
     }
-    return false;
+    return count;
   }
 }
 

@@ -65,19 +65,6 @@ class MockBackend implements Backend {
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
 
   @override
-  void sendLocationRealtime(
-    LocationPoint point, {
-    int? batteryLevel,
-    bool? isCharging,
-  }) {}
-
-  @override
-  Future<bool> sendLocation(UserProfile profile) async {
-    await Future.delayed(const Duration(milliseconds: 250));
-    return true;
-  }
-
-  @override
   Future<void> initialize() async {}
 
   @override
@@ -85,6 +72,12 @@ class MockBackend implements Backend {
 
   @override
   void setMapActive(bool active) {}
+
+  @override
+  void suspend() {}
+
+  @override
+  void resume() {}
 
   @override
   Future<void> dispose() async {

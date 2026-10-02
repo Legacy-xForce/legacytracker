@@ -65,6 +65,10 @@
 		<string>location</string>
 		<string>remote-notification</string>
 	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.legacy.legacytracker.refresh</string>
+	</array>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Legacytracker needs local network access to communicate with the tracking backend.</string>
 	<key>NSPhotoLibraryUsageDescription</key>

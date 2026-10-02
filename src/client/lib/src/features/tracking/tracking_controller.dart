@@ -1,26 +1,37 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants.dart';
 import '../../data/models/location_model.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/backend.dart';
-import '../background/background_tracker.dart';
-import '../debug/debug_log_store.dart';
+import '../../data/network/device_service.dart';
 import '../location/battery_service.dart';
-import '../location/location_repository.dart';
-import '../location/tracking_tuning.dart';
+import '../location/tracking_engine.dart';
+import '../location/tracking_permissions.dart';
 
+/// UI-side view of location sharing.
+///
+/// Recording and uploading happen in the native [TrackingEngine], which keeps
+/// running when this controller (and the whole Flutter UI) is gone. This
+/// controller configures the engine, mirrors its fixes into the map while the
+/// app is open, and keeps the WebSocket that delivers everyone else's
+/// positions.
 class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   TrackingController({
-    required this.locationRepository,
     required this.backend,
     required this.baseUrl,
+    required this.getAccessToken,
+    DeviceService? deviceService,
     BatteryService? batteryService,
     UserProfile? initialProfile,
-  }) : batteryService = batteryService ?? BatteryService(),
+  }) : deviceService = deviceService ?? DeviceService(baseUrl: baseUrl),
+       batteryService = batteryService ?? BatteryService(),
        selfProfile =
            initialProfile ??
            UserProfile(
@@ -35,9 +46,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     });
   }
 
-  final LocationRepository locationRepository;
   final Backend backend;
   final String baseUrl;
+  final String? Function() getAccessToken;
+  final DeviceService deviceService;
   final BatteryService batteryService;
   final UserProfile selfProfile;
 
@@ -46,18 +58,13 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   LocationPoint? lastLocation;
   List<LocationPoint> history = [];
   List<UserProfile> peers = [];
-
-  // Last point actually sent over the WebSocket — the movement gate compares
-  // against this so foreground traffic is shaped the same way background
-  // enqueues are.
-  double? _lastSentLat;
-  double? _lastSentLon;
-  int? _lastSentMs;
+  TrackingStatus status = const TrackingStatus();
 
   StreamSubscription<List<UserProfile>>? _peerSubscription;
-  StreamSubscription<LocationPoint>? _locationSubscription;
+  StreamSubscription<Map<String, dynamic>>? _engineSubscription;
   StreamSubscription<void>? _batterySubscription;
   Timer? _batteryRefreshTimer;
+  bool _reregistering = false;
 
   String get speedLabel {
     final speed = lastLocation?.speed ?? 0.0;
@@ -81,40 +88,18 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     switch (state) {
+      case AppLifecycleState.resumed:
+        _setAppForeground(true);
+        // Permissions may have been changed in Settings meanwhile.
+        if (isTracking) unawaited(_rearm());
+        break;
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        if (isTracking) _switchToBackground();
-        break;
-      case AppLifecycleState.resumed:
-        if (isTracking) _switchToForeground();
+        _setAppForeground(false);
         break;
       default:
         break;
     }
-  }
-
-  // The foreground service is started once, in [startTracking], while the app
-  // is still visible — Android denies a location-type foreground service its
-  // location capability if it's launched after the app has already gone to
-  // the background. Pause/resume only toggle the `app_foreground` flag the
-  // background isolate uses to avoid sending duplicate updates while the
-  // in-app realtime stream is already covering it; the service itself keeps
-  // running for the life of the tracking session.
-  Future<void> _switchToBackground() async {
-    _locationSubscription?.cancel();
-    _locationSubscription = null;
-    _stopBatteryMonitoring();
-    _isAppForeground = false;
-    _syncMapActive();
-    await BackgroundTracker.setAppForeground(false);
-  }
-
-  void _switchToForeground() {
-    _isAppForeground = true;
-    _syncMapActive();
-    BackgroundTracker.setAppForeground(true);
-    _startLocationStream();
-    _startBatteryMonitoring();
   }
 
   // Whether TrackingScreen currently has its Map tab selected, and whether
@@ -125,9 +110,27 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   bool _isMapTabSelected = true;
   bool _isAppForeground = true;
 
+  void _setAppForeground(bool foreground) {
+    if (foreground) {
+      backend.resume();
+    } else {
+      backend.suspend();
+    }
+    _isAppForeground = foreground;
+    _syncMapActive();
+    if (!isTracking) return;
+    unawaited(TrackingEngine.setAppVisible(foreground));
+    if (foreground) {
+      _startBatteryMonitoring();
+      unawaited(refreshStatus());
+    } else {
+      _stopBatteryMonitoring();
+    }
+  }
+
   /// Forwarded from [TrackingScreen] whenever the Map tab becomes or stops
-  /// being the visible tab, so the server can scope AGGRESSIVE pacing pushes
-  /// to moments someone can actually see drivers move on the map.
+  /// being the visible tab, so the server only asks devices to stream live
+  /// while someone can actually see them move.
   void setMapTabSelected(bool selected) {
     _isMapTabSelected = selected;
     _syncMapActive();
@@ -142,94 +145,186 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> startTracking() async {
     if (isTracking) return;
 
-    permissionGranted = await locationRepository.requestPermission();
+    permissionGranted = await TrackingPermissions.request();
     if (!permissionGranted) {
       notifyListeners();
       return;
     }
 
-    locationRepository.setBatterySavingEnabled(
-      selfProfile.batterySavingEnabled,
-    );
-
-    if (lastLocation == null) {
-      final initial = await locationRepository.getCurrentLocation();
-      if (initial != null && lastLocation == null) {
-        lastLocation = initial;
-        notifyListeners();
-      }
+    _engineSubscription ??= TrackingEngine.events.listen(_onEngineEvent);
+    final configured = await _configureEngine();
+    if (configured) {
+      await TrackingEngine.start();
+      await TrackingEngine.setAppVisible(_isAppForeground);
     }
-
-    // Start the background foreground-service now, while the app is still
-    // visible, so it retains its location capability for the rest of the
-    // tracking session regardless of later pause/resume cycles.
-    await BackgroundTracker.start(
-      baseUrl,
-      batterySavingEnabled: selfProfile.batterySavingEnabled,
-    );
-
-    _startLocationStream();
     _startBatteryMonitoring();
     isTracking = true;
     notifyListeners();
+    unawaited(refreshStatus());
 
-    // Backend connection is best-effort; local tracking works without it.
+    // Backend connection is best-effort; recording works without it.
     backend.initialize().catchError((_) {});
   }
 
-  void _startLocationStream() {
-    _locationSubscription?.cancel();
-    locationRepository.setBatterySavingEnabled(
-      selfProfile.batterySavingEnabled,
-    );
-    _locationSubscription = locationRepository.locationStream.listen((point) {
-      if (!point.latitude.isFinite || !point.longitude.isFinite) return;
-
-      lastLocation = point;
-      history = [point, ...history].take(40).toList();
-      selfProfile.lastLocation = point;
-      selfProfile.history = history;
-      notifyListeners();
-
-      // Movement gate: drop GPS jitter / cap highway spam so foreground WS
-      // traffic is shaped the same way background enqueues are.
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      if (!TrackingTuning.shouldEnqueue(
-        prevLat: _lastSentLat,
-        prevLon: _lastSentLon,
-        prevMs: _lastSentMs,
-        nextLat: point.latitude,
-        nextLon: point.longitude,
-        nextMs: nowMs,
-      )) {
-        return;
-      }
-      _lastSentLat = point.latitude;
-      _lastSentLon = point.longitude;
-      _lastSentMs = nowMs;
-
-      unawaited(
-        DebugLogStore.log(
-          'position',
-          'Foreground fix: ${point.latitude.toStringAsFixed(5)}, '
-              '${point.longitude.toStringAsFixed(5)} '
-              '(speed=${point.speed.toStringAsFixed(1)}m/s)',
-        ),
-      );
-
-      // Foreground: send realtime over the open WebSocket, tagging the device's
-      // current power state so peers can render the battery badge.
-      backend.sendLocationRealtime(
-        point,
-        batteryLevel: selfProfile.batteryLevel,
-        isCharging: selfProfile.isCharging,
-      );
-    });
+  /// Pauses sharing: the engine disarms every trigger. Already-recorded
+  /// points still upload.
+  Future<void> stopTracking() async {
+    if (!isTracking) return;
+    await TrackingEngine.stop();
+    _stopBatteryMonitoring();
+    isTracking = false;
+    notifyListeners();
+    unawaited(refreshStatus());
   }
 
-  // Keep [selfProfile]'s battery fields fresh: react to charging-state changes
-  // immediately and re-poll the level periodically (the platform doesn't push
-  // level changes). The next location send carries the updated values.
+  Future<void> refreshStatus() async {
+    status = await TrackingEngine.status();
+    notifyListeners();
+  }
+
+  /// Re-applies configuration so the engine picks up permission changes.
+  Future<void> _rearm() async {
+    await TrackingEngine.start();
+    await refreshStatus();
+  }
+
+  Future<bool> _configureEngine() async {
+    final authHeader = await _uploadAuthHeader();
+    if (authHeader == null) {
+      unawaited(TrackingEngine.log('auth', 'Not configured: no session'));
+      return false;
+    }
+    await TrackingEngine.configure(
+      baseUrl: baseUrl,
+      authHeader: authHeader,
+      userId: selfProfile.id,
+      batterySaver: selfProfile.batterySavingEnabled,
+    );
+    unawaited(_migrateLegacyQueue(authHeader));
+    return true;
+  }
+
+  /// One-time upgrade step from the previous Dart/foreground-service
+  /// implementation: uploads any points still sitting in its
+  /// SharedPreferences outbox (already in the server's payload format), then
+  /// removes its leftover keys.
+  Future<void> _migrateLegacyQueue(String authHeader) async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_legacyOutboxKey);
+    if (raw != null && raw.isNotEmpty && raw != '[]') {
+      try {
+        final response = await http
+            .post(
+              Uri.parse('$baseUrl/api/v1/location'),
+              headers: {
+                'content-type': 'application/json',
+                'authorization': authHeader,
+              },
+              body: raw,
+            )
+            .timeout(const Duration(seconds: 30));
+        // 400: nothing usable in there; anything else non-2xx: retry later.
+        if (response.statusCode >= 300 && response.statusCode != 400) return;
+        unawaited(TrackingEngine.log('upload', 'Uploaded the pre-upgrade queue'));
+      } catch (_) {
+        return;
+      }
+    }
+    for (final key in _legacyKeys) {
+      await prefs.remove(key);
+    }
+  }
+
+  static const _legacyOutboxKey = 'pending_location_points';
+  static const _legacyKeys = [
+    _legacyOutboxKey,
+    'pacing_mode',
+    'battery_saving_enabled',
+    'app_foreground',
+    'bg_base_url',
+    'bg_current_interval_ms',
+    'bg_service_running',
+    'debug_activity_log',
+    'debug_last_tick',
+    'debug_last_success',
+  ];
+
+  /// The engine's upload credential: this install's device token, registered
+  /// once per account. Falls back to the session JWT against servers without
+  /// device registration — refreshed into the engine whenever the app opens.
+  Future<String?> _uploadAuthHeader({bool forceRegister = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = DeviceCredentialStore.load(prefs);
+    if (!forceRegister && cached != null && cached.userId == selfProfile.id) {
+      return cached.authHeader;
+    }
+    final accessToken = getAccessToken();
+    if (accessToken == null) return cached?.authHeader;
+    try {
+      final credentials = await deviceService.register(
+        accessToken,
+        userId: selfProfile.id,
+        platform: Platform.operatingSystem,
+        replaces: cached?.deviceId,
+      );
+      await DeviceCredentialStore.save(prefs, credentials);
+      unawaited(TrackingEngine.log('auth', 'Registered upload credentials'));
+      return credentials.authHeader;
+    } catch (error) {
+      unawaited(
+        TrackingEngine.log(
+          'auth',
+          'Device registration failed ($error); using the session token',
+        ),
+      );
+      return 'Bearer $accessToken';
+    }
+  }
+
+  void _onEngineEvent(Map<String, dynamic> event) {
+    switch (event['type']) {
+      case 'location':
+        final point = TrackingFix.fromMap(event).toLocationPoint();
+        if (!point.latitude.isFinite || !point.longitude.isFinite) return;
+        lastLocation = point;
+        history = [point, ...history].take(40).toList();
+        selfProfile.lastLocation = point;
+        selfProfile.history = history;
+        notifyListeners();
+        break;
+      case 'state':
+      case 'upload':
+        unawaited(refreshStatus());
+        break;
+      case 'auth_required':
+        unawaited(_reregister());
+        break;
+    }
+  }
+
+  /// The server rejected the engine's credential (revoked, or an expired
+  /// session-token fallback): register a fresh one.
+  Future<void> _reregister() async {
+    if (_reregistering) return;
+    _reregistering = true;
+    try {
+      final authHeader = await _uploadAuthHeader(forceRegister: true);
+      if (authHeader == null) return;
+      await TrackingEngine.configure(
+        baseUrl: baseUrl,
+        authHeader: authHeader,
+        userId: selfProfile.id,
+        batterySaver: selfProfile.batterySavingEnabled,
+      );
+    } finally {
+      _reregistering = false;
+    }
+  }
+
+  // Keep [selfProfile]'s battery fields fresh for our own marker: react to
+  // charging-state changes immediately and re-poll the level periodically
+  // (the platform doesn't push level changes). The engine reports battery
+  // to the server itself.
   void _startBatteryMonitoring() {
     _refreshBattery();
     _batterySubscription?.cancel();
@@ -238,9 +333,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     );
     _batteryRefreshTimer?.cancel();
     _batteryRefreshTimer = Timer.periodic(
-      selfProfile.batterySavingEnabled
-          ? const Duration(minutes: 5)
-          : const Duration(minutes: 1),
+      const Duration(minutes: 1),
       (_) => _refreshBattery(),
     );
   }
@@ -260,17 +353,6 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> stopTracking() async {
-    if (!isTracking) return;
-
-    await _locationSubscription?.cancel();
-    _locationSubscription = null;
-    _stopBatteryMonitoring();
-    await BackgroundTracker.stop();
-    isTracking = false;
-    notifyListeners();
-  }
-
   void updateProfile({required String name, required String avatarUrl}) {
     selfProfile.name = name;
     selfProfile.avatarUrl = avatarUrl;
@@ -283,30 +365,22 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     selfProfile.avatarUrl = profile.avatarUrl;
     selfProfile.role = profile.role;
     selfProfile.batterySavingEnabled = profile.batterySavingEnabled;
-    if (previousBatterySavingEnabled != profile.batterySavingEnabled) {
-      locationRepository.setBatterySavingEnabled(profile.batterySavingEnabled);
-      unawaited(
-        BackgroundTracker.applyBatterySavingEnabled(
-          profile.batterySavingEnabled,
-        ),
-      );
-      if (isTracking) {
-        _startLocationStream();
-        _startBatteryMonitoring();
-      }
+    if (isTracking &&
+        previousBatterySavingEnabled != profile.batterySavingEnabled) {
+      unawaited(_configureEngine());
     }
     notifyListeners();
   }
 
   @override
   void dispose() {
+    // The engine is deliberately left running: tracking outlives the UI.
+    // Signing out stops it (see AuthProvider).
     WidgetsBinding.instance.removeObserver(this);
-    _locationSubscription?.cancel();
+    _engineSubscription?.cancel();
     _peerSubscription?.cancel();
     _stopBatteryMonitoring();
-    locationRepository.dispose();
     backend.dispose();
-    BackgroundTracker.stop();
     super.dispose();
   }
 }

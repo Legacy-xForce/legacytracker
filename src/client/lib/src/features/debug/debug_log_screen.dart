@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
-import 'debug_log_store.dart';
+import '../location/tracking_engine.dart';
 
 class DebugLogScreen extends StatefulWidget {
   const DebugLogScreen({super.key});
@@ -11,8 +11,8 @@ class DebugLogScreen extends StatefulWidget {
 }
 
 class _DebugLogScreenState extends State<DebugLogScreen> {
-  List<Map<String, dynamic>> _entries = [];
-  DebugLogSummary _summary = const DebugLogSummary();
+  List<TrackingLogEntry> _entries = [];
+  TrackingStatus _summary = const TrackingStatus();
   String? _categoryFilter;
   bool _loading = true;
 
@@ -23,11 +23,11 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
   }
 
   Future<void> _load() async {
-    final entries = await DebugLogStore.readAll();
-    final summary = await DebugLogStore.summary();
+    final entries = await TrackingEngine.logs();
+    final summary = await TrackingEngine.status();
     if (!mounted) return;
     setState(() {
-      _entries = entries.reversed.toList();
+      _entries = entries;
       _summary = summary;
       _loading = false;
     });
@@ -46,17 +46,23 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
     final buffer = StringBuffer()
       ..writeln('== Activity log ==')
       ..writeln('generated: ${DateTime.now().toIso8601String()}')
-      ..writeln('service running: ${s.serviceRunning}')
-      ..writeln('app foreground: ${s.appForeground}')
-      ..writeln('pacing mode: ${s.pacingMode}')
-      ..writeln('interval ms: ${s.intervalMs ?? "—"}')
-      ..writeln('last tick: ${s.lastTick?.toIso8601String() ?? "never"}')
-      ..writeln('last success: ${s.lastSuccess?.toIso8601String() ?? "never"}')
+      ..writeln('mode: ${s.mode.name}${s.live ? ' (live)' : ''}')
+      ..writeln('configured: ${s.configured}, auth failed: ${s.authFailed}')
+      ..writeln('pending points: ${s.pending}')
+      ..writeln('last fix: ${s.lastFixAt?.toIso8601String() ?? "never"}')
+      ..writeln('last upload: ${s.lastUploadAt?.toIso8601String() ?? "never"}')
+      ..writeln('last upload error: ${s.lastUploadError ?? "—"}')
+      ..writeln(
+        'permissions: precise=${s.preciseLocation} '
+        'background=${s.backgroundLocation} '
+        'activity=${s.activityRecognition} '
+        'batteryExempt=${s.batteryOptimizationIgnored}',
+      )
       ..writeln('entries: ${_entries.length}')
       ..writeln();
     for (final e in _entries) {
       buffer.writeln(
-        '${e['ts'] ?? '?'}  [${e['cat'] ?? '?'}]  ${e['msg'] ?? ''}',
+        '${e.time.toIso8601String()}  [${e.category}]  ${e.message}',
       );
     }
     return buffer.toString();
@@ -81,17 +87,17 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
       ),
     );
     if (confirmed == true) {
-      await DebugLogStore.clear();
+      await TrackingEngine.clearLogs();
       _load();
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final categories = _entries.map((e) => e['cat'] as String? ?? '').toSet().toList()..sort();
+    final categories = _entries.map((e) => e.category).toSet().toList()..sort();
     final visible = _categoryFilter == null
         ? _entries
-        : _entries.where((e) => e['cat'] == _categoryFilter).toList();
+        : _entries.where((e) => e.category == _categoryFilter).toList();
 
     return Scaffold(
       appBar: AppBar(
@@ -157,14 +163,11 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
                             itemCount: visible.length,
                             itemBuilder: (context, index) {
                               final entry = visible[index];
-                              final ts = DateTime.tryParse(entry['ts'] as String? ?? '');
-                              final cat = entry['cat'] as String? ?? '';
-                              final msg = entry['msg'] as String? ?? '';
                               return ListTile(
                                 dense: true,
-                                leading: _CategoryBadge(category: cat),
-                                title: Text(msg),
-                                subtitle: Text(ts != null ? _formatTimestamp(ts) : ''),
+                                leading: _CategoryBadge(category: entry.category),
+                                title: Text(entry.message),
+                                subtitle: Text(_formatTimestamp(entry.time)),
                               );
                             },
                           ),
@@ -186,7 +189,7 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
 class _SummaryHeader extends StatelessWidget {
   const _SummaryHeader({required this.summary});
 
-  final DebugLogSummary summary;
+  final TrackingStatus summary;
 
   @override
   Widget build(BuildContext context) {
@@ -196,17 +199,17 @@ class _SummaryHeader extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _row('Service', summary.serviceRunning ? 'running' : 'stopped', style),
-          _row('App', summary.appForeground ? 'foreground' : 'background', style),
           _row(
-            'Pacing',
-            summary.intervalMs == null
-                ? summary.pacingMode
-                : '${summary.pacingMode} · ${(summary.intervalMs! / 1000).round()}s',
+            'Mode',
+            '${summary.mode.name}${summary.live ? ' · live' : ''}'
+                '${summary.lowPower ? ' · battery saver' : ''}',
             style,
           ),
-          _row('Last tick', _ago(summary.lastTick), style),
-          _row('Last success', _ago(summary.lastSuccess), style),
+          _row('Waiting', '${summary.pending} point(s)', style),
+          _row('Last fix', _ago(summary.lastFixAt), style),
+          _row('Last upload', _ago(summary.lastUploadAt), style),
+          if (summary.lastUploadError != null)
+            _row('Upload error', summary.lastUploadError!, style),
         ],
       ),
     );
@@ -254,12 +257,18 @@ class _CategoryBadge extends StatelessWidget {
   Color _colorFor(String category, ColorScheme scheme) {
     switch (category) {
       case 'position':
+      case 'ping':
         return scheme.primary;
-      case 'pacing':
+      case 'state':
+      case 'live':
+      case 'activity':
+      case 'geofence':
         return scheme.tertiary;
       case 'upload':
+      case 'auth':
         return scheme.secondary;
       case 'lifecycle':
+      case 'config':
         return scheme.outline;
       default:
         return scheme.error;

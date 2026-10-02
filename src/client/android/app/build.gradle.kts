@@ -43,3 +43,13 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // Native tracking engine: fused location, geofencing, activity recognition.
+    implementation("com.google.android.gms:play-services-location:21.3.0")
+    // Offline upload retries and the periodic watchdog.
+    implementation("androidx.work:work-runtime:2.10.1")
+    implementation("androidx.core:core:1.13.1")
+
+    testImplementation("junit:junit:4.13.2")
+}
