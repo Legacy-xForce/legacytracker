@@ -374,7 +374,11 @@ void main() {
     test('signs in as the user named in the token', () async {
       final auth = provider(
         _FakeAuthenticator(),
-        _jwt({'sub': 'user-1', 'username': 'alice'}),
+        _jwt({
+          'sub': 'user-1',
+          'username': 'alice',
+          'scopes': {'calendar': false, 'tracker': true},
+        }),
       );
       await auth.loginWithPasskey();
 

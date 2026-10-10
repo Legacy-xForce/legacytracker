@@ -1,6 +1,6 @@
 import "dotenv/config";
 import crypto from "crypto";
-import Fastify, { FastifyRequest } from "fastify";
+import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
@@ -25,6 +25,7 @@ import {
 } from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
+import { hasTrackerScope } from "./services/tracker-scope";
 
 const JWKS = createRemoteJWKSet(
   new URL("https://auth.legacy-group.tech/.well-known/jwks.json"),
@@ -260,14 +261,22 @@ function getDisplayNameFromToken(
   );
 }
 
+// `forbidden`: a valid session whose account lacks the tracker scope.
+type IdentityFailure = {
+  ok: false;
+  reason: string;
+  detail?: string;
+  forbidden?: boolean;
+};
+
 type IdentityResult =
   | { ok: true; userId: string; displayName: string }
-  | { ok: false; reason: string; detail?: string };
+  | IdentityFailure;
 
 function logUnauthorizedRequest(
   request: FastifyRequest,
   route: string,
-  failure: { reason: string; detail?: string },
+  failure: IdentityFailure,
 ): void {
   app.log.warn(
     {
@@ -280,6 +289,23 @@ function logUnauthorizedRequest(
     },
     "Rejected unauthorized request",
   );
+}
+
+/**
+ * Answers a request that failed its identity check. A missing tracker scope
+ * gets its own 403 so the app can tell "ask an admin for access" apart from
+ * an expired or invalid session.
+ */
+function rejectRequest(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  route: string,
+  failure: IdentityFailure,
+) {
+  logUnauthorizedRequest(request, route, failure);
+  return failure.forbidden
+    ? reply.code(403).send({ error: "Missing tracker scope" })
+    : reply.code(401).send({ error: "Unauthorized" });
 }
 
 async function getCurrentUserIdentity(
@@ -306,6 +332,14 @@ async function getCurrentUserIdentity(
     if (!sub) {
       return { ok: false, reason: "token is missing a subject claim" };
     }
+    if (!hasTrackerScope(payload)) {
+      return {
+        ok: false,
+        reason: "account lacks the tracker scope",
+        detail: `user ${sub}`,
+        forbidden: true,
+      };
+    }
 
     return {
       ok: true,
@@ -329,7 +363,7 @@ async function getCurrentUserIdentity(
 
 type IngestIdentity =
   | { ok: true; userId: string; displayName: string; deviceId: string | null }
-  | { ok: false; reason: string; detail?: string };
+  | IdentityFailure;
 
 /**
  * Identity for location ingest: the native tracking engine authenticates
@@ -641,8 +675,7 @@ async function ingestPoints(
 app.get("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/profile", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/profile", identity);
   }
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -668,8 +701,7 @@ app.get("/api/v1/profile", async (request, reply) => {
 app.patch("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/profile", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/profile", identity);
   }
 
   const body = request.body as Record<string, unknown> | null;
@@ -721,8 +753,7 @@ app.patch("/api/v1/profile", async (request, reply) => {
 app.post("/api/v1/fcm-token", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/fcm-token", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/fcm-token", identity);
   }
 
   const body = request.body as Record<string, unknown> | null;
@@ -749,8 +780,7 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
 app.post("/api/v1/devices", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/devices", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/devices", identity);
   }
 
   const body = (request.body ?? {}) as Record<string, unknown>;
@@ -777,8 +807,7 @@ app.post("/api/v1/devices", async (request, reply) => {
 app.delete("/api/v1/devices/:id", async (request, reply) => {
   const identity = await getIngestIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/devices/:id", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/devices/:id", identity);
   }
 
   const { id } = request.params as { id: string };
@@ -820,8 +849,7 @@ app.get("/api/v1/app/android/latest", async (_request, reply) => {
 app.post("/api/v1/streams/ticket", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/streams/ticket", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/streams/ticket", identity);
   }
 
   const ticket = crypto.randomUUID();
@@ -845,8 +873,7 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
 app.post("/api/v1/location", async (request, reply) => {
   const identity = await getIngestIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/location", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/location", identity);
   }
 
   const body = request.body;
@@ -899,8 +926,7 @@ app.post("/api/v1/location", async (request, reply) => {
 app.get("/api/v1/history", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
-    logUnauthorizedRequest(request, "/api/v1/history", identity);
-    return reply.code(401).send({ error: "Unauthorized" });
+    return rejectRequest(request, reply, "/api/v1/history", identity);
   }
 
   const query = request.query as Record<string, string | undefined>;

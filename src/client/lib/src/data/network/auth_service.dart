@@ -30,6 +30,16 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
+/// An administrator disabled the account in Legacy Auth. Thrown both when
+/// signing in (an [AuthException]) and when refreshing, where it also means
+/// the session is over (an [AuthRejectedException]): the auth server revokes
+/// every refresh token of a disabled account.
+class AccountDisabledException extends AuthException
+    implements AuthRejectedException {
+  AccountDisabledException()
+    : super('This account has been disabled.', statusCode: 403);
+}
+
 class AuthService {
   AuthService({http.Client? httpClient, String? baseUrl})
       : _httpClient = httpClient ?? http.Client(),
@@ -63,6 +73,9 @@ class AuthService {
       body: jsonEncode({'refresh_token': refreshToken}),
     );
 
+    if (response.statusCode == 403 && _serverError(response) == 'Account disabled') {
+      throw AccountDisabledException();
+    }
     if (response.statusCode >= 400 && response.statusCode < 500) {
       throw AuthRejectedException('Token refresh rejected (${response.statusCode})');
     }
@@ -191,19 +204,24 @@ class AuthService {
   /// server's own `error` text — it's written for people ("Account disabled").
   void _ensureOk(http.Response response, String fallback) {
     if (response.statusCode >= 200 && response.statusCode < 300) return;
-    String? serverMessage;
-    try {
-      final body = jsonDecode(response.body);
-      if (body is Map && body['error'] is String) serverMessage = body['error'] as String;
-    } catch (_) {
-      // Not JSON (a proxy error page, say).
-    }
+    final serverMessage = _serverError(response);
+    if (serverMessage == 'Account disabled') throw AccountDisabledException();
     final message = switch (serverMessage) {
-      'Account disabled' => 'This account has been disabled.',
       final String text when response.statusCode < 500 => _sentence(text),
       _ => '$fallback (error ${response.statusCode}).',
     };
     throw AuthException(message, statusCode: response.statusCode);
+  }
+
+  /// The `error` text of a JSON error response, if it has one.
+  static String? _serverError(http.Response response) {
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && body['error'] is String) return body['error'] as String;
+    } catch (_) {
+      // Not JSON (a proxy error page, say).
+    }
+    return null;
   }
 
   static String _sentence(String text) =>

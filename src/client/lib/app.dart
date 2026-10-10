@@ -8,6 +8,7 @@ import 'src/data/network/auth_service.dart';
 import 'src/data/network/device_service.dart';
 import 'src/data/network/profile_service.dart';
 import 'src/data/network/remote_backend.dart';
+import 'src/features/auth/access_denied_screen.dart';
 import 'src/features/auth/auth_provider.dart';
 import 'src/features/auth/login_screen.dart';
 import 'src/features/tracking/tracking_controller.dart';
@@ -40,17 +41,27 @@ class App extends StatelessWidget {
             themeMode: ThemeMode.dark,
             theme: buildAppTheme(),
             darkTheme: buildAppTheme(),
-            home: auth.isInitializing
-                ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-                : auth.isAuthenticated
-                    ? AuthenticatedApp(
-                        selfId: auth.profile?.id ?? '',
-                        profile: auth.profile,
-                      )
-                    : const LoginScreen(),
+            home: _home(auth),
           );
         },
       ),
+    );
+  }
+
+  Widget _home(AuthProvider auth) {
+    if (auth.isInitializing) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (auth.accessDenial == AccessDenial.accountDisabled) {
+      return const AccountDisabledScreen();
+    }
+    if (!auth.isAuthenticated) return const LoginScreen();
+    if (auth.accessDenial == AccessDenial.missingScope) {
+      return const MissingScopeScreen();
+    }
+    return AuthenticatedApp(
+      selfId: auth.profile?.id ?? '',
+      profile: auth.profile,
     );
   }
 }

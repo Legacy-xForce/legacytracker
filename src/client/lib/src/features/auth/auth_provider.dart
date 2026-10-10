@@ -13,6 +13,17 @@ import '../../data/storage/token_storage.dart';
 import '../location/tracking_engine.dart';
 import 'passkey_client.dart';
 
+/// Why an account can't use the tracker, as decided by Legacy Auth.
+enum AccessDenial {
+  /// An administrator disabled the account. The session is over; only a
+  /// different account can sign in.
+  accountDisabled,
+
+  /// The account hasn't been granted the `tracker` scope. The session is
+  /// kept so access can be checked again once an administrator grants it.
+  missingScope,
+}
+
 class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   AuthProvider({
     required this.authService,
@@ -41,6 +52,18 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // False while [profile] is a placeholder built offline from the token.
   bool _profileLoaded = false;
+  bool _accountDisabled = false;
+
+  /// Set when the account may not use the tracker; the app explains why
+  /// instead of showing the map. [username] still names the account.
+  AccessDenial? get accessDenial {
+    if (_accountDisabled) return AccessDenial.accountDisabled;
+    final accessToken = tokens?.accessToken;
+    if (accessToken != null && !_hasTrackerScope(accessToken)) {
+      return AccessDenial.missingScope;
+    }
+    return null;
+  }
 
   Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
@@ -51,11 +74,11 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       tokens = stored.tokens;
       try {
         if (await _refreshTokensIfNeeded()) {
-          await _loadProfile();
+          if (accessDenial == null) await _loadProfile();
           isAuthenticated = true;
         }
-      } on AuthRejectedException {
-        await _clearSession();
+      } on AuthRejectedException catch (error) {
+        await _clearSession(disabled: error is AccountDisabledException);
       } catch (_) {
         // Offline (or a server hiccup) at launch must not sign the user out —
         // that would also stop location sharing. Continue on the stored
@@ -68,7 +91,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> login(String username, String password) {
-    return _signIn(() async {
+    return _signIn(attemptedUsername: username.trim(), () async {
       final tokens = await authService.login(username.trim(), password);
       return (username.trim(), tokens);
     });
@@ -90,9 +113,12 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// [attemptedUsername] names the account on the "account disabled" screen
+  /// when the auth server refuses it.
   Future<void> _signIn(
-    Future<(String, AuthTokens)> Function() authenticate,
-  ) async {
+    Future<(String, AuthTokens)> Function() authenticate, {
+    String? attemptedUsername,
+  }) async {
     isLoading = true;
     errorMessage = null;
     notifyListeners();
@@ -103,11 +129,17 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       this.tokens = tokens;
       isAuthenticated = true;
       await _storage?.save(username, tokens);
-      await _loadProfile();
+      // Without the tracker scope the server would refuse the profile; the
+      // app shows why instead.
+      if (accessDenial == null) await _loadProfile();
     } catch (error) {
       final cancelled = error is PasskeyException && error.cancelled;
       errorMessage = cancelled ? null : _describe(error);
       isAuthenticated = false;
+      if (error is AccountDisabledException) {
+        _accountDisabled = true;
+        username = attemptedUsername;
+      }
       rethrow;
     } finally {
       isLoading = false;
@@ -183,13 +215,35 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Checks again whether the account has the tracker scope, which an
+  /// administrator may have granted since. True when it now has access.
+  Future<bool> retryAccess() async {
+    isLoading = true;
+    notifyListeners();
+    try {
+      await _refreshTokensIfNeeded();
+      if (accessDenial == null) await _ensureProfile();
+      return accessDenial == null;
+    } on AuthRejectedException catch (error) {
+      await _clearSession(disabled: error is AccountDisabledException);
+      return false;
+    } finally {
+      isLoading = false;
+      notifyListeners();
+    }
+  }
+
   Future<bool> _refreshTokensIfNeeded() async {
     if (tokens == null) {
       return false;
     }
 
     final now = DateTime.now();
-    if (tokens!.expiresAt.isAfter(now.add(const Duration(seconds: 10)))) {
+    final hadAccess = accessDenial == null;
+    // A token without the tracker scope is renewed even while it's valid:
+    // the new one carries the account's current scopes.
+    if (hadAccess &&
+        tokens!.expiresAt.isAfter(now.add(const Duration(seconds: 10)))) {
       return true;
     }
 
@@ -199,6 +253,8 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     tokens = await authService.refresh(tokens!.refreshToken);
     await _storage?.save(username!, tokens!);
+    // Losing tracker access stops location sharing, as signing out does.
+    if (hadAccess && accessDenial != null) await _stopSharing();
     return true;
   }
 
@@ -209,6 +265,17 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     profile = await profileService.fetchProfile(tokens!.accessToken);
     _profileLoaded = true;
     notifyListeners();
+  }
+
+  /// Loads the profile unless it already is, falling back to the offline
+  /// placeholder when the tracker server can't be reached.
+  Future<void> _ensureProfile() async {
+    if (_profileLoaded) return;
+    try {
+      await _loadProfile();
+    } catch (_) {
+      _useOfflineProfile();
+    }
   }
 
   /// Signs in from the stored session alone, identifying the user by the
@@ -223,22 +290,37 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// A string claim from a JWT's payload. Unverified — only for display and
   /// identifying ourselves; the servers do the verifying.
   static String? _tokenClaim(String? jwt, String claim) {
+    final value = _tokenPayload(jwt)?[claim];
+    return value is String && value.isNotEmpty ? value : null;
+  }
+
+  /// Whether the access token grants the tracker: Legacy Auth sends
+  /// `scopes: {calendar: bool, tracker: bool}`. The tracker server applies
+  /// the same rule; this only decides what the app shows.
+  static bool _hasTrackerScope(String jwt) {
+    final scopes = _tokenPayload(jwt)?['scopes'];
+    return scopes is Map && scopes['tracker'] == true;
+  }
+
+  static Map<String, dynamic>? _tokenPayload(String? jwt) {
     final parts = jwt?.split('.');
     if (parts == null || parts.length != 3) return null;
     try {
       final payload = jsonDecode(
         utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
       );
-      final value = payload is Map ? payload[claim] : null;
-      return value is String && value.isNotEmpty ? value : null;
+      return payload is Map<String, dynamic> ? payload : null;
     } catch (_) {
       return null;
     }
   }
 
-  Future<void> _clearSession() async {
+  /// Ends the session on this phone. When the account was [disabled], the
+  /// username is kept so the explanation can name the account.
+  Future<void> _clearSession({bool disabled = false}) async {
     await _stopSharing();
-    username = null;
+    if (!disabled) username = null;
+    _accountDisabled = disabled;
     tokens = null;
     profile = null;
     _profileLoaded = false;
@@ -283,11 +365,12 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _refreshOnResume() async {
     try {
+      // Also picks up a tracker scope granted while the app was away.
       await _refreshTokensIfNeeded();
-      if (!_profileLoaded) await _loadProfile();
+      if (accessDenial == null) await _ensureProfile();
       notifyListeners();
-    } on AuthRejectedException {
-      await _clearSession();
+    } on AuthRejectedException catch (error) {
+      await _clearSession(disabled: error is AccountDisabledException);
       notifyListeners();
     } catch (_) {
       // Transient (offline); try again on the next resume.
