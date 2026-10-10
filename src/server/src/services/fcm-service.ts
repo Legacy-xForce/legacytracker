@@ -7,6 +7,9 @@ let messaging: admin.messaging.Messaging | null = null;
 // A stale "go live" push is worthless after a minute — let FCM/APNs drop it
 // instead of waking the device late.
 const COMMAND_TTL_SECONDS = 60;
+// Devices also check on their own every few hours; a day covers phones that
+// are off for a while without piling up stale notices.
+const UPDATE_NOTICE_TTL_SECONDS = 24 * 60 * 60;
 
 const INVALID_TOKEN_CODES = new Set([
   'messaging/registration-token-not-registered',
@@ -42,37 +45,66 @@ export async function sendTrackingCommand(
   command: TrackingCommand,
   ttlSeconds: number,
 ): Promise<string[]> {
+  const live = command === 'live';
+  return sendToTokens(tokens, {
+    data: {
+      type: 'tracking_command',
+      lt_cmd: command,
+      lt_ttl: String(ttlSeconds),
+      // Read by older app builds that still poll on a pacing mode.
+      pacing: live ? 'AGGRESSIVE' : 'PASSIVE',
+    },
+    android: {
+      priority: live ? 'high' : 'normal',
+      ttl: COMMAND_TTL_SECONDS * 1000,
+    },
+    apns: {
+      headers: {
+        'apns-push-type': 'background',
+        'apns-priority': '5',
+        'apns-expiration': String(Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS),
+      },
+      payload: { aps: { contentAvailable: true } },
+    },
+  });
+}
+
+/**
+ * Tells devices a new Android release is out (`lt_cmd: update`), so the
+ * native updater fetches and installs it now instead of at its next periodic
+ * check. Normal priority: it can wait for the phone's next maintenance
+ * window. No APNs options — iOS has no self-update and ignores the command.
+ */
+export async function sendAppUpdateNotice(
+  tokens: string[],
+  versionCode: number,
+): Promise<string[]> {
+  return sendToTokens(tokens, {
+    data: {
+      type: 'app_update',
+      lt_cmd: 'update',
+      lt_version: String(versionCode),
+    },
+    android: {
+      priority: 'normal',
+      ttl: UPDATE_NOTICE_TTL_SECONDS * 1000,
+    },
+  });
+}
+
+async function sendToTokens(
+  tokens: string[],
+  message: Omit<admin.messaging.MulticastMessage, 'tokens'>,
+): Promise<string[]> {
   if (!messaging || tokens.length === 0) {
     return [];
   }
 
-  const live = command === 'live';
   const invalid: string[] = [];
   for (let i = 0; i < tokens.length; i += 500) {
     const chunk = tokens.slice(i, i + 500);
     try {
-      const response = await messaging.sendEachForMulticast({
-        tokens: chunk,
-        data: {
-          type: 'tracking_command',
-          lt_cmd: command,
-          lt_ttl: String(ttlSeconds),
-          // Read by older app builds that still poll on a pacing mode.
-          pacing: live ? 'AGGRESSIVE' : 'PASSIVE',
-        },
-        android: {
-          priority: live ? 'high' : 'normal',
-          ttl: COMMAND_TTL_SECONDS * 1000,
-        },
-        apns: {
-          headers: {
-            'apns-push-type': 'background',
-            'apns-priority': '5',
-            'apns-expiration': String(Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS),
-          },
-          payload: { aps: { contentAvailable: true } },
-        },
-      });
+      const response = await messaging.sendEachForMulticast({ ...message, tokens: chunk });
       response.responses.forEach((result, index) => {
         const code = result.error?.code;
         if (!result.success && code && INVALID_TOKEN_CODES.has(code)) {

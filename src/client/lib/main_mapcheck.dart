@@ -114,9 +114,11 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         selfTrackingPaused: false,
         selfMissingPermissions: false,
         selfBatterySavingEnabled: false,
+        selfLive: false,
         selectedUserId: null,
         onLayerSelected: (l) => setState(() => _layer = l),
         onUserSelected: (_) {},
+        onStatusTap: () {},
       ),
     );
   }

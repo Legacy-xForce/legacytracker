@@ -2,6 +2,8 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'src/core/constants.dart';
+import 'src/core/theme.dart';
 import 'src/data/network/auth_service.dart';
 import 'src/data/network/device_service.dart';
 import 'src/data/network/profile_service.dart';
@@ -15,11 +17,9 @@ import 'src/data/models/user_model.dart';
 class App extends StatelessWidget {
   App({super.key});
 
-  static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
-
   final AuthService authService = AuthService();
-  final ProfileService profileService = ProfileService(baseUrl: _defaultBackendBaseUrl());
-  final DeviceService deviceService = DeviceService(baseUrl: _defaultBackendBaseUrl());
+  final ProfileService profileService = ProfileService(baseUrl: AppConstants.backendBaseUrl);
+  final DeviceService deviceService = DeviceService(baseUrl: AppConstants.backendBaseUrl);
 
   @override
   Widget build(BuildContext context) {
@@ -38,16 +38,8 @@ class App extends StatelessWidget {
           return MaterialApp(
             title: 'Legacy Tracker',
             themeMode: ThemeMode.dark,
-            theme: ThemeData(
-              useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
-              brightness: Brightness.dark,
-            ),
-            darkTheme: ThemeData(
-              useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
-              brightness: Brightness.dark,
-            ),
+            theme: buildAppTheme(),
+            darkTheme: buildAppTheme(),
             home: auth.isInitializing
                 ? const Scaffold(body: Center(child: CircularProgressIndicator()))
                 : auth.isAuthenticated
@@ -81,8 +73,6 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
   TrackingController? _trackingController;
   late final AuthProvider _auth;
 
-  static String _defaultBackendBaseUrl() => 'https://tracker.legacy-group.tech';
-
   @override
   void initState() {
     super.initState();
@@ -95,7 +85,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
 
-      final baseUrl = _defaultBackendBaseUrl();
+      final baseUrl = AppConstants.backendBaseUrl;
       final backend = RemoteBackend(
         baseUrl: baseUrl,
         getAccessToken: () => _auth.tokens!.accessToken,
@@ -125,7 +115,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
     if (_trackingController == null) {
       if (!_auth.isAuthenticated) return;
 
-      final baseUrl = _defaultBackendBaseUrl();
+      final baseUrl = AppConstants.backendBaseUrl;
       final backend = RemoteBackend(
         baseUrl: baseUrl,
         getAccessToken: () => _auth.tokens!.accessToken,

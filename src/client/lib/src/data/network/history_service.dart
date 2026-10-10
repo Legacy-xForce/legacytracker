@@ -17,6 +17,7 @@ class HistoryService {
     required String userId,
     required DateTime from,
     required DateTime to,
+    bool includePoints = true,
   }) async {
     final response = await _httpClient
         .get(
@@ -24,6 +25,7 @@ class HistoryService {
             'user_id': userId,
             'from': from.toUtc().toIso8601String(),
             'to': to.toUtc().toIso8601String(),
+            if (!includePoints) 'points': 'false',
           }),
           headers: _bearerHeaders(accessToken),
         )

@@ -34,6 +34,8 @@ Create a `.env` file (or export variables):
 | `DATABASE_URL` | `postgres://localhost:5432/legacytracker`  | PostgreSQL connection URL |
 | `PORT`         | `3000`                                     | HTTP/WS listen port      |
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | — | Service-account JSON for FCM tracking commands (live mode). Without it devices only batch. |
+| `ANDROID_RELEASES_REPO` | `Legacy-xForce/legacytracker` | GitHub repository whose `android-v*` releases the app updates itself from. Empty disables update checks. |
+| `GITHUB_TOKEN` | — | Optional; raises GitHub's API rate limit for the release lookups. |
 
 ### 3. Run
 
@@ -45,11 +47,25 @@ npm run dev
 npm run build
 npm start
 
-# unit tests (session building, live-mode controller)
+# unit tests (session building, live-mode controller, dwell tracking)
 npm test
 ```
 
 Schema changes are applied idempotently at startup by `ensureBackendSchema()`.
+
+### Running the app against a local server
+
+The app talks to production unless built with `BACKEND_URL`. From the Android
+emulator the host machine is `10.0.2.2` (debug builds allow cleartext HTTP):
+
+```bash
+cd src/client
+flutter run --dart-define=BACKEND_URL=http://10.0.2.2:3000
+```
+
+Leave `FIREBASE_SERVICE_ACCOUNT_JSON` empty when pointing a dev server at a
+shared database: with it set, opening the map sends "go live" pushes to every
+registered device.
 
 ### Docker
 
@@ -80,6 +96,16 @@ long-lived device token instead of the user JWT.
 | `DELETE` | `/api/v1/devices/:id`   | JWT, or that device's own token | Revokes the token (sign-out). |
 
 Only `sha256(token)` is stored.
+
+### App updates
+
+| Method | Path                          | Auth | Description |
+|--------|-------------------------------|------|-------------|
+| `GET`  | `/api/v1/app/android/latest`  | none | The current Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at" }`, or 204 when none is published. |
+
+Releases are GitHub releases tagged `android-v<name>+<code>`, read every five
+minutes; a new one is announced to every device with an FCM `lt_cmd: update`
+push. See [`docs/app-updates.md`](../../docs/app-updates.md).
 
 ### Location
 
@@ -122,6 +148,12 @@ map and is renewed every 4 min; `idle` follows 45 s after the last viewer
 leaves. iOS uses background pushes (`apns-push-type: background`, priority 5).
 Tokens FCM reports as unregistered are pruned.
 
+### History
+
+| Method | Path              | Description |
+|--------|-------------------|-------------|
+| `GET`  | `/api/v1/history` | Query `user_id` (default: caller), `from`, `to` (ISO 8601). Returns `{ "sessions": [...] }`: trips with `start_at`, `end_at`, `duration_seconds`, `distance_meters`, `avg_speed`, `top_speed`, `point_count` and `points`. With `points=false` the points are left out — the app's trip calendar fetches a month of summaries that way. Windows are capped at 30 days (93 without points). |
+
 ### WebSocket stream
 
 | Method | Path               | Description                                       |
@@ -137,7 +169,7 @@ Tokens FCM reports as unregistered are pruned.
 {
   "type": "snapshot",
   "users": [
-    { "user_id": "alice", "latitude": 45.07, "longitude": 7.68, "speed": 0, "heading": null, "recorded_at": "..." }
+    { "user_id": "alice", "latitude": 45.07, "longitude": 7.68, "speed": 0, "heading": null, "recorded_at": "...", "here_since": "..." }
   ]
 }
 ```
@@ -145,14 +177,21 @@ Tokens FCM reports as unregistered are pruned.
 The snapshot uses each user's newest point (in memory or the latest stored row),
 so it is complete right after a restart.
 
+`here_since` is when the user arrived where they are now (the app's "Here
+for"): the start of the run of points within 100 m of each other with no trip
+point in between. It is `null` until a user has any location. The newest
+point's `recorded_at` can't serve: a parked phone still sends fresh fixes while
+someone watches. See `services/dwell-tracker.ts`.
+
 **Live update** (broadcast on ingest when a user's newest point moved forward):
 
 ```json
-{ "user_id": "alice", "latitude": 45.07, "longitude": 7.68, "speed": 12.5, "heading": 270, "recorded_at": "...", "battery_level": 81, "is_charging": false, "last_seen_at": "..." }
+{ "user_id": "alice", "latitude": 45.07, "longitude": 7.68, "speed": 12.5, "heading": 270, "recorded_at": "...", "here_since": "...", "battery_level": 81, "is_charging": false, "last_seen_at": "..." }
 ```
 
 **Presence update** (same position, or an older batch arriving late): the same
-message without coordinates — refreshes `last_seen_at` and battery only.
+message without coordinates — refreshes `last_seen_at`, `here_since` and
+battery only.
 
 #### WebSocket messages (client → server)
 
@@ -169,6 +208,7 @@ src/
   services/
     connection-manager.ts # WebSocket client registry & broadcast
     device-auth.ts        # device tokens for background uploads
+    dwell-tracker.ts      # "here since" for each user's current stay
     fcm-service.ts        # tracking commands via FCM
     live-controller.ts    # live-mode state (debounce, renewal, TTL)
     session-builder.ts    # trips for history/replay

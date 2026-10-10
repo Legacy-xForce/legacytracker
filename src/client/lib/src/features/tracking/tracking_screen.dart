@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import '../../features/auth/auth_provider.dart';
 import '../../features/tracking/tracking_controller.dart';
 import 'local_avatar_store.dart';
 import 'widgets/tracking_map_layer.dart';
@@ -16,11 +16,13 @@ class TrackingScreen extends StatefulWidget {
 }
 
 class _TrackingScreenState extends State<TrackingScreen> {
-  late final TextEditingController _nameController;
+  static const _mapTab = 0;
+  static const _profileTab = 1;
+
   late final LocalAvatarStore _avatarStore;
   bool _initialized = false;
   bool _trackingStarted = false;
-  int _selectedIndex = 0;
+  int _selectedIndex = _mapTab;
   MapLayer _selectedLayer = MapLayer.standard;
   String? _selectedUserId;
 
@@ -29,9 +31,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
     super.didChangeDependencies();
     if (!_initialized) {
       final controller = context.read<TrackingController>();
-      _nameController = TextEditingController(
-        text: controller.selfProfile.name,
-      );
       _avatarStore = LocalAvatarStore();
       _avatarStore.load(controller.selfProfile.id);
       _initialized = true;
@@ -48,96 +47,71 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   void dispose() {
-    _nameController.dispose();
     _avatarStore.dispose();
     super.dispose();
   }
 
+  void _selectTab(int index) {
+    setState(() => _selectedIndex = index);
+    context.read<TrackingController>().setMapTabSelected(index == _mapTab);
+  }
+
   @override
   Widget build(BuildContext context) {
-    final auth = context.watch<AuthProvider>();
-    final title = auth.profile?.name ?? auth.username ?? 'Legacy Tracker';
-
     return ChangeNotifierProvider<LocalAvatarStore>.value(
       value: _avatarStore,
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text('Legacy Tracker · $title'),
-          centerTitle: true,
-          actions: [
-            Consumer<TrackingController>(
-              builder: (context, controller, child) {
-                return IconButton(
-                  tooltip: controller.isTracking ? 'Pause tracking' : 'Resume tracking',
-                  icon: Icon(controller.isTracking ? Icons.pause_circle_outline : Icons.play_circle_outline),
-                  onPressed: controller.isTracking ? controller.stopTracking : controller.startTracking,
-                );
-              },
-            ),
-          ],
+      // The map runs edge to edge under the status bar, so its icons have to
+      // stay light over the dark scrim there.
+      child: AnnotatedRegion<SystemUiOverlayStyle>(
+        value: SystemUiOverlayStyle.light.copyWith(
+          statusBarColor: Colors.transparent,
         ),
-        body: Consumer<TrackingController>(
-          builder: (context, controller, child) {
-            return IndexedStack(
-              index: _selectedIndex,
-              children: [
-                TrackingMapTab(
-                  isActive: _selectedIndex == 0,
-                  center: controller.mapCenter,
-                  selectedLayer: _selectedLayer,
-                  peers: controller.peers,
-                  selfProfile: controller.selfProfile,
-                  selfTrackingPaused: !controller.isTracking,
-                  selfMissingPermissions: !controller.permissionGranted,
-                  selfBatterySavingEnabled:
-                      controller.selfProfile.batterySavingEnabled,
-                  selectedUserId: _selectedUserId,
-                  onLayerSelected: (layer) =>
-                      setState(() => _selectedLayer = layer),
-                  onUserSelected: (user) {
-                    setState(() => _selectedUserId = user.id);
-                  },
-                ),
-                TrackingProfileTab(
-                  controller: controller,
-                  nameController: _nameController,
-                  onSaveProfile: () async {
-                    final updatedName = _nameController.text.trim().isEmpty
-                        ? 'You'
-                        : _nameController.text.trim();
-
-                    controller.updateProfile(
-                      name: updatedName,
-                      avatarUrl: controller.selfProfile.avatarUrl,
-                    );
-                    await auth.updateProfile(
-                      name: updatedName,
-                      avatarUrl: controller.selfProfile.avatarUrl,
-                    );
-                  },
-                ),
-              ],
-            );
-          },
-        ),
-        bottomNavigationBar: NavigationBar(
-          selectedIndex: _selectedIndex,
-          onDestinationSelected: (index) {
-            setState(() => _selectedIndex = index);
-            context.read<TrackingController>().setMapTabSelected(index == 0);
-          },
-          destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.map_outlined),
-              selectedIcon: Icon(Icons.map),
-              label: 'Map',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.person_outline),
-              selectedIcon: Icon(Icons.person),
-              label: 'Profile',
-            ),
-          ],
+        child: Scaffold(
+          body: Consumer<TrackingController>(
+            builder: (context, controller, child) {
+              return IndexedStack(
+                index: _selectedIndex,
+                children: [
+                  TrackingMapTab(
+                    isActive: _selectedIndex == _mapTab,
+                    center: controller.mapCenter,
+                    selectedLayer: _selectedLayer,
+                    peers: controller.peers,
+                    selfProfile: controller.selfProfile,
+                    selfTrackingPaused: !controller.isTracking,
+                    selfMissingPermissions: !controller.permissionGranted,
+                    selfBatterySavingEnabled:
+                        controller.selfProfile.batterySavingEnabled,
+                    selfLive: controller.status.live,
+                    selectedUserId: _selectedUserId,
+                    onLayerSelected: (layer) =>
+                        setState(() => _selectedLayer = layer),
+                    onUserSelected: (user) {
+                      setState(() => _selectedUserId = user.id);
+                    },
+                    onStatusTap: () => _selectTab(_profileTab),
+                  ),
+                  TrackingProfileTab(controller: controller),
+                ],
+              );
+            },
+          ),
+          bottomNavigationBar: NavigationBar(
+            selectedIndex: _selectedIndex,
+            onDestinationSelected: _selectTab,
+            destinations: const [
+              NavigationDestination(
+                icon: Icon(Icons.map_outlined),
+                selectedIcon: Icon(Icons.map),
+                label: 'Map',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.person_outline),
+                selectedIcon: Icon(Icons.person),
+                label: 'Profile',
+              ),
+            ],
+          ),
         ),
       ),
     );

@@ -17,6 +17,17 @@ class UserProfile {
   /// upload, live point, on-demand ping or parked heartbeat).
   DateTime? lastSeenAt;
 
+  /// When this user arrived where they are now — the start of the "Here for"
+  /// counter. The newest fix can't serve as that: a parked phone still
+  /// reports a fresh fix every few seconds while someone watches.
+  DateTime? hereSince;
+
+  /// Set on our own profile from the tracking engine (a trip is being
+  /// recorded); peers are judged by their latest speed instead.
+  bool? travelling;
+
+  bool get isTravelling => travelling ?? (lastLocation?.isMoving ?? false);
+
   UserProfile({
     required this.id,
     required this.name,
@@ -29,6 +40,7 @@ class UserProfile {
     this.isCharging,
     this.lastLocation,
     this.lastSeenAt,
+    this.hereSince,
     List<LocationPoint>? history,
   }) : history = history ?? [];
 

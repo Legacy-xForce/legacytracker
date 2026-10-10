@@ -1,7 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
+import '../models/passkey.dart';
 import '../storage/token_storage.dart';
 
 /// The auth server definitively refused the session (invalid or expired
@@ -15,26 +17,42 @@ class AuthRejectedException implements Exception {
   String toString() => message;
 }
 
+/// A failed auth request, with a [message] fit to show the user.
+class AuthException implements Exception {
+  AuthException(this.message, {this.statusCode});
+
+  final String message;
+
+  /// Null when the server couldn't be reached at all.
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
+
 class AuthService {
   AuthService({http.Client? httpClient, String? baseUrl})
       : _httpClient = httpClient ?? http.Client(),
         _baseUri = Uri.parse(baseUrl ?? _defaultBaseUrl);
 
   static const String _defaultBaseUrl = 'https://auth.legacy-group.tech';
+  static const _timeout = Duration(seconds: 15);
   final Uri _baseUri;
   final http.Client _httpClient;
 
   Future<AuthTokens> login(String username, String password) async {
-    final response = await _httpClient.post(
-      _baseUri.replace(path: '/auth/login'),
-      headers: {'content-type': 'application/json'},
-      body: jsonEncode({'username': username, 'password': password}),
+    final response = await _send(
+      () => _httpClient.post(
+        _baseUri.replace(path: '/auth/login'),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({'username': username, 'password': password}),
+      ),
     );
 
-    if (response.statusCode != 200) {
-      throw Exception('Login failed: ${response.body.isEmpty ? response.reasonPhrase : response.body}');
+    if (response.statusCode == 401) {
+      throw AuthException('Wrong username or password.', statusCode: 401);
     }
-
+    _ensureOk(response, 'Sign-in failed');
     return _parseTokenResponse(response.body);
   }
 
@@ -66,6 +84,132 @@ class AuthService {
       // Best effort revoke; ignore errors during logout.
     }
   }
+
+  /// WebAuthn request options for a passkey sign-in, as JSON.
+  Future<Map<String, dynamic>> passkeyLoginOptions() async {
+    final response = await _send(
+      () => _httpClient.post(_baseUri.replace(path: '/auth/passkeys/login/options')),
+    );
+    _ensurePasskeysAvailable(response);
+    _ensureOk(response, 'Passkey sign-in is unavailable');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  /// Exchanges the authenticator's assertion for a session. A 404 means the
+  /// passkey was deleted from the account.
+  Future<AuthTokens> passkeyLogin(Map<String, dynamic> assertion) async {
+    final response = await _send(
+      () => _httpClient.post(
+        _baseUri.replace(path: '/auth/passkeys/login'),
+        headers: {'content-type': 'application/json'},
+        body: jsonEncode({'response': assertion}),
+      ),
+    );
+    _ensureOk(response, 'Passkey sign-in failed');
+    return _parseTokenResponse(response.body);
+  }
+
+  /// WebAuthn creation options for adding a passkey to the signed-in account.
+  Future<Map<String, dynamic>> passkeyRegistrationOptions(String accessToken) async {
+    final response = await _send(
+      () => _httpClient.post(
+        _baseUri.replace(path: '/auth/passkeys/register/options'),
+        headers: _bearer(accessToken),
+      ),
+    );
+    _ensurePasskeysAvailable(response);
+    _ensureOk(response, 'Couldn\'t start creating a passkey');
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
+  Future<Passkey> registerPasskey(
+    String accessToken,
+    Map<String, dynamic> attestation,
+  ) async {
+    final response = await _send(
+      () => _httpClient.post(
+        _baseUri.replace(path: '/auth/passkeys/register'),
+        headers: {'content-type': 'application/json', ..._bearer(accessToken)},
+        body: jsonEncode({'response': attestation}),
+      ),
+    );
+    _ensureOk(response, 'Couldn\'t save the passkey');
+    return Passkey.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+  }
+
+  /// The account's passkeys, or null when the server has passkeys turned off.
+  Future<List<Passkey>?> listPasskeys(String accessToken) async {
+    final response = await _send(
+      () => _httpClient.get(
+        _baseUri.replace(path: '/auth/passkeys'),
+        headers: _bearer(accessToken),
+      ),
+    );
+    // Servers from before passkeys don't know the route.
+    if (response.statusCode == 404) return null;
+    _ensureOk(response, 'Couldn\'t load your passkeys');
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    if (body['enabled'] == false) return null;
+    return (body['items'] as List<dynamic>)
+        .map((item) => Passkey.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<void> deletePasskey(String accessToken, String id) async {
+    final response = await _send(
+      () => _httpClient.delete(
+        _baseUri.replace(path: '/auth/passkeys/$id'),
+        headers: _bearer(accessToken),
+      ),
+    );
+    // Already gone counts as done.
+    if (response.statusCode == 404) return;
+    _ensureOk(response, 'Couldn\'t remove the passkey');
+  }
+
+  Future<http.Response> _send(Future<http.Response> Function() request) async {
+    try {
+      return await request().timeout(_timeout);
+    } on TimeoutException {
+      throw AuthException('The server took too long to answer. Try again.');
+    } on http.ClientException {
+      throw AuthException('Can\'t reach the server. Check your connection and try again.');
+    }
+  }
+
+  /// 404: an auth server from before passkeys; 503: passkeys not configured.
+  void _ensurePasskeysAvailable(http.Response response) {
+    if (response.statusCode == 404 || response.statusCode == 503) {
+      throw AuthException(
+        'Passkeys aren\'t available yet. Sign in with your password.',
+        statusCode: response.statusCode,
+      );
+    }
+  }
+
+  /// Throws an [AuthException] for any non-2xx response, preferring the
+  /// server's own `error` text — it's written for people ("Account disabled").
+  void _ensureOk(http.Response response, String fallback) {
+    if (response.statusCode >= 200 && response.statusCode < 300) return;
+    String? serverMessage;
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map && body['error'] is String) serverMessage = body['error'] as String;
+    } catch (_) {
+      // Not JSON (a proxy error page, say).
+    }
+    final message = switch (serverMessage) {
+      'Account disabled' => 'This account has been disabled.',
+      final String text when response.statusCode < 500 => _sentence(text),
+      _ => '$fallback (error ${response.statusCode}).',
+    };
+    throw AuthException(message, statusCode: response.statusCode);
+  }
+
+  static String _sentence(String text) =>
+      text.endsWith('.') || text.endsWith('!') ? text : '$text.';
+
+  Map<String, String> _bearer(String accessToken) => {'authorization': 'Bearer $accessToken'};
 
   AuthTokens _parseTokenResponse(String body) {
     final decoded = jsonDecode(body) as Map<String, dynamic>;

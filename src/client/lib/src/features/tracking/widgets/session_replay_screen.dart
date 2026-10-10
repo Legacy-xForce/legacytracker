@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/formatters.dart';
 import '../../../data/models/location_session.dart';
 import 'map_layers.dart';
 import 'tracked_user_marker.dart';
@@ -13,10 +14,12 @@ class SessionReplayScreen extends StatefulWidget {
   const SessionReplayScreen({
     super.key,
     required this.session,
+    required this.userId,
     required this.userName,
   });
 
   final LocationSession session;
+  final String userId;
   final String userName;
 
   @override
@@ -31,6 +34,9 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   // per segment would race down straights and crawl through corners. The
   // pace is set so a whole session plays in about this long at 1x.
   static const _targetPlayback = Duration(seconds: 40);
+  // Every speed option plays this many times faster than the pace above:
+  // "1x" covers a trip in ~20 s, "4x" in ~5 s.
+  static const _baseSpeed = 2.0;
   static const _minPaceMetersPerSecond = 5.0;
   static const _minSegmentMs = 16.0; // one frame
   static const _maxSegmentMs = 3000.0; // e.g. across a GPS gap
@@ -113,7 +119,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       _minSegmentMs,
       _maxSegmentMs,
     );
-    return Duration(milliseconds: (ms / _playbackSpeed).round());
+    return Duration(milliseconds: (ms / (_playbackSpeed * _baseSpeed)).round());
   }
 
   void _handleSegmentTick() {
@@ -151,6 +157,25 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     setState(() => _playbackSpeed = speed);
   }
 
+  PreferredSizeWidget _appBar(ThemeData theme) {
+    final session = widget.session;
+    return AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.userName),
+          Text(
+            '${formatLongDay(session.startAt.toLocal())} · '
+            '${formatClock(session.startAt)} – ${formatClock(session.endAt)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -158,7 +183,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
     if (points.isEmpty) {
       return Scaffold(
-        appBar: AppBar(title: Text('${widget.userName} · Replay')),
+        appBar: _appBar(theme),
         body: const Center(child: Text('No points to replay')),
       );
     }
@@ -167,7 +192,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final currentPoint = _displayedPoint ?? _route[_segmentStart];
 
     return Scaffold(
-      appBar: AppBar(title: Text('${widget.userName} · Replay')),
+      appBar: _appBar(theme),
       body: Column(
         children: [
           Expanded(
@@ -178,6 +203,14 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                   options: MapOptions(
                     initialCenter: _route.first,
                     initialZoom: 15,
+                    // Start on the whole trip, not just its first point.
+                    initialCameraFit: _route.length > 1
+                        ? CameraFit.coordinates(
+                            coordinates: _route,
+                            padding: const EdgeInsets.all(56),
+                            maxZoom: 17,
+                          )
+                        : null,
                   ),
                   children: [
                     ...buildMapTileLayers(_selectedLayer),
@@ -185,8 +218,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                       polylines: [
                         Polyline(
                           points: _route,
-                          strokeWidth: 4,
+                          strokeWidth: 5,
                           color: theme.colorScheme.primary,
+                          borderStrokeWidth: 1.5,
+                          borderColor: Colors.black.withValues(alpha: 0.35),
                         ),
                       ],
                     ),
@@ -194,39 +229,30 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                       markers: [
                         Marker(
                           point: _route.first,
-                          width: 14,
-                          height: 14,
-                          child: const DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Colors.green,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
+                          width: 18,
+                          height: 18,
+                          child: const _RouteEndpoint(color: Color(0xFF34C759)),
                         ),
                         Marker(
                           point: _route.last,
-                          width: 14,
-                          height: 14,
-                          child: const DecoratedBox(
-                            decoration: BoxDecoration(
-                              color: Colors.red,
-                              shape: BoxShape.circle,
-                            ),
-                          ),
+                          width: 18,
+                          height: 18,
+                          child: const _RouteEndpoint(color: Color(0xFFFF453A)),
                         ),
                         Marker(
                           point: currentPoint,
                           width: TrackedUserMarker.width,
                           height: TrackedUserMarker.height,
                           child: TrackedUserMarker(
+                            userId: widget.userId,
                             name: widget.userName,
                             speedKmh: current.speed * 3.6,
                             isMoving: current.isMoving,
                             heading: current.heading,
                             tooltipMessage: widget.userName,
                             beamColor: const Color(0xFF0985FB),
-                            ringColor: const Color(0xFF0985FB),
-                            badgeColor: Colors.teal.shade800,
+                            ringColor: Colors.white,
+                            badgeColor: Colors.grey.shade900,
                           ),
                         ),
                       ],
@@ -236,74 +262,118 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                 Positioned(
                   top: 16,
                   right: 16,
-                  child: MapLayerButton(
-                    selectedLayer: _selectedLayer,
-                    onLayerSelected: (layer) =>
-                        setState(() => _selectedLayer = layer),
+                  child: MapControlGroup(
+                    children: [
+                      MapLayerButton(
+                        selectedLayer: _selectedLayer,
+                        onLayerSelected: (layer) =>
+                            setState(() => _selectedLayer = layer),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
-          SafeArea(
-            top: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Text(
-                        _formatTime(current.timestamp),
-                        style: theme.textTheme.bodySmall,
+          Material(
+            color: theme.colorScheme.surfaceContainerLow,
+            child: SafeArea(
+              top: false,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Text(
+                          formatClock(current.timestamp),
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          '${(current.speed * 3.6).toStringAsFixed(0)} km/h',
+                          style: theme.textTheme.titleMedium?.copyWith(
+                            fontWeight: FontWeight.w700,
+                            fontFeatures: const [FontFeature.tabularFigures()],
+                          ),
+                        ),
+                      ],
+                    ),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4,
+                        overlayShape: SliderComponentShape.noOverlay,
                       ),
-                      const Spacer(),
-                      Text(
-                        '${(current.speed * 3.6).toStringAsFixed(0)} km/h',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        child: Slider(
+                          value: _segmentStart.toDouble(),
+                          min: 0,
+                          max: (points.length - 1).toDouble(),
+                          divisions: points.length > 1 ? points.length - 1 : 1,
+                          onChanged: points.length > 1 ? _seek : null,
                         ),
                       ),
-                    ],
-                  ),
-                  Slider(
-                    value: _segmentStart.toDouble(),
-                    min: 0,
-                    max: (points.length - 1).toDouble(),
-                    divisions: points.length > 1 ? points.length - 1 : 1,
-                    onChanged: points.length > 1 ? _seek : null,
-                  ),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SegmentedButton<double>(
-                        segments: const [
-                          ButtonSegment(value: 1.0, label: Text('1x')),
-                          ButtonSegment(value: 2.0, label: Text('2x')),
-                          ButtonSegment(value: 4.0, label: Text('4x')),
-                        ],
-                        selected: {_playbackSpeed},
-                        onSelectionChanged: (selection) =>
-                            _setPlaybackSpeed(selection.first),
-                      ),
-                      const SizedBox(width: 16),
-                      IconButton(
-                        iconSize: 42,
-                        icon: Icon(
-                          _isPlaying
-                              ? Icons.pause_circle_filled
-                              : Icons.play_circle_fill,
+                    ),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SegmentedButton<double>(
+                            showSelectedIcon: false,
+                            segments: const [
+                              ButtonSegment(value: 1.0, label: Text('1x')),
+                              ButtonSegment(value: 2.0, label: Text('2x')),
+                              ButtonSegment(value: 4.0, label: Text('4x')),
+                            ],
+                            selected: {_playbackSpeed},
+                            onSelectionChanged: (selection) =>
+                                _setPlaybackSpeed(selection.first),
+                          ),
                         ),
-                        onPressed: _togglePlay,
-                      ),
-                    ],
-                  ),
-                ],
+                        const SizedBox(width: 16),
+                        IconButton.filled(
+                          iconSize: 30,
+                          style: IconButton.styleFrom(
+                            fixedSize: const Size.square(56),
+                          ),
+                          tooltip: _isPlaying ? 'Pause' : 'Play',
+                          icon: Icon(
+                            _isPlaying
+                                ? Icons.pause_rounded
+                                : Icons.play_arrow_rounded,
+                          ),
+                          onPressed: _togglePlay,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _RouteEndpoint extends StatelessWidget {
+  const _RouteEndpoint({required this.color});
+
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        border: Border.all(color: Colors.white, width: 3),
+        boxShadow: const [BoxShadow(color: Colors.black38, blurRadius: 4)],
       ),
     );
   }
@@ -320,12 +390,4 @@ class _LatLngTween extends Tween<LatLng> {
       begin!.longitude + (end!.longitude - begin!.longitude) * t,
     );
   }
-}
-
-String _formatTime(DateTime dt) {
-  final local = dt.toLocal();
-  final hh = local.hour.toString().padLeft(2, '0');
-  final mm = local.minute.toString().padLeft(2, '0');
-  final ss = local.second.toString().padLeft(2, '0');
-  return '$hh:$mm:$ss';
 }

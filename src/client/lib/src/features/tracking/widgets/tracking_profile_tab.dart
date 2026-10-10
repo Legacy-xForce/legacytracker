@@ -5,105 +5,143 @@ import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/auth_provider.dart';
+import '../../auth/passkeys_screen.dart';
 import '../../debug/debug_log_screen.dart';
+import '../../updates/app_updater.dart';
+import '../../updates/app_updates_card.dart';
 import '../local_avatar_store.dart';
 import '../tracking_controller.dart';
 import 'tracking_status_card.dart';
+import 'user_avatar.dart';
 
 class TrackingProfileTab extends StatelessWidget {
-  const TrackingProfileTab({
-    super.key,
-    required this.controller,
-    required this.nameController,
-    required this.onSaveProfile,
-  });
+  const TrackingProfileTab({super.key, required this.controller});
 
   final TrackingController controller;
-  final TextEditingController nameController;
-  final VoidCallback onSaveProfile;
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final auth = context.watch<AuthProvider>();
     final avatarStore = context.watch<LocalAvatarStore>();
-    final profile = auth.profile;
-    final displayName = profile?.name ?? controller.selfProfile.name;
+    final self = controller.selfProfile;
+    final name = auth.username ?? auth.profile?.name ?? self.name;
+    final role = auth.profile?.role ?? self.role;
 
-    return Stack(
-      children: [
-        SingleChildScrollView(
-          padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-          child: Column(
-            children: [
-              _AvatarPicker(
-                avatarBytes: avatarStore.bytes,
-                displayName: displayName,
-                onTap: () => _showAvatarOptions(context, avatarStore),
-              ),
-              const SizedBox(height: 16),
-              Text(displayName, style: Theme.of(context).textTheme.headlineSmall),
-              const SizedBox(height: 4),
-              Text(
-                'Username: ${auth.username ?? controller.selfProfile.id}',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              Text(
-                'Role: ${profile?.role ?? controller.selfProfile.role}',
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-              const SizedBox(height: 24),
-              TrackingStatusCard(controller: controller),
-              const SizedBox(height: 32),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Display name', style: Theme.of(context).textTheme.titleMedium),
-              ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Display name',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: onSaveProfile,
-                  child: const Text('Save profile'),
-                ),
-              ),
-              const SizedBox(height: 32),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton(
-                  onPressed: () async {
-                    await auth.logout();
-                  },
-                  child: const Text('Logout'),
-                ),
-              ),
-              const SizedBox(height: 32),
-            ],
+    return SafeArea(
+      bottom: false,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 12, 20, 32),
+        children: [
+          Text(
+            'Profile',
+            style: theme.textTheme.headlineSmall?.copyWith(
+              fontWeight: FontWeight.w700,
+            ),
           ),
-        ),
-        Positioned(
-          right: 16,
-          bottom: 0,
-          child: FloatingActionButton(
-            heroTag: 'debug_log_fab',
-            tooltip: 'Activity log',
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const DebugLogScreen()),
-              );
-            },
-            child: const Icon(Icons.bug_report_outlined),
+          const SizedBox(height: 24),
+          Center(
+            child: _AvatarPicker(
+              userId: self.id,
+              name: name,
+              avatarBytes: avatarStore.bytes,
+              onTap: () => _showAvatarOptions(context, avatarStore),
+            ),
           ),
-        ),
-      ],
+          const SizedBox(height: 14),
+          Center(
+            child: Text(
+              name,
+              style: theme.textTheme.headlineSmall?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+          Center(child: _RoleChip(role: role)),
+          const SizedBox(height: 28),
+          const _SectionLabel('Location sharing'),
+          TrackingStatusCard(controller: controller),
+          const SizedBox(height: 24),
+          const _SectionLabel('Sign-in'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.fingerprint_rounded),
+              title: const Text('Passkeys'),
+              subtitle: const Text('Sign in with your fingerprint or screen lock'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const PasskeysScreen())),
+            ),
+          ),
+          if (AppUpdater.isSupported) ...[
+            const SizedBox(height: 24),
+            const _SectionLabel('App updates'),
+            const AppUpdatesCard(),
+          ],
+          const SizedBox(height: 24),
+          const _SectionLabel('Support'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.receipt_long_outlined),
+              title: const Text('Activity log'),
+              subtitle: const Text('Tracking events, for troubleshooting'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(
+                context,
+              ).push(MaterialPageRoute(builder: (_) => const DebugLogScreen())),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: Icon(
+                Icons.logout_rounded,
+                color: theme.colorScheme.error,
+              ),
+              title: Text(
+                'Sign out',
+                style: TextStyle(color: theme.colorScheme.error),
+              ),
+              onTap: () => _confirmSignOut(context, auth),
+            ),
+          ),
+        ],
+      ),
     );
+  }
+
+  Future<void> _confirmSignOut(BuildContext context, AuthProvider auth) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Sign out?'),
+        content: const Text(
+          'Your location stops being shared from this phone until you sign '
+          'back in.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 40),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Sign out'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) await auth.logout();
   }
 
   Future<void> _showAvatarOptions(
@@ -142,6 +180,7 @@ class TrackingProfileTab extends StatelessWidget {
                     avatarStore.clear();
                   },
                 ),
+              const SizedBox(height: 8),
             ],
           ),
         );
@@ -150,54 +189,105 @@ class TrackingProfileTab extends StatelessWidget {
   }
 }
 
+class _SectionLabel extends StatelessWidget {
+  const _SectionLabel(this.text);
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4, bottom: 8),
+      child: Text(
+        text.toUpperCase(),
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.8,
+        ),
+      ),
+    );
+  }
+}
+
+class _RoleChip extends StatelessWidget {
+  const _RoleChip({required this.role});
+
+  final String role;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final label = role.isEmpty
+        ? 'User'
+        : '${role[0].toUpperCase()}${role.substring(1)}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: theme.textTheme.labelMedium?.copyWith(
+          color: theme.colorScheme.onSecondaryContainer,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
+    );
+  }
+}
+
 class _AvatarPicker extends StatelessWidget {
   const _AvatarPicker({
+    required this.userId,
+    required this.name,
     required this.avatarBytes,
-    required this.displayName,
     required this.onTap,
   });
 
+  final String userId;
+  final String name;
   final Uint8List? avatarBytes;
-  final String displayName;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Stack(
-        children: [
-          CircleAvatar(
-            radius: 48,
-            backgroundImage: avatarBytes != null ? MemoryImage(avatarBytes!) : null,
-            child: avatarBytes == null
-                ? Text(
-                    displayName.isNotEmpty ? displayName.characters.first.toUpperCase() : '?',
-                    style: const TextStyle(fontSize: 32),
-                  )
-                : null,
-          ),
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Container(
-              padding: const EdgeInsets.all(6),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.primary,
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Theme.of(context).scaffoldBackgroundColor,
-                  width: 2,
+    final scheme = Theme.of(context).colorScheme;
+    return Semantics(
+      button: true,
+      label: 'Change photo',
+      child: GestureDetector(
+        onTap: onTap,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            UserAvatar(
+              userId: userId,
+              name: name,
+              imageBytes: avatarBytes,
+              size: 104,
+            ),
+            Positioned(
+              right: -2,
+              bottom: -2,
+              child: Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: scheme.primary,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: scheme.surface, width: 3),
+                ),
+                child: Icon(
+                  Icons.photo_camera_rounded,
+                  size: 18,
+                  color: scheme.onPrimary,
                 ),
               ),
-              child: Icon(
-                Icons.camera_alt,
-                size: 16,
-                color: Theme.of(context).colorScheme.onPrimary,
-              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

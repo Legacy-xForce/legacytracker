@@ -15,6 +15,11 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Self-update outside the Play Store (updates/AppUpdater.kt). On
+         Android 12+, once the user allows "Install unknown apps" for this
+         app, it may install its own updates without a prompt. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.UPDATE_PACKAGES_WITHOUT_USER_ACTION" />
 
     <application
         android:label="legacytracker"
@@ -72,6 +77,10 @@
                 <action android:name="com.google.android.c2dm.intent.RECEIVE" />
             </intent-filter>
         </receiver>
+
+        <receiver
+            android:name=".updates.UpdateInstallReceiver"
+            android:exported="false" />
 
         <meta-data
             android:name="flutterEmbedding"

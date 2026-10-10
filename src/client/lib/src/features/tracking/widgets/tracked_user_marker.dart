@@ -1,7 +1,10 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
+
+import 'user_avatar.dart';
 
 /// Normalizes bearing to 0-360 range.
 double normalizeBearing(double bearing) {
@@ -15,8 +18,10 @@ double normalizeBearing(double bearing) {
 class TrackedUserMarker extends StatefulWidget {
   const TrackedUserMarker({
     super.key,
+    required this.userId,
     required this.name,
     this.avatarUrl = '',
+    this.avatarBytes,
     required this.speedKmh,
     required this.isMoving,
     this.heading,
@@ -31,8 +36,12 @@ class TrackedUserMarker extends StatefulWidget {
     required this.badgeColor,
   });
 
+  final String userId;
   final String name;
   final String avatarUrl;
+
+  /// Our own locally picked photo, which has no URL.
+  final Uint8List? avatarBytes;
   final double speedKmh;
   final bool isMoving;
   final double? heading;
@@ -200,66 +209,68 @@ class _TrackedUserMarkerState extends State<TrackedUserMarker>
                   height: 60,
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
-                    color: widget.isMoving ? Colors.teal.shade600 : Colors.teal,
-                    border: Border.all(color: displayRingColor, width: 4),
+                    color: displayRingColor,
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.18),
+                        color: Colors.black.withValues(alpha: 0.28),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),
                     ],
                   ),
-                  child: CircleAvatar(
-                    radius: 24,
-                    backgroundColor: Colors.white,
-                    backgroundImage: widget.avatarUrl.isNotEmpty
-                        ? NetworkImage(widget.avatarUrl)
-                        : null,
-                    child: widget.avatarUrl.isEmpty && widget.name.isNotEmpty
-                        ? Text(widget.name.characters.first.toUpperCase())
-                        : null,
+                  padding: const EdgeInsets.all(3.5),
+                  child: UserAvatar(
+                    userId: widget.userId,
+                    name: widget.name,
+                    avatarUrl: widget.avatarUrl,
+                    imageBytes: widget.avatarBytes,
+                    size: 53,
                   ),
                 ),
               ),
-              Positioned(
-                top: 48,
-                right: 18,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 220),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: displayBadgeColor,
-                    borderRadius: BorderRadius.circular(999),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.12),
-                        blurRadius: 8,
-                        offset: const Offset(0, 3),
-                      ),
-                    ],
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(
-                        Icons.speed_rounded,
-                        size: 12,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        '${widget.speedKmh.round()} km/h',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+              // Speed only means something on the move; parked it's noise.
+              if (widget.isMoving)
+                Positioned(
+                  top: 48,
+                  right: 18,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 220),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: displayBadgeColor,
+                      borderRadius: BorderRadius.circular(999),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 8,
+                          offset: const Offset(0, 3),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(
+                          Icons.speed_rounded,
+                          size: 12,
+                          color: Colors.white,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${widget.speedKmh.round()} km/h',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
               if (batteryLevel != null)
                 Positioned(
                   top: 116,

@@ -65,6 +65,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<void>? _batterySubscription;
   Timer? _batteryRefreshTimer;
   bool _reregistering = false;
+  bool _awaitingAnchor = false;
 
   String get speedLabel {
     final speed = lastLocation?.speed ?? 0.0;
@@ -179,7 +180,18 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> refreshStatus() async {
     status = await TrackingEngine.status();
+    _syncSelfDwell();
     notifyListeners();
+  }
+
+  /// Our own "Here for" comes from the engine's parking anchor — the time it
+  /// decided we stopped — not from the newest fix, which is seconds old
+  /// whenever the app is open.
+  void _syncSelfDwell() {
+    selfProfile.travelling = status.mode == TrackingMode.moving;
+    selfProfile.hereSince = status.mode == TrackingMode.stationary
+        ? status.stationarySince
+        : null;
   }
 
   /// Re-applies configuration so the engine picks up permission changes.
@@ -291,6 +303,17 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
         selfProfile.lastLocation = point;
         selfProfile.history = history;
         notifyListeners();
+        // The engine anchors the parking spot on its first fix without a
+        // state change of its own; pick the anchor up as soon as it exists.
+        if (isTracking &&
+            !_awaitingAnchor &&
+            status.mode != TrackingMode.moving &&
+            status.stationarySince == null) {
+          _awaitingAnchor = true;
+          unawaited(
+            refreshStatus().whenComplete(() => _awaitingAnchor = false),
+          );
+        }
         break;
       case 'state':
       case 'upload':
@@ -350,12 +373,6 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     if (snapshot.level == null && snapshot.isCharging == null) return;
     selfProfile.batteryLevel = snapshot.level;
     selfProfile.isCharging = snapshot.isCharging;
-    notifyListeners();
-  }
-
-  void updateProfile({required String name, required String avatarUrl}) {
-    selfProfile.name = name;
-    selfProfile.avatarUrl = avatarUrl;
     notifyListeners();
   }
 

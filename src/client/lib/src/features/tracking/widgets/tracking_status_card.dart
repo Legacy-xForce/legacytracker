@@ -17,71 +17,108 @@ class TrackingStatusCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final status = controller.status;
     final issues = _issues(status);
+    final sharing = controller.isTracking && status.mode != TrackingMode.off;
 
     return Card(
-      margin: EdgeInsets.zero,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+      clipBehavior: Clip.antiAlias,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+            child: Row(
               children: [
-                Icon(_modeIcon(status), color: theme.colorScheme.primary),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    _modeLabel(status),
-                    style: theme.textTheme.titleMedium,
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    color: sharing
+                        ? scheme.primaryContainer
+                        : scheme.surfaceContainerHighest,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    _modeIcon(status),
+                    size: 20,
+                    color: sharing
+                        ? scheme.onPrimaryContainer
+                        : scheme.onSurfaceVariant,
                   ),
                 ),
-                if (status.live)
-                  Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: Chip(
-                      label: const Text('Live'),
-                      visualDensity: VisualDensity.compact,
-                      backgroundColor: theme.colorScheme.primaryContainer,
-                    ),
+                const SizedBox(width: 14),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              _modeLabel(status),
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          if (status.live && sharing) ...[
+                            const SizedBox(width: 8),
+                            const _LiveBadge(),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        _detail(status),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
                   ),
+                ),
+                const SizedBox(width: 8),
+                Switch(
+                  value: controller.isTracking,
+                  onChanged: (on) => on
+                      ? controller.startTracking()
+                      : controller.stopTracking(),
+                ),
               ],
             ),
-            const SizedBox(height: 4),
+          ),
+          for (final issue in issues) ...[
+            Divider(height: 1, color: scheme.outlineVariant),
             Padding(
-              padding: const EdgeInsets.only(left: 34, right: 8),
-              child: Text(
-                _detail(status),
-                style: theme.textTheme.bodySmall,
+              padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+              child: Row(
+                children: [
+                  Icon(
+                    Icons.warning_amber_rounded,
+                    size: 20,
+                    color: scheme.error,
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Text(
+                      issue.message,
+                      style: theme.textTheme.bodySmall,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () async {
+                      await issue.fix();
+                      await controller.refreshStatus();
+                    },
+                    child: Text(issue.action),
+                  ),
+                ],
               ),
             ),
-            for (final issue in issues)
-              Padding(
-                padding: const EdgeInsets.only(top: 8),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      size: 20,
-                      color: theme.colorScheme.error,
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Text(issue.message, style: theme.textTheme.bodySmall),
-                    ),
-                    TextButton(
-                      onPressed: () async {
-                        await issue.fix();
-                        await controller.refreshStatus();
-                      },
-                      child: Text(issue.action),
-                    ),
-                  ],
-                ),
-              ),
           ],
-        ),
+        ],
       ),
     );
   }
@@ -94,7 +131,7 @@ class TrackingStatusCard extends StatelessWidget {
 
   String _modeLabel(TrackingStatus status) {
     if (!controller.isTracking || status.mode == TrackingMode.off) {
-      return 'Location sharing paused';
+      return 'Sharing paused';
     }
     return switch (status.mode) {
       TrackingMode.moving => 'Recording a trip',
@@ -103,6 +140,9 @@ class TrackingStatusCard extends StatelessWidget {
   }
 
   String _detail(TrackingStatus status) {
+    if (!controller.isTracking) {
+      return 'Others see where you were last';
+    }
     final parts = <String>[];
     if (status.authFailed) {
       parts.add('Uploads paused — reconnecting your account');
@@ -162,4 +202,37 @@ class _Issue {
   final String message;
   final String action;
   final Future<Object?> Function() fix;
+}
+
+/// "Someone is watching": devices stream in realtime.
+class _LiveBadge extends StatelessWidget {
+  const _LiveBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    const color = Color(0xFFFF453A);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.16),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: const Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.circle, size: 7, color: color),
+          SizedBox(width: 4),
+          Text(
+            'LIVE',
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

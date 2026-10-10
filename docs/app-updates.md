@@ -1,0 +1,130 @@
+# Android app updates
+
+The Android app is distributed outside the Play Store and updates itself.
+Publishing a release is one command; phones install it in the background.
+
+## How it works
+
+```
+scripts/release-android.sh
+   └─ GitHub release  android-v1.2.0+12  (one .apk; GitHub records its SHA-256)
+        │
+tracker server  — reads the releases every 5 min (services/app-releases.ts)
+   ├─ GET /api/v1/app/android/latest   → version, APK URL, SHA-256, size, notes
+   └─ new version seen → FCM data push  lt_cmd=update  to every device
+        │
+app (android/.../updates/AppUpdater.kt)
+   ├─ checks: on the push, every 6 h (WorkManager), and at app start (≤ 1/h)
+   ├─ downloads a newer APK, verifies size + SHA-256
+   └─ installs it with PackageInstaller once the app has been off screen for
+      3 minutes and no trip is being recorded
+```
+
+The app closes while it installs. Tracking resumes by itself
+(`BootReceiver` handles `MY_PACKAGE_REPLACED`), so a parked phone carries on
+sharing without anyone opening the app.
+
+**Silent installs.** On Android 12+ the app installs its own updates with no
+prompt, provided the user has allowed it to install apps (Settings → Apps →
+Legacy Tracker → *Install unknown apps*). The profile tab's *App updates* card
+links there. Without that permission, or on Android 8–11, the app posts an
+"Update ready — tap to install" notification instead, and Android asks for one
+confirmation tap. Android itself requires the confirmation in those cases.
+
+**Security.** Android only installs an update signed with the same key as the
+installed app. A compromised server, GitHub account or download can therefore
+withhold updates, but it can't replace the app with someone else's build. The
+SHA-256 check catches corrupted downloads.
+
+**Debug builds** (`flutter run`) never update themselves in the background.
+The card's *Check* / *Install* buttons still work, for testing.
+
+## Publishing a release
+
+1. Bump the build number in `src/client/pubspec.yaml` (`version: 1.2.0+12`:
+   the number after `+` must go up with every release).
+2. Commit and push.
+3. Run:
+
+   ```bash
+   scripts/release-android.sh --notes "Faster trip detection"
+   ```
+
+   It builds the release APK, checks the signing key, shows a summary, asks
+   for confirmation, creates the GitHub release and checks the digest GitHub
+   recorded.
+
+To try a build on a few phones first, pass `--prerelease`. The server ignores
+prereleases, so you can install the APK from the release page by hand. Roll it
+out with `gh release edit <tag> --prerelease=false`.
+
+**Pulling a bad release:** delete it, or mark it as a prerelease. Phones that
+already installed it keep it, because Android doesn't downgrade. Fix forward
+with a higher build number.
+
+## Signing key
+
+Every release must be signed with the same key, forever. An APK signed with a
+different key can't update existing installs. The app marks that version as
+failed and waits for the next one, and users would have to uninstall and
+reinstall.
+
+`src/client/android/app/build.gradle.kts` signs release builds with the key described in
+`src/client/android/key.properties` (git-ignored):
+
+```properties
+storeFile=/absolute/path/to/legacytracker-release.jks
+storePassword=…
+keyAlias=legacytracker
+keyPassword=…
+```
+
+Without that file, releases are signed with the building machine's debug key
+(`~/.config/.android/debug.keystore` on the current dev machine), as before.
+That works, but:
+
+- releases can only be built on that one machine;
+- the keystore's password is the well-known `android`;
+- losing that file ends updates for every installed phone.
+
+To move to a dedicated key, create one (`keytool -genkeypair -v -keystore
+legacytracker-release.jks -alias legacytracker -keyalg RSA -keysize 4096
+-validity 36500`), back it up somewhere safe, and add `key.properties`. Phones
+running a debug-signed build then have to uninstall and reinstall once. Do
+this before the first self-updating build goes out, since that build has to be
+installed by hand anyway. Also update `PASSKEY_ANDROID_APPS` on legacy-auth
+with the new certificate's SHA-256, or passkey sign-in stops working.
+
+The first published release pins its certificate fingerprint in
+`src/client/android/release-signing-cert.sha256` (commit it). The release
+script refuses to publish an APK signed with any other key.
+
+## Server configuration
+
+| Variable | Default | |
+|---|---|---|
+| `ANDROID_RELEASES_REPO` | `Legacy-xForce/legacytracker` | Repository the releases are read from. Empty disables update checks: the endpoint returns 204. |
+| `GITHUB_TOKEN` | — | Optional. Unauthenticated GitHub API calls are limited to 60 an hour per IP; the server needs about 12. |
+
+Update pushes need `FIREBASE_SERVICE_ACCOUNT_JSON`, like live mode. Without
+it, phones still find releases on their 6-hourly check.
+
+## Limits
+
+- **First install is manual.** Download the APK from the release page.
+  Every update after that installs itself.
+- **Play Store.** Play's policy forbids apps that update themselves outside
+  Play, and `REQUEST_INSTALL_PACKAGES` is a restricted permission there. A
+  Play build would need the updater removed.
+- **Google's developer verification.** Since September 2026, certified
+  Android devices in Brazil, Indonesia, Singapore and Thailand only install
+  apps from developers verified with Google, sideloaded ones included. Other
+  countries follow from 2027. Before it reaches your users, register the
+  package name and signing key in the Android Developer Console. A free
+  limited-distribution account covers up to 20 devices; beyond that you need
+  a verified account. That is one more reason to settle on the final signing
+  key now.
+- **iOS** can't install its own updates outside the App Store. The options
+  there are TestFlight, an Apple Developer Enterprise / custom-app
+  distribution, or patching Dart code over the air with a service such as
+  Shorebird.

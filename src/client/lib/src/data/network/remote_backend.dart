@@ -271,6 +271,13 @@ class RemoteBackend implements Backend {
       profile.lastLocation = point;
       profile.history = [point, ...profile.history].take(20).toList();
     }
+    // Sent with every update, coordinates or not; null while travelling.
+    if (payload.containsKey('here_since')) {
+      final hereSinceRaw = payload['here_since'] as String?;
+      profile.hereSince = hereSinceRaw == null
+          ? null
+          : DateTime.tryParse(hereSinceRaw);
+    }
     final lastSeenRaw = payload['last_seen_at'] as String?;
     if (lastSeenRaw != null) {
       profile.lastSeenAt =

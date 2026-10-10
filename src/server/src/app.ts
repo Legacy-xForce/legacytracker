@@ -5,9 +5,24 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
 import pool from "./config/db";
+import { AndroidReleaseSource } from "./services/app-releases";
 import ConnectionManager from "./services/connection-manager";
 import { DeviceAuth } from "./services/device-auth";
-import { initializeFcm, sendTrackingCommand } from "./services/fcm-service";
+import {
+  advanceDwell,
+  DWELL_MAX_SPEED,
+  DWELL_RADIUS_METERS,
+  DWELL_SEED_SQL,
+  dwellFromSeedRow,
+  TRIP_SOURCES,
+  type Dwell,
+  type DwellSeedRow,
+} from "./services/dwell-tracker";
+import {
+  initializeFcm,
+  sendAppUpdateNotice,
+  sendTrackingCommand,
+} from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
 
@@ -36,9 +51,15 @@ const deviceAuth = new DeviceAuth(pool);
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
 const lastKnownName = new Map<string, string>();
+// Each user's current stay ("here since"), seeded from stored history the
+// first time a user is needed and advanced with every point after that.
+const dwellByUser = new Map<string, Dwell | null>();
 const STATE_ID = "foreground";
 const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+// Without points (calendar summaries) a request is cheap to answer, so a
+// whole calendar month — or a few — fits in one call.
+const MAX_SUMMARY_WINDOW_MS = 93 * 24 * 60 * 60 * 1000;
 
 // Live mode: devices stream in realtime only while someone has the map open.
 // `live` expires on the device after LIVE_TTL_SECONDS unless renewed, so a
@@ -46,6 +67,14 @@ const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 const LIVE_TTL_SECONDS = 600;
 const LIVE_RENEW_INTERVAL_MS = 4 * 60_000;
 const LIVE_OFF_DEBOUNCE_MS = 45_000;
+
+// Android self-update: releases are read from GitHub (see
+// services/app-releases.ts). An empty ANDROID_RELEASES_REPO turns it off.
+const ANDROID_RELEASES_REPO =
+  process.env.ANDROID_RELEASES_REPO ?? "Legacy-xForce/legacytracker";
+const RELEASE_CHECK_INTERVAL_MS = 5 * 60_000;
+// Just under the check interval, so every check sees fresh data.
+const RELEASE_CACHE_TTL_MS = 4 * 60_000;
 
 const PacingMode = {
   AGGRESSIVE: "AGGRESSIVE",
@@ -93,24 +122,31 @@ app.register(cors, {
 });
 app.register(websocket);
 
-async function sendLiveCommand(
-  command: TrackingCommand,
-  ttlSeconds: number,
-): Promise<void> {
+/** Sends one push to every registered device, pruning dead tokens. */
+async function pushToAllDevices(
+  send: (tokens: string[]) => Promise<string[]>,
+): Promise<{ devices: number; pruned: number }> {
   const result = await pool.query<{ token: string }>(
     "SELECT token FROM user_fcm_tokens",
   );
   const tokens = result.rows.map((r) => r.token);
-  const invalid = await sendTrackingCommand(tokens, command, ttlSeconds);
-  app.log.info(
-    { command, ttlSeconds, devices: tokens.length, pruned: invalid.length },
-    "[live] sent tracking command",
-  );
+  const invalid = await send(tokens);
   if (invalid.length > 0) {
     await pool.query("DELETE FROM user_fcm_tokens WHERE token = ANY($1)", [
       invalid,
     ]);
   }
+  return { devices: tokens.length, pruned: invalid.length };
+}
+
+async function sendLiveCommand(
+  command: TrackingCommand,
+  ttlSeconds: number,
+): Promise<void> {
+  const sent = await pushToAllDevices((tokens) =>
+    sendTrackingCommand(tokens, command, ttlSeconds),
+  );
+  app.log.info({ command, ttlSeconds, ...sent }, "[live] sent tracking command");
 }
 
 // Every connected viewer sees every driver's pin on the same live map —
@@ -125,6 +161,49 @@ const liveController = new LiveController({
   onError: (error) =>
     app.log.warn({ error }, "Unable to send tracking command via FCM"),
 });
+
+const androidReleases = ANDROID_RELEASES_REPO
+  ? new AndroidReleaseSource({
+      repo: ANDROID_RELEASES_REPO,
+      token: process.env.GITHUB_TOKEN || undefined,
+      ttlMs: RELEASE_CACHE_TTL_MS,
+    })
+  : null;
+
+// Highest Android version code seen since startup. The first lookup only
+// records it: devices that missed a release while the server was down still
+// find it on their own periodic check.
+let announcedAndroidVersion: number | null = null;
+
+async function announceNewAndroidRelease(): Promise<void> {
+  if (!androidReleases) {
+    return;
+  }
+  try {
+    const release = await androidReleases.latest();
+    if (!release) {
+      return;
+    }
+    if (
+      announcedAndroidVersion !== null &&
+      release.versionCode > announcedAndroidVersion
+    ) {
+      const sent = await pushToAllDevices((tokens) =>
+        sendAppUpdateNotice(tokens, release.versionCode),
+      );
+      app.log.info(
+        { versionCode: release.versionCode, ...sent },
+        "[updates] announced new Android release",
+      );
+    }
+    announcedAndroidVersion = Math.max(
+      announcedAndroidVersion ?? 0,
+      release.versionCode,
+    );
+  } catch (error) {
+    app.log.warn({ error }, "[updates] unable to check Android releases");
+  }
+}
 
 function getPacingMode(): PacingMode {
   return liveController.isActive ? PacingMode.AGGRESSIVE : PacingMode.PASSIVE;
@@ -457,6 +536,30 @@ async function touchLastSeen(
   }
 }
 
+async function getDwell(userId: string): Promise<Dwell | null> {
+  if (dwellByUser.has(userId)) {
+    return dwellByUser.get(userId) ?? null;
+  }
+  let dwell: Dwell | null = null;
+  try {
+    const result = await pool.query<DwellSeedRow>(DWELL_SEED_SQL, [
+      userId,
+      DWELL_MAX_SPEED,
+      DWELL_RADIUS_METERS,
+      [...TRIP_SOURCES],
+    ]);
+    dwell = result.rows[0] ? dwellFromSeedRow(result.rows[0]) : null;
+  } catch (error) {
+    app.log.warn({ error, userId }, "Unable to load the current stay");
+    return null;
+  }
+  // A concurrent ingest may have started the stay in memory meanwhile.
+  if (!dwellByUser.has(userId)) {
+    dwellByUser.set(userId, dwell);
+  }
+  return dwellByUser.get(userId) ?? null;
+}
+
 function isSamePosition(
   latest: KnownLocation,
   previous: KnownLocation | undefined,
@@ -483,6 +586,15 @@ async function ingestPoints(
   points: KnownLocation[],
 ): Promise<{ stored: number }> {
   points.sort((a, b) => a.recordedAt.localeCompare(b.recordedAt));
+  // Seed from history before this batch is stored, so the batch itself is
+  // folded in exactly once below.
+  let dwell = await getDwell(userId);
+  for (const point of points) {
+    dwell = advanceDwell(dwell, point);
+  }
+  dwellByUser.set(userId, dwell);
+  const hereSince = dwell?.since ?? null;
+
   const stored = points.filter((p) => p.source !== "live");
   if (stored.length > 0) {
     await insertLocationBatch(userId, stored);
@@ -507,6 +619,7 @@ async function ingestPoints(
       speed: newest.speed,
       heading: newest.heading,
       recorded_at: newest.recordedAt,
+      here_since: hereSince,
       battery_level: newest.batteryLevel,
       is_charging: newest.isCharging,
       last_seen_at: lastSeenAt,
@@ -515,6 +628,7 @@ async function ingestPoints(
     connectionManager.broadcast({
       user_id: userId,
       username: displayName,
+      here_since: hereSince,
       battery_level: newest.batteryLevel,
       is_charging: newest.isCharging,
       last_seen_at: lastSeenAt,
@@ -677,6 +791,32 @@ app.delete("/api/v1/devices/:id", async (request, reply) => {
   return reply.send({ revoked });
 });
 
+// Public, like the GitHub releases behind it: the app also checks for
+// updates before anyone has signed in.
+app.get("/api/v1/app/android/latest", async (_request, reply) => {
+  if (!androidReleases) {
+    return reply.code(204).send();
+  }
+  try {
+    const release = await androidReleases.latest();
+    if (!release) {
+      return reply.code(204).send();
+    }
+    return reply.send({
+      version_code: release.versionCode,
+      version_name: release.versionName,
+      apk_url: release.apkUrl,
+      sha256: release.sha256,
+      size: release.size,
+      notes: release.notes,
+      published_at: release.publishedAt,
+    });
+  } catch (error) {
+    app.log.warn({ error }, "[updates] unable to read Android releases");
+    return reply.code(503).send({ error: "Release information unavailable" });
+  }
+});
+
 app.post("/api/v1/streams/ticket", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
   if (!identity.ok) {
@@ -781,8 +921,14 @@ app.get("/api/v1/history", async (request, reply) => {
     return reply.code(400).send({ error: "`to` must be after `from`" });
   }
 
+  // `points=false`: session summaries only (start/end/stats), for the
+  // history calendar.
+  const includePoints = query.points !== "false" && query.points !== "0";
+  const maxWindowMs = includePoints
+    ? MAX_HISTORY_WINDOW_MS
+    : MAX_SUMMARY_WINDOW_MS;
   const clampedFrom = new Date(
-    Math.max(from.getTime(), to.getTime() - MAX_HISTORY_WINDOW_MS),
+    Math.max(from.getTime(), to.getTime() - maxWindowMs),
   );
 
   const result = await pool.query(
@@ -813,6 +959,7 @@ app.get("/api/v1/history", async (request, reply) => {
       requestedBy: identity.userId,
       pointCount: points.length,
       sessionCount: sessions.length,
+      includePoints,
       from: clampedFrom.toISOString(),
       to: to.toISOString(),
     },
@@ -831,14 +978,16 @@ app.get("/api/v1/history", async (request, reply) => {
       avg_speed: session.avgSpeed,
       top_speed: session.topSpeed,
       point_count: session.pointCount,
-      points: session.points.map((point) => ({
-        latitude: point.latitude,
-        longitude: point.longitude,
-        speed: point.speed,
-        heading: point.heading,
-        accuracy: point.accuracy ?? null,
-        recorded_at: point.recordedAt,
-      })),
+      points: includePoints
+        ? session.points.map((point) => ({
+            latitude: point.latitude,
+            longitude: point.longitude,
+            speed: point.speed,
+            heading: point.heading,
+            accuracy: point.accuracy ?? null,
+            recorded_at: point.recordedAt,
+          }))
+        : undefined,
     })),
   });
 });
@@ -922,6 +1071,14 @@ app.register(async () => {
          LIMIT 1
        ) l ON true`,
     );
+    const dwells = new Map(
+      await Promise.all(
+        allUsers.rows.map(
+          async (row) =>
+            [row.id, row.recorded_at ? await getDwell(row.id) : null] as const,
+        ),
+      ),
+    );
     const snapshot = allUsers.rows.map((row) => {
       const memory = lastKnownLocation.get(row.id);
       const storedAt = row.recorded_at
@@ -937,6 +1094,7 @@ app.register(async () => {
         speed: useMemory ? memory.speed : row.speed,
         heading: useMemory ? memory.heading : row.heading,
         recorded_at: useMemory ? memory.recordedAt : storedAt,
+        here_since: dwells.get(row.id)?.since ?? null,
         battery_level: memory?.batteryLevel ?? row.battery_level,
         is_charging: memory?.isCharging ?? row.is_charging,
         last_seen_at: row.last_seen_at
@@ -1014,6 +1172,10 @@ const start = async (): Promise<void> => {
     await ensureBackendSchema();
     await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
+    if (androidReleases) {
+      void announceNewAndroidRelease();
+      setInterval(() => void announceNewAndroidRelease(), RELEASE_CHECK_INTERVAL_MS).unref();
+    }
   } catch (error) {
     app.log.error(error);
     process.exit(1);

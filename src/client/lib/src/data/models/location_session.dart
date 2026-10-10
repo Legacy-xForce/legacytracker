@@ -31,8 +31,9 @@ class LocationSession {
 
   LocationPoint? get endPoint => points.isNotEmpty ? points.last : null;
 
+  /// Summaries (`points=false`, for the history calendar) carry no points.
   factory LocationSession.fromJson(Map<String, dynamic> json) {
-    final points = (json['points'] as List<dynamic>)
+    final points = (json['points'] as List<dynamic>? ?? const [])
         .map((e) => LocationPoint.fromHistoryJson(e as Map<String, dynamic>))
         .toList();
     return LocationSession(

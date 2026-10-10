@@ -1,16 +1,24 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../core/formatters.dart';
 import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
 import '../../auth/auth_provider.dart';
+import '../local_avatar_store.dart';
 import '../tracking_controller.dart';
 import 'location_history_screen.dart';
 import 'tracking_location_street_label.dart';
+import 'user_avatar.dart';
 
+/// The people sheet over the map: a list of everyone sharing, and a detail
+/// pane for whoever is selected. Collapsed it still shows its header, so it
+/// is obvious there's something to pull up.
 class TrackingUsersDrawer extends StatefulWidget {
   const TrackingUsersDrawer({
     super.key,
@@ -20,7 +28,9 @@ class TrackingUsersDrawer extends StatefulWidget {
     required this.selfMissingPermissions,
     required this.selfBatterySavingEnabled,
     required this.selectedUserId,
+    this.selectionTick = 0,
     required this.onUserSelected,
+    this.onExtentChanged,
   });
 
   final UserProfile selfProfile;
@@ -29,20 +39,34 @@ class TrackingUsersDrawer extends StatefulWidget {
   final bool selfMissingPermissions;
   final bool selfBatterySavingEnabled;
   final String? selectedUserId;
+
+  /// Bumped on every selection, including re-selecting the same person.
+  final int selectionTick;
   final ValueChanged<UserProfile> onUserSelected;
+
+  /// The fraction of the map's height the sheet currently covers, so the map
+  /// can keep a focused marker in the part that's still visible.
+  final ValueChanged<double>? onExtentChanged;
+
+  /// Height fraction of the fully open sheet.
+  static const double expandedSize = 0.6;
 
   @override
   State<TrackingUsersDrawer> createState() => _TrackingUsersDrawerState();
 }
 
 class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
-  static const double _collapsedSize = 0.055;
-  static const double _expandedSize = 0.6;
+  static const double _expandedSize = TrackingUsersDrawer.expandedSize;
+
+  /// Drag handle plus the "People" header: what stays visible collapsed.
+  static const double _headerHeight = 68;
 
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
 
-  double _sheetSize = _collapsedSize;
+  // Recomputed from the available height on every layout.
+  double _collapsedSize = 0.1;
+  double _sheetSize = 0.1;
   String? _detailUserId;
 
   @override
@@ -59,15 +83,10 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     // on the map) should open the same detail pane a drawer row tap would,
     // instead of leaving the drawer showing just the list.
     if (widget.selectedUserId != null &&
-        widget.selectedUserId != oldWidget.selectedUserId) {
+        (widget.selectedUserId != oldWidget.selectedUserId ||
+            widget.selectionTick != oldWidget.selectionTick)) {
       setState(() => _detailUserId = widget.selectedUserId);
-      if (_sheetController.isAttached && _sheetController.size < _expandedSize) {
-        _sheetController.animateTo(
-          _expandedSize,
-          duration: const Duration(milliseconds: 220),
-          curve: Curves.easeOutCubic,
-        );
-      }
+      _expand();
     }
   }
 
@@ -80,10 +99,29 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   void _handleSheetChanged() {
     final size = _sheetController.size;
+    widget.onExtentChanged?.call(size);
     if ((size - _sheetSize).abs() > 0.001 && mounted) {
       setState(() => _sheetSize = size);
     }
   }
+
+  bool get _isCollapsed => _sheetSize <= _collapsedSize + 0.01;
+
+  void _expand() {
+    if (_sheetController.isAttached && _sheetController.size < _expandedSize) {
+      _animateTo(_expandedSize);
+    }
+  }
+
+  void _animateTo(double size) {
+    _sheetController.animateTo(
+      size,
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  void _toggle() => _animateTo(_isCollapsed ? _expandedSize : _collapsedSize);
 
   void _dragSheet(double delta, double screenHeight) {
     if (screenHeight <= 0) {
@@ -102,7 +140,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     final size = _sheetController.size;
 
     // 15% of total range defines the snap zone at each end.
-    const snapZone = (_expandedSize - _collapsedSize) * 0.15;
+    final snapZone = (_expandedSize - _collapsedSize) * 0.15;
     final bottomThreshold = _collapsedSize + snapZone;
     final topThreshold = _expandedSize - snapZone;
 
@@ -119,24 +157,14 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     // Middle zone: no snap — sheet rests at the released position.
 
     if (target != null) {
-      await _sheetController.animateTo(
-        target,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
+      _animateTo(target);
     }
   }
 
   void _openDetail(UserProfile profile) {
     widget.onUserSelected(profile);
     setState(() => _detailUserId = profile.id);
-    if (_sheetController.size < _expandedSize) {
-      _sheetController.animateTo(
-        _expandedSize,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
-      );
-    }
+    _expand();
   }
 
   void _closeDetail() {
@@ -145,15 +173,15 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   @override
   Widget build(BuildContext context) {
+    final selfAvatarBytes = context.watch<LocalAvatarStore?>()?.bytes;
     final users = [
       _DrawerUser(
         profile: widget.selfProfile,
         isSelf: true,
+        avatarBytes: selfAvatarBytes,
         trackingPaused: widget.selfTrackingPaused,
         missingPermissions: widget.selfMissingPermissions,
         batterySavingEnabled: widget.selfBatterySavingEnabled,
-        batteryLevel: widget.selfProfile.batteryLevel,
-        isCharging: widget.selfProfile.isCharging,
       ),
       ...widget.peers
           .where((peer) => peer.lastLocation != null)
@@ -163,8 +191,6 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
               trackingPaused: peer.locationTrackingPaused,
               missingPermissions: peer.missingPermissions,
               batterySavingEnabled: peer.batterySavingEnabled,
-              batteryLevel: peer.batteryLevel,
-              isCharging: peer.isCharging,
             ),
           ),
     ];
@@ -179,116 +205,222 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
       }
     }
 
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: DraggableScrollableSheet(
-        controller: _sheetController,
-        initialChildSize: _collapsedSize,
-        minChildSize: _collapsedSize,
-        maxChildSize: _expandedSize,
-        expand: false,
-        builder: (context, scrollController) {
-          final theme = Theme.of(context);
-          final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
-          return Material(
-            color: theme.colorScheme.surface.withValues(alpha: 0.97),
-            elevation: 14,
-            shadowColor: Colors.black.withValues(alpha: 0.24),
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-            ),
-            clipBehavior: Clip.antiAlias,
-            child: SafeArea(
-              top: false,
-              bottom: false,
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  final handleHeight = constraints.maxHeight.clamp(0.0, 40.0);
-                  return Column(
-                children: [
-                  GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onVerticalDragUpdate: (details) {
-                      _dragSheet(
-                        details.primaryDelta ?? 0,
-                        MediaQuery.sizeOf(context).height,
-                      );
-                    },
-                    onVerticalDragEnd: _settleSheet,
-                    child: SizedBox(
-                      width: double.infinity,
-                      height: handleHeight,
-                      child: Center(
-                        child: Container(
-                          width: 58,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.onSurfaceVariant
-                                .withValues(alpha: 0.28),
-                            borderRadius: BorderRadius.circular(999),
-                          ),
+    final theme = Theme.of(context);
+    final bottomInset = MediaQuery.viewPaddingOf(context).bottom;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        _collapsedSize = (_headerHeight / constraints.maxHeight).clamp(
+          0.05,
+          0.3,
+        );
+        if (!_sheetController.isAttached) _sheetSize = _collapsedSize;
+
+        return Align(
+          alignment: Alignment.bottomCenter,
+          child: DraggableScrollableSheet(
+            controller: _sheetController,
+            initialChildSize: _collapsedSize,
+            minChildSize: _collapsedSize,
+            maxChildSize: _expandedSize,
+            expand: false,
+            builder: (context, scrollController) {
+              final contentOpacity =
+                  ((_sheetSize - _collapsedSize) /
+                          ((_expandedSize - _collapsedSize) * 0.15))
+                      .clamp(0.0, 1.0);
+              return Material(
+                color: theme.colorScheme.surfaceContainerLow,
+                elevation: 16,
+                shadowColor: Colors.black,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: Column(
+                  children: [
+                    GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onTap: _toggle,
+                      onVerticalDragUpdate: (details) {
+                        _dragSheet(
+                          details.primaryDelta ?? 0,
+                          constraints.maxHeight,
+                        );
+                      },
+                      onVerticalDragEnd: _settleSheet,
+                      child: _SheetHeader(
+                        height: _headerHeight,
+                        users: users,
+                        showingDetail: detailUser != null && !_isCollapsed,
+                        onBack: _closeDetail,
+                      ),
+                    ),
+                    Expanded(
+                      child: IgnorePointer(
+                        ignoring: _isCollapsed,
+                        child: Opacity(
+                          opacity: contentOpacity,
+                          child: detailUser != null
+                              ? _UserDetailPane(
+                                  key: ValueKey(detailUser.profile.id),
+                                  user: detailUser,
+                                  scrollController: scrollController,
+                                  bottomInset: bottomInset,
+                                )
+                              : ListView.separated(
+                                  controller: scrollController,
+                                  padding: EdgeInsets.fromLTRB(
+                                    12,
+                                    0,
+                                    12,
+                                    16 + bottomInset,
+                                  ),
+                                  itemCount: users.length,
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(height: 4),
+                                  itemBuilder: (context, index) => _UserRow(
+                                    user: users[index],
+                                    isSelected:
+                                        widget.selectedUserId ==
+                                        users[index].profile.id,
+                                    onSelect: () =>
+                                        _openDetail(users[index].profile),
+                                  ),
+                                ),
                         ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: IgnorePointer(
-                      ignoring: _sheetSize <= (_collapsedSize + 0.01),
-                      child: AnimatedOpacity(
-                        opacity:
-                            ((_sheetSize - _collapsedSize) /
-                                    ((_expandedSize - _collapsedSize) * 0.15))
-                                .clamp(0.0, 1.0),
-                        duration: const Duration(milliseconds: 80),
-                        curve: Curves.easeOut,
-                        child: detailUser != null
-                            ? _UserDetailPane(
-                                user: detailUser,
-                                scrollController: scrollController,
-                                bottomInset: bottomInset,
-                                onBack: _closeDetail,
-                              )
-                            : ListView(
-                                controller: scrollController,
-                                padding: EdgeInsets.fromLTRB(
-                                  0,
-                                  2,
-                                  0,
-                                  16 + bottomInset,
-                                ),
-                                children: [
-                                  const SizedBox(height: 2),
-                                  ...users.expand(
-                                    (user) => [
-                                      Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 16,
-                                        ),
-                                        child: _UserRow(
-                                          user: user,
-                                          isSelected:
-                                              widget.selectedUserId ==
-                                              user.profile.id,
-                                          onSelect: () => _openDetail(
-                                            user.profile,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(height: 6),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SheetHeader extends StatelessWidget {
+  const _SheetHeader({
+    required this.height,
+    required this.users,
+    required this.showingDetail,
+    required this.onBack,
+  });
+
+  final double height;
+  final List<_DrawerUser> users;
+  final bool showingDetail;
+  final VoidCallback onBack;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return SizedBox(
+      height: height,
+      child: Column(
+        children: [
+          const SizedBox(height: 10),
+          Container(
+            width: 36,
+            height: 4,
+            decoration: BoxDecoration(
+              color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+              child: Row(
+                children: [
+                  if (showingDetail) ...[
+                    IconButton(
+                      onPressed: onBack,
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      tooltip: 'All people',
+                      visualDensity: VisualDensity.compact,
+                      style: IconButton.styleFrom(
+                        padding: EdgeInsets.zero,
+                        minimumSize: const Size.square(36),
                       ),
                     ),
-                  ),
+                    const SizedBox(width: 6),
+                    Text('All people', style: theme.textTheme.titleMedium),
+                  ] else ...[
+                    Text(
+                      'People',
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.secondaryContainer,
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        '${users.length}',
+                        style: theme.textTheme.labelMedium?.copyWith(
+                          color: theme.colorScheme.onSecondaryContainer,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                  const Spacer(),
+                  if (!showingDetail) _AvatarStack(users: users),
                 ],
-              );
-                },
               ),
             ),
-          );
-        },
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A few overlapping faces in the header — a glance at who's sharing.
+class _AvatarStack extends StatelessWidget {
+  const _AvatarStack({required this.users});
+
+  final List<_DrawerUser> users;
+
+  static const _size = 28.0;
+  static const _step = 20.0;
+  static const _max = 4;
+
+  @override
+  Widget build(BuildContext context) {
+    final shown = users.take(_max).toList();
+    final ring = Theme.of(context).colorScheme.surfaceContainerLow;
+    return SizedBox(
+      width: _size + (shown.length - 1) * _step,
+      height: _size,
+      child: Stack(
+        children: [
+          for (var i = shown.length - 1; i >= 0; i--)
+            Positioned(
+              left: i * _step,
+              child: UserAvatar(
+                userId: shown[i].profile.id,
+                name: shown[i].profile.name,
+                avatarUrl: shown[i].profile.avatarUrl,
+                imageBytes: shown[i].avatarBytes,
+                size: _size,
+                ringColor: ring,
+                ringWidth: 2,
+                dimmed: shown[i].isStale,
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -298,41 +430,132 @@ class _DrawerUser {
   const _DrawerUser({
     required this.profile,
     this.isSelf = false,
+    this.avatarBytes,
     required this.trackingPaused,
     required this.missingPermissions,
     required this.batterySavingEnabled,
-    required this.batteryLevel,
-    required this.isCharging,
   });
 
   final UserProfile profile;
   final bool isSelf;
+  final Uint8List? avatarBytes;
   final bool trackingPaused;
   final bool missingPermissions;
   final bool batterySavingEnabled;
-  final int? batteryLevel;
-  final bool? isCharging;
+
+  String get displayName => isSelf ? '${profile.name} (you)' : profile.name;
+
+  bool get isStale => !isSelf && profile.isStale;
 
   List<_UserStatus> get statuses {
     final result = <_UserStatus>[];
     if (trackingPaused) {
-      result.add(_UserStatus('Location tracking paused', Icons.pause_circle));
+      result.add(
+        _UserStatus('Sharing paused', Icons.pause_circle, Colors.amber),
+      );
     }
     if (missingPermissions) {
-      result.add(_UserStatus('Missing permissions', Icons.block));
+      result.add(
+        _UserStatus('Missing permissions', Icons.block, Colors.redAccent),
+      );
     }
     if (batterySavingEnabled) {
-      result.add(_UserStatus('Battery saving enabled', Icons.battery_saver));
+      result.add(
+        _UserStatus('Battery saver', Icons.battery_saver, Colors.tealAccent),
+      );
     }
     return result;
   }
+
+  /// Where this user is in time: how long they've been here, that they're
+  /// on the move, or — if their phone went quiet — when we last heard.
+  _Presence presence(DateTime now) {
+    final location = profile.lastLocation;
+    if (location == null) {
+      return const _Presence(
+        Icons.location_off_outlined,
+        'Location',
+        'None yet',
+        'No location yet',
+      );
+    }
+    if (isStale) {
+      final seen = profile.lastSeenAt;
+      final ago = seen == null
+          ? 'a while ago'
+          : '${formatElapsed(now.difference(seen))} ago';
+      return _Presence(
+        Icons.history_rounded,
+        'Last seen',
+        seen == null ? '—' : ago,
+        'Last seen $ago',
+      );
+    }
+    if (profile.isTravelling) {
+      return const _Presence(
+        Icons.near_me_rounded,
+        'Status',
+        'Moving',
+        'Moving',
+      );
+    }
+    final here = formatElapsed(
+      now.difference(profile.hereSince ?? location.timestamp),
+    );
+    return _Presence(Icons.timer_outlined, 'Here for', here, 'Here for $here');
+  }
+}
+
+class _Presence {
+  const _Presence(this.icon, this.label, this.value, this.sentence);
+
+  final IconData icon;
+
+  /// Stat-card label and value: "Here for" / "2h 45m".
+  final String label;
+  final String value;
+
+  /// The same as one line for the people list: "Here for 2h 45m".
+  final String sentence;
 }
 
 class _UserStatus {
-  const _UserStatus(this.label, this.icon);
+  const _UserStatus(this.label, this.icon, this.color);
 
   final String label;
   final IconData icon;
+  final Color color;
+}
+
+/// Rebuilds every second, for live "Here for" counters.
+class _Ticking extends StatefulWidget {
+  const _Ticking({required this.builder});
+
+  final WidgetBuilder builder;
+
+  @override
+  State<_Ticking> createState() => _TickingState();
+}
+
+class _TickingState extends State<_Ticking> {
+  late final Timer _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (mounted) setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.builder(context);
 }
 
 class _UserRow extends StatelessWidget {
@@ -348,96 +571,82 @@ class _UserRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
     final statuses = user.statuses;
-    final hasLocation = user.profile.lastLocation != null;
-    final allClear = statuses.isEmpty;
-    final primaryColor = Theme.of(context).colorScheme.primary;
+    final location = user.profile.lastLocation;
+    final muted = theme.textTheme.bodySmall?.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
 
     return Material(
       color: isSelected
-          ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.12)
-          : Theme.of(
-              context,
-            ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.45),
+          ? scheme.primary.withValues(alpha: 0.12)
+          : Colors.transparent,
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: hasLocation ? onSelect : null,
+        onTap: location != null ? onSelect : null,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
           child: Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              CircleAvatar(
-                radius: 22,
-                backgroundImage: user.profile.avatarUrl.isNotEmpty
-                    ? NetworkImage(user.profile.avatarUrl)
-                    : null,
-                child: user.profile.avatarUrl.isEmpty
-                    ? Text(user.profile.name.characters.first.toUpperCase())
-                    : null,
-              ),
-              const SizedBox(width: 12),
+              _PresenceAvatar(user: user, size: 46),
+              const SizedBox(width: 14),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        Expanded(
-                          child: Text(
-                            user.isSelf
-                                ? '${user.profile.name} (you)'
-                                : user.profile.name,
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                        ),
-                        if (allClear) ...[
-                          const SizedBox(width: 6),
-                          _InlineClearBadge(color: primaryColor),
-                        ],
-                        if (hasLocation)
-                          Icon(
-                            Icons.chevron_right,
-                            size: 18,
-                            color: Theme.of(
-                              context,
-                            ).colorScheme.onSurfaceVariant,
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    if (hasLocation)
-                      LocationStreetLabel(
-                        location: user.profile.lastLocation!,
-                        style: Theme.of(context).textTheme.bodySmall,
-                        maxLines: 2,
-                        placeholder: 'Looking up street...',
-                      )
-                    else
-                      Text(
-                        'No recent location',
-                        style: Theme.of(context).textTheme.bodySmall,
+                    Text(
+                      user.displayName,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.titleSmall?.copyWith(
+                        fontWeight: FontWeight.w600,
                       ),
-                    if (!allClear) ...[
-                      const SizedBox(height: 8),
+                    ),
+                    const SizedBox(height: 2),
+                    if (location != null)
+                      LocationStreetLabel(
+                        location: location,
+                        style: muted,
+                        maxLines: 1,
+                        placeholder: 'Looking up street…',
+                      ),
+                    _Ticking(
+                      builder: (context) {
+                        final presence = user.presence(DateTime.now());
+                        return Text(
+                          presence.sentence,
+                          style: muted?.copyWith(
+                            color: user.profile.isTravelling && !user.isStale
+                                ? scheme.primary
+                                : null,
+                            fontWeight: user.profile.isTravelling
+                                ? FontWeight.w600
+                                : null,
+                          ),
+                        );
+                      },
+                    ),
+                    if (statuses.isNotEmpty) ...[
+                      const SizedBox(height: 6),
                       Wrap(
                         spacing: 6,
                         runSpacing: 6,
-                        children: statuses
-                            .map(
-                              (status) => _StatusChip(
-                                label: status.label,
-                                icon: status.icon,
-                                color: _colorForStatus(context, status),
-                              ),
-                            )
-                            .toList(),
+                        children: [
+                          for (final status in statuses)
+                            _StatusChip(status: status),
+                        ],
                       ),
                     ],
                   ],
                 ),
+              ),
+              const SizedBox(width: 8),
+              _BatteryPill(
+                level: user.profile.batteryLevel,
+                charging: user.profile.isCharging ?? false,
               ),
             ],
           ),
@@ -445,84 +654,128 @@ class _UserRow extends StatelessWidget {
       ),
     );
   }
-
-  Color _colorForStatus(BuildContext context, _UserStatus status) {
-    switch (status.icon) {
-      case Icons.pause_circle:
-        return Colors.amber.shade700;
-      case Icons.block:
-        return Colors.redAccent;
-      case Icons.battery_saver:
-        return Colors.teal;
-      case Icons.battery_charging_full:
-        return Colors.green.shade600;
-      default:
-        return Theme.of(context).colorScheme.primary;
-    }
-  }
 }
 
-class _InlineClearBadge extends StatelessWidget {
-  const _InlineClearBadge({required this.color});
+/// Avatar with a small dot: green while sharing, grey when the phone has
+/// gone quiet, amber when sharing is paused.
+class _PresenceAvatar extends StatelessWidget {
+  const _PresenceAvatar({required this.user, required this.size});
 
-  final Color color;
+  final _DrawerUser user;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
+    final dotColor = user.trackingPaused
+        ? Colors.amber
+        : user.isStale
+        ? Colors.grey.shade500
+        : const Color(0xFF34C759);
+    final dot = size * 0.28;
+    return SizedBox(
+      width: size,
+      height: size,
+      child: Stack(
+        clipBehavior: Clip.none,
         children: [
-          Icon(Icons.check_circle, size: 12, color: color),
-          const SizedBox(width: 4),
-          Text(
-            'All clear',
-            style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w600,
+          UserAvatar(
+            userId: user.profile.id,
+            name: user.profile.name,
+            avatarUrl: user.profile.avatarUrl,
+            imageBytes: user.avatarBytes,
+            size: size,
+            dimmed: user.isStale,
+          ),
+          Positioned(
+            right: -1,
+            bottom: -1,
+            child: Container(
+              width: dot,
+              height: dot,
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Theme.of(context).colorScheme.surfaceContainerLow,
+                  width: 2.5,
+                ),
+              ),
             ),
           ),
         ],
       ),
     );
   }
+}
+
+class _BatteryPill extends StatelessWidget {
+  const _BatteryPill({required this.level, required this.charging});
+
+  final int? level;
+  final bool charging;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final level = this.level;
+    if (level == null) return const SizedBox.shrink();
+    final low = level <= 20 && !charging;
+    final color = charging
+        ? const Color(0xFF34C759)
+        : low
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurfaceVariant;
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          charging ? Icons.bolt_rounded : _batteryIcon(level),
+          size: 16,
+          color: color,
+        ),
+        const SizedBox(width: 2),
+        Text(
+          '$level%',
+          style: theme.textTheme.labelMedium?.copyWith(
+            color: color,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+IconData _batteryIcon(int level) {
+  if (level >= 90) return Icons.battery_full_rounded;
+  if (level >= 60) return Icons.battery_5_bar_rounded;
+  if (level >= 40) return Icons.battery_3_bar_rounded;
+  if (level >= 20) return Icons.battery_2_bar_rounded;
+  return Icons.battery_alert_rounded;
 }
 
 class _StatusChip extends StatelessWidget {
-  const _StatusChip({
-    required this.label,
-    required this.icon,
-    required this.color,
-  });
+  const _StatusChip({required this.status});
 
-  final String label;
-  final IconData icon;
-  final Color color;
+  final _UserStatus status;
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
+        color: status.color.withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.28)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+          Icon(status.icon, size: 13, color: status.color),
+          const SizedBox(width: 4),
           Text(
-            label,
-            style: Theme.of(context).textTheme.labelMedium?.copyWith(
-              color: color,
+            status.label,
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+              color: status.color,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -532,32 +785,20 @@ class _StatusChip extends StatelessWidget {
   }
 }
 
-String _formatDuration(Duration duration) {
-  if (duration.inHours > 0) {
-    return '${duration.inHours}h ${duration.inMinutes.remainder(60)}m';
-  }
-  if (duration.inMinutes > 0) {
-    return '${duration.inMinutes}m ${duration.inSeconds.remainder(60)}s';
-  }
-  return '${duration.inSeconds}s';
-}
-
 /// Inline detail view shown in place of the user list once a row is tapped.
-/// Speed/battery/duration come from live data; trip stats are derived from
-/// today's location-history sessions. Location history opens the real
-/// session view.
+/// Speed/battery/"here for" come from live data; trip stats are derived from
+/// today's location-history sessions. Trip history opens the calendar.
 class _UserDetailPane extends StatefulWidget {
   const _UserDetailPane({
+    super.key,
     required this.user,
     required this.scrollController,
     required this.bottomInset,
-    required this.onBack,
   });
 
   final _DrawerUser user;
   final ScrollController scrollController;
   final double bottomInset;
-  final VoidCallback onBack;
 
   @override
   State<_UserDetailPane> createState() => _UserDetailPaneState();
@@ -585,61 +826,76 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
       userId: widget.user.profile.id,
       from: from,
       to: to,
+      includePoints: false,
+    );
+  }
+
+  void _openHistory() {
+    final baseUrl = context.read<TrackingController>().baseUrl;
+    final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+    if (accessToken == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LocationHistoryScreen(
+          user: widget.user.profile,
+          baseUrl: baseUrl,
+          accessToken: accessToken,
+        ),
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final profile = widget.user.profile;
+    final user = widget.user;
+    final profile = user.profile;
     final loc = profile.lastLocation;
 
     return ListView(
       controller: widget.scrollController,
-      padding: EdgeInsets.fromLTRB(16, 2, 16, 16 + widget.bottomInset),
+      padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + widget.bottomInset),
       children: [
         Row(
           children: [
-            IconButton(
-              onPressed: widget.onBack,
-              icon: const Icon(Icons.arrow_back),
-              tooltip: 'Back to list',
-              visualDensity: VisualDensity.compact,
-            ),
-            const SizedBox(width: 4),
-            CircleAvatar(
-              radius: 22,
-              backgroundImage: profile.avatarUrl.isNotEmpty
-                  ? NetworkImage(profile.avatarUrl)
-                  : null,
-              child: profile.avatarUrl.isEmpty
-                  ? Text(profile.name.characters.first.toUpperCase())
-                  : null,
-            ),
-            const SizedBox(width: 12),
+            _PresenceAvatar(user: user, size: 52),
+            const SizedBox(width: 14),
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    widget.user.isSelf
-                        ? '${profile.name} (you)'
-                        : profile.name,
-                    style: theme.textTheme.titleMedium,
+                    user.displayName,
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
+                  const SizedBox(height: 2),
                   if (loc != null)
                     LocationStreetLabel(
                       location: loc,
-                      style: theme.textTheme.bodySmall,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
                       maxLines: 1,
-                      placeholder: 'Looking up street...',
+                      placeholder: 'Looking up street…',
                     ),
                 ],
               ),
             ),
           ],
         ),
-        const SizedBox(height: 16),
+        if (user.statuses.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              for (final status in user.statuses) _StatusChip(status: status),
+            ],
+          ),
+        ],
+        const SizedBox(height: 18),
         if (loc != null)
           Row(
             children: [
@@ -656,29 +912,31 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
                   icon: profile.isCharging == true
                       ? Icons.battery_charging_full_rounded
                       : Icons.battery_std_rounded,
-                  label: 'Battery',
+                  label: profile.isCharging == true ? 'Charging' : 'Battery',
                   value: profile.batteryLevel == null
-                      ? 'Unknown'
-                      : '${profile.batteryLevel}%'
-                            '${profile.isCharging == true ? ' (charging)' : ''}',
+                      ? '—'
+                      : '${profile.batteryLevel}%',
                 ),
               ),
               const SizedBox(width: 10),
               Expanded(
-                child: _StatCard(
-                  icon: Icons.timer_outlined,
-                  label: 'Here for',
-                  value: _formatDuration(
-                    DateTime.now().difference(loc.timestamp),
-                  ),
+                child: _Ticking(
+                  builder: (context) {
+                    final presence = user.presence(DateTime.now());
+                    return _StatCard(
+                      icon: presence.icon,
+                      label: presence.label,
+                      value: presence.value,
+                    );
+                  },
                 ),
               ),
             ],
           )
         else
           Text('No recent location', style: theme.textTheme.bodyMedium),
-        const SizedBox(height: 24),
-        const _SectionHeader(title: 'Trip stats'),
+        const SizedBox(height: 22),
+        const _SectionHeader(title: 'Today'),
         const SizedBox(height: 10),
         FutureBuilder<List<LocationSession>>(
           future: _todaySessions,
@@ -692,7 +950,7 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
                 Expanded(
                   child: _StatCard(
                     icon: Icons.route_outlined,
-                    label: 'Drives today',
+                    label: summary.driveCount == 1 ? 'Trip' : 'Trips',
                     value: loading ? '…' : '${summary.driveCount}',
                   ),
                 ),
@@ -720,24 +978,11 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
             );
           },
         ),
-        const SizedBox(height: 24),
-        const _SectionHeader(title: 'Location history'),
-        const SizedBox(height: 10),
-        _HistoryEntryButton(
-          onTap: () {
-            final baseUrl = context.read<TrackingController>().baseUrl;
-            final accessToken = context.read<AuthProvider>().tokens?.accessToken;
-            if (accessToken == null) return;
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => LocationHistoryScreen(
-                  user: profile,
-                  baseUrl: baseUrl,
-                  accessToken: accessToken,
-                ),
-              ),
-            );
-          },
+        const SizedBox(height: 22),
+        FilledButton.tonalIcon(
+          onPressed: _openHistory,
+          icon: const Icon(Icons.calendar_month_rounded),
+          label: const Text('Trip history'),
         ),
       ],
     );
@@ -759,28 +1004,36 @@ class _StatCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(
-          alpha: 0.45,
-        ),
-        borderRadius: BorderRadius.circular(16),
+        color: theme.colorScheme.surfaceContainerHigh,
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(icon, size: 18, color: theme.colorScheme.primary),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w700,
+          const SizedBox(height: 10),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              value,
+              maxLines: 1,
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.w700,
+              ),
             ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
           ),
           const SizedBox(height: 2),
-          Text(label, style: theme.textTheme.labelSmall),
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.labelSmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
         ],
       ),
     );
@@ -798,51 +1051,6 @@ class _SectionHeader extends StatelessWidget {
     return Text(
       title,
       style: theme.textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w700),
-    );
-  }
-}
-
-class _HistoryEntryButton extends StatelessWidget {
-  const _HistoryEntryButton({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return InkWell(
-      borderRadius: BorderRadius.circular(14),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-        decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest.withValues(
-            alpha: 0.3,
-          ),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Row(
-          children: [
-            Icon(
-              Icons.history,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Text(
-                'View sessions and replay',
-                style: theme.textTheme.bodySmall,
-              ),
-            ),
-            Icon(
-              Icons.chevron_right,
-              size: 18,
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ],
-        ),
-      ),
     );
   }
 }

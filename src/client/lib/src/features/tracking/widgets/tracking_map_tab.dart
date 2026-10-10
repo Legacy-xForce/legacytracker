@@ -1,8 +1,10 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/constants.dart';
 import '../../../data/models/location_model.dart';
@@ -12,6 +14,7 @@ import 'tracked_user_cluster_marker.dart';
 import 'tracked_user_marker.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_users_drawer.dart';
+import '../local_avatar_store.dart';
 
 /// Full extent the camera is kept within. `CameraConstraint.contain` rejects any
 /// move whose viewport would spill outside these bounds, so the user can zoom
@@ -33,9 +36,11 @@ class TrackingMapTab extends StatefulWidget {
     required this.selfTrackingPaused,
     required this.selfMissingPermissions,
     required this.selfBatterySavingEnabled,
+    required this.selfLive,
     required this.selectedUserId,
     required this.onLayerSelected,
     required this.onUserSelected,
+    required this.onStatusTap,
   });
 
   final bool isActive;
@@ -46,9 +51,15 @@ class TrackingMapTab extends StatefulWidget {
   final bool selfTrackingPaused;
   final bool selfMissingPermissions;
   final bool selfBatterySavingEnabled;
+
+  /// Someone is watching the map, so devices are streaming in realtime.
+  final bool selfLive;
   final String? selectedUserId;
   final ValueChanged<MapLayer> onLayerSelected;
   final ValueChanged<UserProfile> onUserSelected;
+
+  /// The sharing-status pill was tapped (opens the sharing settings).
+  final VoidCallback onStatusTap;
 
   @override
   State<TrackingMapTab> createState() => _TrackingMapTabState();
@@ -70,6 +81,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   // Auto-follow: enabled when the user selects someone from the drawer,
   // disabled as soon as they manually pan/zoom the map.
   bool _autoFollow = false;
+  String? _followedUserId;
+  int _selectionTick = 0;
+
+  // Fraction of the map's height the people sheet covers right now.
+  double _sheetFraction = 0;
 
   // One motion per tracked marker (self + each peer), keyed by profile id, so
   // markers glide from their previous position to the new one instead of
@@ -262,11 +278,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
-  void _selectUser(UserProfile profile) {
-    widget.onUserSelected(profile);
-  }
+  /// Tapping a marker does what tapping their row does: open their details
+  /// and bring them into the part of the map the sheet leaves visible.
+  void _selectUser(UserProfile profile) => _focusUser(profile);
 
   void _focusUser(UserProfile profile) {
+    // Re-selecting the same person must still reopen their details.
+    _selectionTick++;
     final location = profile.lastLocation;
     if (location == null ||
         !location.latitude.isFinite ||
@@ -276,17 +294,63 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     widget.onUserSelected(profile);
-    setState(() => _autoFollow = true);
-
-    _animateMapTo(
-      LatLng(location.latitude, location.longitude),
-      zoomTarget: _selectedZoomForSelection(),
+    _follow(
+      profile,
+      location,
+      // Selecting someone opens the sheet on their details.
+      sheetFraction: TrackingUsersDrawer.expandedSize,
     );
   }
 
+  /// Centers on ourselves without opening our details: the button means
+  /// "where am I", not "show me my stats".
   void _recenterOnSelf() {
-    _focusUser(widget.selfProfile);
+    final location = widget.selfProfile.lastLocation;
+    if (location != null &&
+        location.latitude.isFinite &&
+        location.longitude.isFinite) {
+      _follow(widget.selfProfile, location, sheetFraction: _sheetFraction);
+    }
     _animateBearingToNorth();
+  }
+
+  void _follow(
+    UserProfile profile,
+    LocationPoint location, {
+    required double sheetFraction,
+  }) {
+    setState(() {
+      _autoFollow = true;
+      _followedUserId = profile.id;
+    });
+    final zoom = _selectedZoomForSelection();
+    _animateMapTo(
+      _centerShowing(
+        LatLng(location.latitude, location.longitude),
+        zoom,
+        sheetFraction,
+      ),
+      zoomTarget: zoom,
+    );
+  }
+
+  /// The camera center that puts [point] in the middle of the part of the
+  /// map the people sheet leaves visible, rather than hidden behind it.
+  LatLng _centerShowing(LatLng point, double zoom, double sheetFraction) {
+    final MapCamera camera;
+    try {
+      camera = _mapController.camera;
+    } catch (_) {
+      return point;
+    }
+    final covered = sheetFraction * camera.nonRotatedSize.height;
+    if (covered <= 0) return point;
+    return CameraFit.coordinates(
+      coordinates: [point],
+      padding: EdgeInsets.only(bottom: covered),
+      minZoom: zoom,
+      maxZoom: zoom,
+    ).fit(camera).center;
   }
 
   void _animateBearingToNorth() {
@@ -326,13 +390,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       final positions = _pointerLocations.values.toList();
       if (positions.length >= 2) {
         final angle = _calculateRotationAngle(positions[0], positions[1]);
-        
+
         if (_lastRotationAngle != null) {
           final angleDelta = (angle - _lastRotationAngle!).abs();
           // Normalize angle delta to 0-180 range
           final normalizedDelta =
               angleDelta > 180 ? 360 - angleDelta : angleDelta;
-          
+
           if (normalizedDelta > _rotationThreshold && _isRotationLocked) {
             _isRotationLocked = false;
           }
@@ -371,14 +435,17 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     // Let a deliberate focus animation (e.g. initial user selection) finish
     // before the motion tick takes over camera control.
     if (_mapCenterController.isAnimating) return;
-    final followedId = widget.selectedUserId ?? widget.selfProfile.id;
+    final followedId =
+        _followedUserId ?? widget.selectedUserId ?? widget.selfProfile.id;
     final pos = _motions[followedId]?.value;
     if (pos == null) return;
-    _mapController.move(pos, _currentZoom);
+    final zoom = _currentZoom;
+    _mapController.move(_centerShowing(pos, zoom, _sheetFraction), zoom);
   }
 
   @override
   Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
     return Stack(
       children: [
         Listener(
@@ -408,7 +475,59 @@ class _TrackingMapTabState extends State<TrackingMapTab>
             ),
             children: [
               ...buildMapTileLayers(widget.selectedLayer),
-              MarkerLayer(markers: _buildMarkers()),
+              // MapCamera.of rebuilds this on every camera change, so groups
+              // split and merge live while zooming instead of on the next tick.
+              Builder(
+                builder: (context) =>
+                    MarkerLayer(markers: _buildMarkers(MapCamera.of(context))),
+              ),
+            ],
+          ),
+        ),
+        // Keeps the status bar's clock and icons legible over light tiles.
+        Positioned(
+          top: 0,
+          left: 0,
+          right: 0,
+          height: topInset + 28,
+          child: const IgnorePointer(
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0x99000000), Color(0x00000000)],
+                ),
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          top: topInset + 12,
+          left: 16,
+          child: _SharingStatusPill(
+            paused: widget.selfTrackingPaused,
+            missingPermissions: widget.selfMissingPermissions,
+            live: widget.selfLive,
+            onTap: widget.onStatusTap,
+          ),
+        ),
+        Positioned(
+          top: topInset + 12,
+          right: 16,
+          child: MapControlGroup(
+            children: [
+              MapLayerButton(
+                selectedLayer: widget.selectedLayer,
+                onLayerSelected: widget.onLayerSelected,
+              ),
+              MapControlButton(
+                icon: _autoFollow && _followedUserId == widget.selfProfile.id
+                    ? Icons.my_location
+                    : Icons.location_searching,
+                tooltip: 'My location',
+                onPressed: _recenterOnSelf,
+              ),
             ],
           ),
         ),
@@ -419,28 +538,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           selfMissingPermissions: widget.selfMissingPermissions,
           selfBatterySavingEnabled: widget.selfBatterySavingEnabled,
           selectedUserId: widget.selectedUserId,
+          selectionTick: _selectionTick,
           onUserSelected: _focusUser,
-        ),
-        Positioned(
-          top: 16,
-          right: 16,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            spacing: 12,
-            children: [
-              MapLayerButton(
-                selectedLayer: widget.selectedLayer,
-                onLayerSelected: widget.onLayerSelected,
-              ),
-              FloatingActionButton(
-                heroTag: 'recenter_fab',
-                mini: true,
-                onPressed: _recenterOnSelf,
-                tooltip: 'My Location',
-                child: const Icon(Icons.my_location),
-              ),
-            ],
-          ),
+          onExtentChanged: (fraction) => _sheetFraction = fraction,
         ),
       ],
     );
@@ -455,8 +555,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// other's tap target) while staying just outside the threshold.
   static const double _clusterPixelRadius = 96;
 
-  List<Marker> _buildMarkers() {
-    final clusters = _clusterEntries(_collectMarkerEntries());
+  List<Marker> _buildMarkers(MapCamera camera) {
+    final clusters = _clusterEntries(_collectMarkerEntries(), camera);
     return [
       for (final cluster in clusters)
         if (cluster.length == 1)
@@ -514,17 +614,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// and order-dependent, but with only a handful of tracked users on screen
   /// at once the result is visually indistinguishable from an optimal
   /// grouping.
-  List<List<_UserMarkerEntry>> _clusterEntries(List<_UserMarkerEntry> entries) {
+  List<List<_UserMarkerEntry>> _clusterEntries(
+    List<_UserMarkerEntry> entries,
+    MapCamera camera,
+  ) {
     if (entries.length <= 1) {
-      return [
-        for (final entry in entries) [entry],
-      ];
-    }
-
-    final MapCamera camera;
-    try {
-      camera = _mapController.camera;
-    } catch (_) {
       return [
         for (final entry in entries) [entry],
       ];
@@ -566,6 +660,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       isSelected: widget.selectedUserId == profile.id,
       onTap: () => _selectUser(profile),
       tooltipMessage: entry.isSelf ? '${profile.name} (you)' : profile.name,
+      avatarBytes: entry.isSelf
+          ? context.watch<LocalAvatarStore?>()?.bytes
+          : null,
       beamColor: const Color(0xFF0985FB),
       ringColor: entry.isSelf ? const Color(0xFF0985FB) : Colors.white,
       badgeColor: entry.isSelf ? Colors.teal.shade800 : Colors.grey.shade900,
@@ -577,21 +674,21 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       point: _centroid(members.map((m) => m.point)),
       width: TrackedUserClusterMarker.widthFor(members.length),
       height: TrackedUserClusterMarker.height,
-      // The bubble's tail tip (its bottom-center point) is the part that
-      // should land exactly on the location, not the bubble body above it.
-      alignment: Alignment.bottomCenter,
+      // The dot at the tail's tip is what sits on the location.
+      alignment: TrackedUserClusterMarker.alignmentFor(members.length),
       child: TrackedUserClusterMarker(
-        avatarUrls: members.map((m) => m.profile.avatarUrl).toList(),
-        names: members
-            .map((m) => m.isSelf ? '${m.profile.name} (you)' : m.profile.name)
-            .toList(),
-        isAllStale: members.every((m) => _isStale(m.profile)),
+        members: [
+          for (final m in members)
+            ClusterMember(
+              id: m.profile.id,
+              name: m.isSelf ? '${m.profile.name} (you)' : m.profile.name,
+              avatarUrl: m.profile.avatarUrl,
+              isStale: _isStale(m.profile),
+              onTap: () => _selectUser(m.profile),
+            ),
+        ],
         onTap: () => _focusCluster(members),
-        onMemberTap: members
-            .map((m) => () => _selectUser(m.profile))
-            .toList(),
-        ringColor: const Color(0xFF0985FB),
-        badgeColor: Colors.grey.shade900,
+        accentColor: const Color(0xFF0985FB),
       ),
     );
   }
@@ -630,7 +727,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     ).fit(camera);
 
     setState(() => _autoFollow = false);
-    _animateMapTo(fitted.center, zoomTarget: fitted.zoom);
+    _animateMapTo(
+      _centerShowing(fitted.center, fitted.zoom, _sheetFraction),
+      zoomTarget: fitted.zoom,
+    );
   }
 
   Marker _buildTrackedUserMarker({
@@ -640,6 +740,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     required bool isSelected,
     required VoidCallback onTap,
     required String tooltipMessage,
+    Uint8List? avatarBytes,
     required Color beamColor,
     required Color ringColor,
     required Color badgeColor,
@@ -649,8 +750,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       width: TrackedUserMarker.width,
       height: TrackedUserMarker.height,
       child: TrackedUserMarker(
+        userId: profile.id,
         name: profile.name,
         avatarUrl: profile.avatarUrl,
+        avatarBytes: avatarBytes,
         speedKmh: location.speed * 3.6,
         isMoving: location.isMoving,
         heading: location.heading,
@@ -674,6 +777,72 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   bool _isStale(UserProfile profile) {
     if (profile.id == widget.selfProfile.id) return false;
     return profile.isStale;
+  }
+}
+
+/// Whether we're sharing our location, at a glance; tapping it opens the
+/// sharing settings.
+class _SharingStatusPill extends StatelessWidget {
+  const _SharingStatusPill({
+    required this.paused,
+    required this.missingPermissions,
+    required this.live,
+    required this.onTap,
+  });
+
+  final bool paused;
+  final bool missingPermissions;
+  final bool live;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final (color, label) = missingPermissions
+        ? (theme.colorScheme.error, 'Location off')
+        : paused
+        ? (Colors.amber, 'Sharing paused')
+        : (const Color(0xFF34C759), live ? 'Sharing · live' : 'Sharing');
+
+    return Material(
+      color: theme.colorScheme.surfaceContainerHigh,
+      elevation: 4,
+      shadowColor: Colors.black54,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 9, 14, 9),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 9,
+                height: 9,
+                decoration: BoxDecoration(
+                  color: color,
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: color.withValues(alpha: 0.6),
+                      blurRadius: 6,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                label,
+                style: theme.textTheme.labelLarge?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 
@@ -824,4 +993,3 @@ class _LatLngTween extends Tween<LatLng> {
     );
   }
 }
-

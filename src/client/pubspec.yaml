@@ -44,6 +44,7 @@ dependencies:
   firebase_messaging: ^15.0.0
   battery_plus: ^7.1.0
   image_picker: ^1.1.2
+  passkeys: ^2.23.1
 
 dev_dependencies:
   flutter_test:

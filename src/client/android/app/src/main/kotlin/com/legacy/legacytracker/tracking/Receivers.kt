@@ -3,6 +3,8 @@ package com.legacy.legacytracker.tracking
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.legacy.legacytracker.updates.AppUpdater
+import com.legacy.legacytracker.updates.UpdateWorker
 
 /**
  * Target of the engine's PendingIntents: geofence exits, activity
@@ -38,6 +40,9 @@ class TrackingReceiver : BroadcastReceiver() {
 /** Geofences and activity registrations do not survive reboots; re-arm them. */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
+        if (intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+            AppUpdater.get(context).onPackageReplaced()
+        }
         when (intent.action) {
             Intent.ACTION_BOOT_COMPLETED,
             Intent.ACTION_MY_PACKAGE_REPLACED,
@@ -61,6 +66,11 @@ class BootReceiver : BroadcastReceiver() {
 class PushCommandReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val command = intent.getStringExtra("lt_cmd") ?: return
+        if (command == "update") {
+            // A new release is out; see updates/AppUpdater.kt.
+            UpdateWorker.runNow(context, "release announced")
+            return
+        }
         val ttl = intent.getStringExtra("lt_ttl")?.toIntOrNull() ?: 0
         val engine = TrackingEngine.get(context)
         val pending = goAsync()

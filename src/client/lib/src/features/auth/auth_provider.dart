@@ -4,19 +4,23 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../data/models/passkey.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/auth_service.dart';
 import '../../data/network/device_service.dart';
 import '../../data/network/profile_service.dart';
 import '../../data/storage/token_storage.dart';
 import '../location/tracking_engine.dart';
+import 'passkey_client.dart';
 
 class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   AuthProvider({
     required this.authService,
     required this.profileService,
     this.deviceService,
-  }) {
+    PasskeyClient? passkeyClient,
+  }) : passkeyClient =
+           passkeyClient ?? PasskeyClient(authService: authService) {
     WidgetsBinding.instance.addObserver(this);
     _initialize();
   }
@@ -24,6 +28,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   final AuthService authService;
   final ProfileService profileService;
   final DeviceService? deviceService;
+  final PasskeyClient passkeyClient;
   TokenStorage? _storage;
 
   bool isInitializing = true;
@@ -62,26 +67,87 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  Future<void> login(String username, String password) async {
+  Future<void> login(String username, String password) {
+    return _signIn(() async {
+      final tokens = await authService.login(username.trim(), password);
+      return (username.trim(), tokens);
+    });
+  }
+
+  /// Signs in with a passkey on this device. Completes normally if the user
+  /// dismisses the system prompt — that's not an error worth reporting.
+  Future<void> loginWithPasskey() async {
+    try {
+      await _signIn(() async {
+        final tokens = await passkeyClient.signIn();
+        // No username was typed; the auth server puts it in the token.
+        final name = _tokenClaim(tokens.accessToken, 'username') ??
+            _tokenClaim(tokens.accessToken, 'sub')!;
+        return (name, tokens);
+      });
+    } on PasskeyException catch (error) {
+      if (!error.cancelled) rethrow;
+    }
+  }
+
+  Future<void> _signIn(
+    Future<(String, AuthTokens)> Function() authenticate,
+  ) async {
     isLoading = true;
     errorMessage = null;
     notifyListeners();
 
     try {
-      final tokens = await authService.login(username.trim(), password);
-      this.username = username.trim();
+      final (username, tokens) = await authenticate();
+      this.username = username;
       this.tokens = tokens;
       isAuthenticated = true;
-      await _storage?.save(this.username!, tokens);
+      await _storage?.save(username, tokens);
       await _loadProfile();
     } catch (error) {
-      errorMessage = error.toString();
+      final cancelled = error is PasskeyException && error.cancelled;
+      errorMessage = cancelled ? null : _describe(error);
       isAuthenticated = false;
       rethrow;
     } finally {
       isLoading = false;
       notifyListeners();
     }
+  }
+
+  /// The account's passkeys, or null when the auth server has them disabled.
+  Future<List<Passkey>?> loadPasskeys() async {
+    return authService.listPasskeys(await _freshAccessToken());
+  }
+
+  /// Creates a passkey on this device for the signed-in account. Returns
+  /// null if the user dismissed the system prompt.
+  Future<Passkey?> createPasskey() async {
+    try {
+      return await passkeyClient.create(await _freshAccessToken());
+    } on PasskeyException catch (error) {
+      if (error.cancelled) return null;
+      rethrow;
+    }
+  }
+
+  Future<void> deletePasskey(String id) async {
+    await authService.deletePasskey(await _freshAccessToken(), id);
+  }
+
+  Future<String> _freshAccessToken() async {
+    if (!await _refreshTokensIfNeeded()) {
+      throw AuthException('You\'re signed out. Sign in again to continue.');
+    }
+    return tokens!.accessToken;
+  }
+
+  static String _describe(Object error) {
+    if (error is AuthException || error is PasskeyException) {
+      return error.toString();
+    }
+    // Plain exceptions from the profile fetch read "Exception: …".
+    return error.toString().replaceFirst(RegExp(r'^Exception: '), '');
   }
 
   Future<void> logout() async {
@@ -148,21 +214,23 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Signs in from the stored session alone, identifying the user by the
   /// access token's subject (the server's user id).
   void _useOfflineProfile() {
-    final userId = _tokenSubject(tokens?.accessToken);
+    final userId = _tokenClaim(tokens?.accessToken, 'sub');
     if (userId == null) return;
     profile ??= UserProfile(id: userId, name: username ?? userId);
     isAuthenticated = true;
   }
 
-  static String? _tokenSubject(String? jwt) {
+  /// A string claim from a JWT's payload. Unverified — only for display and
+  /// identifying ourselves; the servers do the verifying.
+  static String? _tokenClaim(String? jwt, String claim) {
     final parts = jwt?.split('.');
     if (parts == null || parts.length != 3) return null;
     try {
       final payload = jsonDecode(
         utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
       );
-      final sub = payload is Map ? payload['sub'] : null;
-      return sub is String && sub.isNotEmpty ? sub : null;
+      final value = payload is Map ? payload[claim] : null;
+      return value is String && value.isNotEmpty ? value : null;
     } catch (_) {
       return null;
     }
