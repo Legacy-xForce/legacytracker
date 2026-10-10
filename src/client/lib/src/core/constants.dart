@@ -1,13 +1,16 @@
+import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 
 class AppConstants {
-  // Tracker backend. Point a debug build at a local server with
+  static const _productionBackendUrl = 'https://tracker.legacy-group.tech';
+
+  // Tracker backend. Release builds always talk to production. A debug build
+  // can be pointed at a local server with
   // `flutter run --dart-define=BACKEND_URL=http://10.0.2.2:3000` (10.0.2.2 is
   // the host machine as seen from the Android emulator).
-  static const backendBaseUrl = String.fromEnvironment(
-    'BACKEND_URL',
-    defaultValue: 'https://tracker.legacy-group.tech',
-  );
+  static const backendBaseUrl = kReleaseMode
+      ? _productionBackendUrl
+      : String.fromEnvironment('BACKEND_URL', defaultValue: _productionBackendUrl);
 
   // Default map center (San Francisco)
   static const defaultMapCenter = LatLng(37.7749, -122.4194);
