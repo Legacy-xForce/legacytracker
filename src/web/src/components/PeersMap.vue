@@ -84,7 +84,10 @@ function flyToSelected() {
 }
 
 onMounted(() => {
-    map = L.map(element.value!, { zoomControl: false, worldCopyJump: true }).setView([37.7749, -122.4194], 3);
+    map = L.map(element.value!, { zoomControl: false, worldCopyJump: true, minZoom: 2, maxZoom: 19 }).setView(
+        [37.7749, -122.4194],
+        3
+    );
     L.control.zoom({ position: 'bottomright' }).addTo(map);
     cluster = L.markerClusterGroup({
         maxClusterRadius: 40,
