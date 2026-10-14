@@ -67,3 +67,22 @@ CREATE UNIQUE INDEX IF NOT EXISTS location_history_user_recorded_uniq
 
 CREATE INDEX IF NOT EXISTS location_history_location_gist_idx
   ON location_history USING GIST (location);
+
+-- Shared named circles ("Home", "Office"). Everyone with the tracker scope
+-- sees them; only the creator or an admin may change one. Names are unique
+-- case-insensitively, ignoring surrounding whitespace.
+CREATE TABLE IF NOT EXISTS checkpoints (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  name text NOT NULL,
+  location geography(Point, 4326) NOT NULL,
+  radius_m integer NOT NULL CHECK (radius_m BETWEEN 10 AND 250),
+  created_by text NOT NULL REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS checkpoints_name_uniq
+  ON checkpoints (lower(btrim(name)));
+
+CREATE INDEX IF NOT EXISTS checkpoints_location_gist_idx
+  ON checkpoints USING GIST (location);

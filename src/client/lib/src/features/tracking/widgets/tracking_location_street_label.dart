@@ -2,8 +2,10 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 
 import '../../../data/models/location_model.dart';
+import '../../checkpoints/checkpoints_provider.dart';
 
 final Map<String, Future<String>> _streetLookupCache = {};
 
@@ -100,6 +102,32 @@ class LocationStreetLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Nullable lookup: the label also renders where no provider is mounted.
+    final checkpoint = context
+        .watch<CheckpointsProvider?>()
+        ?.resolve(location.latitude, location.longitude);
+    if (checkpoint != null) {
+      final textStyle = style ?? Theme.of(context).textTheme.bodySmall;
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.place_rounded,
+            size: (textStyle?.fontSize ?? 12) + 2,
+            color: textStyle?.color,
+          ),
+          const SizedBox(width: 3),
+          Flexible(
+            child: Text(
+              checkpoint.name,
+              style: textStyle,
+              maxLines: maxLines,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      );
+    }
     return FutureBuilder<String>(
       future: streetNameFor(location),
       builder: (context, snapshot) {
