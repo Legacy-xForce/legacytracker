@@ -9,6 +9,8 @@ import 'package:provider/provider.dart';
 import '../../../core/constants.dart';
 import '../../../data/models/location_model.dart';
 import '../../../data/models/user_model.dart';
+import '../../calendar/calendar_events_provider.dart';
+import '../../calendar/event_marker.dart';
 import 'map_layers.dart';
 import 'tracked_user_cluster_marker.dart';
 import 'tracked_user_marker.dart';
@@ -446,6 +448,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
+    final events = context.watch<CalendarEventsProvider?>();
     return Stack(
       children: [
         Listener(
@@ -475,6 +478,22 @@ class _TrackingMapTabState extends State<TrackingMapTab>
             ),
             children: [
               ...buildMapTileLayers(widget.selectedLayer),
+              // Under the people, so an event never hides someone's marker.
+              if (events != null && events.visibleEvents.isNotEmpty)
+                MarkerLayer(
+                  markers: [
+                    for (final event in events.visibleEvents)
+                      Marker(
+                        point: event.point!,
+                        width: EventMarker.size,
+                        height: EventMarker.size,
+                        child: EventMarker(
+                          event: event,
+                          onTap: () => showEventDetails(context, event),
+                        ),
+                      ),
+                  ],
+                ),
               // MapCamera.of rebuilds this on every camera change, so groups
               // split and merge live while zooming instead of on the next tick.
               Builder(
@@ -528,6 +547,17 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                 tooltip: 'My location',
                 onPressed: _recenterOnSelf,
               ),
+              if (events != null && events.available)
+                MapControlButton(
+                  icon: events.enabled
+                      ? Icons.event_rounded
+                      : Icons.event_busy_outlined,
+                  tooltip: events.enabled ? 'Hide events' : 'Show events',
+                  color: events.enabled
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                  onPressed: events.toggle,
+                ),
             ],
           ),
         ),

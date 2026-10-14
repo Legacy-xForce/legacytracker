@@ -65,6 +65,13 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     return null;
   }
 
+  /// Whether the account may use Legacy Calendar, whose API takes the same
+  /// access token. Display gating only; the calendar server enforces it.
+  bool get hasCalendarScope {
+    final accessToken = tokens?.accessToken;
+    return accessToken != null && _hasScope(accessToken, 'calendar');
+  }
+
   Future<void> _initialize() async {
     final prefs = await SharedPreferences.getInstance();
     _storage = TokenStorage(prefs);
@@ -297,9 +304,11 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Whether the access token grants the tracker: Legacy Auth sends
   /// `scopes: {calendar: bool, tracker: bool}`. The tracker server applies
   /// the same rule; this only decides what the app shows.
-  static bool _hasTrackerScope(String jwt) {
+  static bool _hasTrackerScope(String jwt) => _hasScope(jwt, 'tracker');
+
+  static bool _hasScope(String jwt, String scope) {
     final scopes = _tokenPayload(jwt)?['scopes'];
-    return scopes is Map && scopes['tracker'] == true;
+    return scopes is Map && scopes[scope] == true;
   }
 
   static Map<String, dynamic>? _tokenPayload(String? jwt) {
