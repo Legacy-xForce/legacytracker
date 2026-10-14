@@ -15,3 +15,88 @@ body {
     color: #fff;
     font-family: Inter, system-ui, sans-serif;
 }
+
+.peer-marker-wrap {
+    background: none;
+    border: none;
+}
+
+.peer-marker {
+    position: relative;
+    width: 64px;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.peer-marker__avatar {
+    width: 44px;
+    height: 44px;
+    border-radius: 9999px;
+    border: 3px solid #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: 600;
+    font-size: 15px;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
+}
+
+.peer-marker--self .peer-marker__avatar {
+    border-color: #0985fb;
+}
+
+.peer-marker--selected .peer-marker__avatar {
+    outline: 3px solid rgb(9 133 251 / 0.6);
+}
+
+.peer-marker--stale {
+    filter: grayscale(1);
+    opacity: 0.65;
+}
+
+.peer-marker__heading {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.peer-marker__heading::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    border-left: 7px solid transparent;
+    border-right: 7px solid transparent;
+    border-bottom: 12px solid #0985fb;
+}
+
+.peer-marker__badge {
+    position: absolute;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    white-space: nowrap;
+    background: #111;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 9999px;
+    border: 1px solid #333;
+}
+
+.peer-cluster {
+    background: #111;
+    color: #fff;
+    border: 3px solid #fff;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    box-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
+}

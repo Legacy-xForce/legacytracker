@@ -33,8 +33,11 @@ export const useSessionStore = defineStore('session', () => {
     // The access token lives in memory only; the refresh token is what survives a reload.
     const tokens = ref<AuthTokens | null>(null);
     const accountDisabled = ref(false);
+    // Set when the tracker server refuses a request the token's own claims allowed.
+    const forbidden = ref(false);
     let refreshing: Promise<void> | null = null;
 
+    const accessToken = computed(() => tokens.value?.accessToken ?? null);
     const isAuthenticated = computed(() => tokens.value !== null);
     const username = computed(() => {
         const claims = tokens.value ? decodeJwt(tokens.value.accessToken) : null;
@@ -43,6 +46,7 @@ export const useSessionStore = defineStore('session', () => {
     });
     const accessDenial = computed<AccessDenial | null>(() => {
         if (accountDisabled.value) return 'accountDisabled';
+        if (forbidden.value) return 'missingScope';
         if (tokens.value && !hasScope(tokens.value.accessToken, 'tracker')) return 'missingScope';
         return null;
     });
@@ -51,6 +55,8 @@ export const useSessionStore = defineStore('session', () => {
     function adopt(next: AuthTokens) {
         tokens.value = next;
         accountDisabled.value = false;
+        // A fresh token carries the account's current scopes, so give access another chance.
+        forbidden.value = false;
         storage.set(
             STORAGE_KEY,
             JSON.stringify({ refreshToken: next.refreshToken, refreshExpiresAt: next.refreshExpiresAt })
@@ -59,6 +65,7 @@ export const useSessionStore = defineStore('session', () => {
 
     function clear() {
         tokens.value = null;
+        forbidden.value = false;
         storage.remove(STORAGE_KEY);
     }
 
@@ -127,6 +134,10 @@ export const useSessionStore = defineStore('session', () => {
         if (refreshToken) await auth.logout(refreshToken);
     }
 
+    function markForbidden() {
+        forbidden.value = true;
+    }
+
     /** A valid access token, refreshing first when it is about to expire. Null when signed out. */
     async function getAccessToken(): Promise<string | null> {
         if (tokens.value && tokens.value.expiresAt - Date.now() < REFRESH_MARGIN_MS) {
@@ -140,6 +151,7 @@ export const useSessionStore = defineStore('session', () => {
     }
 
     return {
+        accessToken,
         isAuthenticated,
         username,
         accessDenial,
@@ -148,6 +160,7 @@ export const useSessionStore = defineStore('session', () => {
         login,
         logout,
         refresh,
-        getAccessToken
+        getAccessToken,
+        markForbidden
     };
 });
