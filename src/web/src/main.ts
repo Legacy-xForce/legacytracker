@@ -3,8 +3,9 @@ import { createPinia } from 'pinia';
 import App from './App.vue';
 import { router } from './router';
 import { useSessionStore } from './stores/session';
-import './style.css';
+import '@fontsource-variable/roboto';
 import 'leaflet/dist/leaflet.css';
+import './style.css';
 
 const app = createApp(App);
 app.use(createPinia());

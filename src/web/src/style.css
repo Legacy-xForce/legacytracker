@@ -1,129 +1,231 @@
 @import 'tailwindcss';
 
+/*
+ * The phone app's theme: Material 3, dark, seeded from teal (its ColorScheme.fromSeed). The
+ * values were read off the app's screens, so both clients look like one product.
+ */
 @theme {
-    --color-brand: #3b82f6;
+    --font-sans: 'Roboto Variable', Roboto, system-ui, sans-serif;
+
+    --color-surface: #0e1513;
+    --color-surface-container-lowest: #090f0e;
+    --color-surface-container-low: #161d1c;
+    --color-surface-container: #1a2120;
+    --color-surface-container-high: #252b2a;
+    --color-surface-container-highest: #2f3635;
+    --color-on-surface: #dde4e1;
+    --color-on-surface-variant: #bec9c6;
+    --color-outline: #899390;
+    --color-outline-variant: #3f4947;
+    --color-primary: #82d5c8;
+    --color-on-primary: #003731;
+    --color-primary-container: #00504a;
+    --color-on-primary-container: #9ef2e4;
+    --color-secondary-container: #334b47;
+    --color-on-secondary-container: #cce8e2;
+    --color-error: #ffb4ab;
+    --color-error-container: #93000a;
+    --color-on-error-container: #ffdad6;
+
+    /* Fixed accents the app uses regardless of theme. */
+    --color-online: #34c759;
+    --color-arrival: #ff453a;
+    --color-beam: #0985fb;
+    --color-paused: #ffc107;
+    --color-hidden: #607d8b;
 }
 
-html,
-body,
-#app {
-    height: 100%;
+/* Material 3 type scale, as Flutter applies it. */
+@utility type-headline-sm {
+    font-size: 24px;
+    line-height: 32px;
+}
+@utility type-title-lg {
+    font-size: 22px;
+    line-height: 28px;
+}
+@utility type-title-md {
+    font-size: 16px;
+    line-height: 24px;
+    font-weight: 500;
+    letter-spacing: 0.15px;
+}
+@utility type-title-sm {
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+}
+@utility type-body-lg {
+    font-size: 16px;
+    line-height: 24px;
+    letter-spacing: 0.5px;
+}
+@utility type-body-md {
+    font-size: 14px;
+    line-height: 20px;
+    letter-spacing: 0.25px;
+}
+@utility type-body-sm {
+    font-size: 12px;
+    line-height: 16px;
+    letter-spacing: 0.4px;
+}
+@utility type-label-lg {
+    font-size: 14px;
+    line-height: 20px;
+    font-weight: 500;
+    letter-spacing: 0.1px;
+}
+@utility type-label-md {
+    font-size: 12px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+@utility type-label-sm {
+    font-size: 11px;
+    line-height: 16px;
+    font-weight: 500;
+    letter-spacing: 0.5px;
 }
 
-body {
-    background: #000;
-    color: #fff;
-    font-family: Inter, system-ui, sans-serif;
+/* Unlayered rules would beat every utility, so the base styles live in the base layer. */
+@layer base {
+    html,
+    body,
+    #app {
+        height: 100%;
+    }
+
+    html {
+        color-scheme: dark;
+    }
+
+    body {
+        background: var(--color-surface);
+        color: var(--color-on-surface);
+        font-family: var(--font-sans);
+        -webkit-font-smoothing: antialiased;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    :focus-visible {
+        outline: 2px solid var(--color-primary);
+        outline-offset: 2px;
+    }
 }
 
-.peer-marker-wrap {
+/* Thin, dark scrollbars inside panels. */
+.scroll-panel {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-outline-variant) transparent;
+}
+
+/* ---- Leaflet chrome in the app's colours ---------------------------------------------------- */
+
+.leaflet-container {
+    background: var(--color-surface-container-lowest);
+    font-family: var(--font-sans);
+}
+
+.leaflet-control-attribution {
+    background: rgb(14 21 19 / 0.7) !important;
+    color: var(--color-on-surface-variant) !important;
+    border-radius: 8px 0 0 0;
+    font-size: 10px;
+}
+
+.leaflet-control-attribution a {
+    color: var(--color-primary) !important;
+}
+
+.leaflet-popup-content-wrapper,
+.leaflet-popup-tip {
+    background: var(--color-surface-container-high);
+    color: var(--color-on-surface);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+}
+
+.leaflet-popup-content-wrapper {
+    border-radius: 20px;
+}
+
+.leaflet-popup-content {
+    margin: 16px 18px;
+    font-size: 14px;
+    line-height: 20px;
+}
+
+.leaflet-container a.leaflet-popup-close-button {
+    color: var(--color-on-surface-variant);
+    top: 6px;
+    right: 6px;
+}
+
+/* Marker boxes are larger than what they draw (beams, badges); only the drawn parts take clicks. */
+.leaflet-marker-icon.lt-marker,
+.leaflet-marker-icon.lt-marker.leaflet-interactive {
     background: none;
     border: none;
-}
-
-.peer-marker {
-    position: relative;
-    width: 64px;
-    height: 64px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-}
-
-.peer-marker__avatar {
-    width: 44px;
-    height: 44px;
-    border-radius: 9999px;
-    border: 3px solid #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-weight: 600;
-    font-size: 15px;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
-}
-
-.peer-marker--self .peer-marker__avatar {
-    border-color: #0985fb;
-}
-
-.peer-marker--selected .peer-marker__avatar {
-    outline: 3px solid rgb(9 133 251 / 0.6);
-}
-
-.peer-marker--stale {
-    filter: grayscale(1);
-    opacity: 0.65;
-}
-
-.peer-marker__heading {
-    position: absolute;
-    inset: 0;
     pointer-events: none;
 }
 
-.peer-marker__heading::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    border-left: 7px solid transparent;
-    border-right: 7px solid transparent;
-    border-bottom: 12px solid #0985fb;
+.lt-marker .lt-hit {
+    pointer-events: auto;
+    cursor: pointer;
 }
 
-.peer-marker__badge {
-    position: absolute;
-    bottom: 0;
-    left: 50%;
-    transform: translateX(-50%);
-    white-space: nowrap;
-    background: #111;
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 1px 6px;
-    border-radius: 9999px;
-    border: 1px solid #333;
+/* M3 slider on a native range input. --progress is the filled fraction (0–100%). */
+.m3-slider {
+    appearance: none;
+    width: 100%;
+    height: 20px;
+    background: transparent;
+    cursor: pointer;
 }
 
-.peer-cluster {
-    background: #111;
-    color: #fff;
-    border: 3px solid #fff;
-    border-radius: 9999px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 700;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.5);
+.m3-slider:disabled {
+    cursor: default;
+    opacity: 0.38;
 }
 
-.checkpoint-label {
-    background: rgb(0 0 0 / 0.7);
-    border: 1px solid #f59e0b;
-    border-radius: 9999px;
-    color: #fff;
-    font-size: 11px;
-    padding: 1px 8px;
-    box-shadow: none;
+.m3-slider::-webkit-slider-runnable-track {
+    height: 4px;
+    border-radius: 999px;
+    background: linear-gradient(
+        to right,
+        var(--color-primary) var(--progress, 0%),
+        var(--color-secondary-container) var(--progress, 0%)
+    );
 }
 
-.checkpoint-label::before {
-    display: none;
+.m3-slider::-moz-range-track {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-secondary-container);
 }
 
-.event-marker {
-    width: 30px;
-    height: 30px;
-    border-radius: 8px;
-    border: 2px solid #fff;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 15px;
-    box-shadow: 0 2px 6px rgb(0 0 0 / 0.5);
+.m3-slider::-moz-range-progress {
+    height: 4px;
+    border-radius: 999px;
+    background: var(--color-primary);
+}
+
+.m3-slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 20px;
+    height: 20px;
+    margin-top: -8px;
+    border-radius: 999px;
+    background: var(--color-primary);
+    border: none;
+}
+
+.m3-slider::-moz-range-thumb {
+    width: 20px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--color-primary);
+    border: none;
 }

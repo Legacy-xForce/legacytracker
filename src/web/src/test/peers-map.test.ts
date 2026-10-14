@@ -26,7 +26,6 @@ beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
 });
 
-// leaflet.markercluster refuses to be added to a map without a maxZoom, which only a real mount shows.
 describe('PeersMap', () => {
     it('mounts and draws a marker for each person with a position', async () => {
         const wrapper = mount(PeersMap, {
@@ -40,14 +39,32 @@ describe('PeersMap', () => {
         });
         expect(document.querySelectorAll('.peer-marker').length).toBe(1);
 
-        // Someone standing next to them merges into a cluster...
+        // Someone standing next to them folds into one bubble, with a face each...
         await wrapper.setProps({ peers: [peer('a', 'Ada', 45.1, 9.2), peer('b', 'Bob', 45.1001, 9.2001)] });
-        expect(document.querySelector('.peer-cluster')?.textContent).toBe('2');
+        const faces = [...document.querySelectorAll('.peer-cluster [data-member]')];
+        expect(faces.map((face) => face.getAttribute('data-member'))).toEqual(['a', 'b']);
+        expect(document.querySelectorAll('.peer-marker').length).toBe(0);
 
         // ...and leaving the roster takes their marker off the map.
         await wrapper.setProps({ peers: [peer('a', 'Ada', 45.1, 9.2)] });
         expect(document.querySelector('.peer-cluster')).toBeNull();
         expect(document.querySelectorAll('.peer-marker').length).toBe(1);
+        wrapper.unmount();
+    });
+
+    it('updates a marker in place instead of rebuilding it', async () => {
+        const wrapper = mount(PeersMap, {
+            attachTo: document.body,
+            props: { peers: [peer('a', 'Ada', 45.1, 9.2)], selfId: '', selectedId: null, now: Date.now() }
+        });
+        const before = document.querySelector('.peer-marker');
+        await wrapper.setProps({
+            peers: [{ ...peer('a', 'Ada', 45.1, 9.2), batteryLevel: 40 }],
+            now: Date.now() + 5000
+        });
+
+        expect(document.querySelector('.peer-marker')).toBe(before);
+        expect(before?.textContent).toContain('40%');
         wrapper.unmount();
     });
 });

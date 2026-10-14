@@ -31,3 +31,37 @@ export function escapeHtml(text: string): string {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#39;');
 }
+
+export const MONTH_NAMES = [
+    'January',
+    'February',
+    'March',
+    'April',
+    'May',
+    'June',
+    'July',
+    'August',
+    'September',
+    'October',
+    'November',
+    'December'
+];
+const WEEKDAY_NAMES = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+
+/** "Wednesday, 14 October", as the app titles a day. */
+export function formatLongDay(date: Date): string {
+    return `${WEEKDAY_NAMES[date.getDay()]}, ${date.getDate()} ${MONTH_NAMES[date.getMonth()]}`;
+}
+
+/** "October 2026". */
+export function formatMonth(date: Date): string {
+    return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
+}
+
+/** A trip's length in whole minutes: "1h 5m", "2h", "12m" (never under "1m"). */
+export function formatTripDuration(seconds: number): string {
+    const minutes = Math.max(1, Math.round(seconds / 60));
+    const hours = Math.floor(minutes / 60);
+    if (hours === 0) return `${minutes}m`;
+    return minutes % 60 > 0 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
+}

@@ -3,7 +3,12 @@ import { formatClock, formatElapsed } from './format';
 export interface Attendee {
     id: string;
     name: string;
+    /** Legacy Calendar points this at Legacy Auth. */
+    pictureUrl: string | null;
 }
+
+/** The pin colour of an event the calendar gave none, as in the app. */
+export const EVENT_FALLBACK_COLOR = '#7c4dff';
 
 /** An event from Legacy Calendar. `point` is where its free-text location resolved to, once it has. */
 export interface CalendarEvent {
@@ -37,9 +42,17 @@ export function parseEvent(raw: unknown): CalendarEvent | null {
     const attendees = new Map<string, Attendee>();
     const add = (user: unknown) => {
         if (typeof user !== 'object' || user === null) return;
-        const { id, username } = user as { id?: unknown; username?: unknown };
-        if (id == null) return;
-        if (!attendees.has(String(id))) attendees.set(String(id), { id: String(id), name: String(username ?? '') });
+        const { id, username, profilePictureUrl } = user as {
+            id?: unknown;
+            username?: unknown;
+            profilePictureUrl?: unknown;
+        };
+        if (id == null || attendees.has(String(id))) return;
+        attendees.set(String(id), {
+            id: String(id),
+            name: String(username ?? ''),
+            pictureUrl: typeof profilePictureUrl === 'string' && profilePictureUrl !== '' ? profilePictureUrl : null
+        });
     };
     add(json.host);
     if (Array.isArray(json.participants)) {

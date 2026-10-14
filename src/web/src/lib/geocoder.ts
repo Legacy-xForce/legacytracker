@@ -1,4 +1,5 @@
 import { storage } from './storage';
+import { nominatim, Throttle, type ThrottleOptions } from './throttle';
 
 const CACHE_KEY = 'legacytracker.eventGeocode.v1';
 const SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
@@ -11,22 +12,16 @@ export function normalizeLocation(location: string): string {
 
 /**
  * Turns an event's free-text location into a map point, remembering every answer (including "no
- * such place") so Nominatim is asked about a given text once. Lookups run one at a time, spaced out
- * to respect its usage policy. A failed lookup is not remembered, so it is retried later.
+ * such place") so Nominatim is asked about a given text once. Lookups share the page's Nominatim
+ * throttle. A failed lookup is not remembered, so it is retried later.
  */
 export class EventGeocoder {
     private readonly cache = new Map<string, Point | null>();
-    private queue: Promise<unknown> = Promise.resolve();
-    private lastRequest = 0;
+    private readonly throttle: Throttle;
 
-    constructor(
-        private readonly options: {
-            fetch?: typeof fetch;
-            spacingMs?: number;
-            sleep?: (ms: number) => Promise<void>;
-            now?: () => number;
-        } = {}
-    ) {
+    constructor(private readonly options: ThrottleOptions & { fetch?: typeof fetch } = {}) {
+        const { spacingMs, now, sleep } = options;
+        this.throttle = spacingMs !== undefined || now || sleep ? new Throttle({ spacingMs, now, sleep }) : nominatim;
         try {
             const stored = JSON.parse(storage.get(CACHE_KEY) ?? '{}') as Record<string, unknown>;
             for (const [key, value] of Object.entries(stored)) {
@@ -48,21 +43,15 @@ export class EventGeocoder {
 
     /** Null when the place can't be pinpointed or the lookup failed. */
     resolve(location: string): Promise<Point | null> {
-        const result = this.queue.then(() => this.lookup(location)).catch(() => null);
-        this.queue = result;
-        return result;
+        return this.lookup(location).catch(() => null);
     }
 
     private async lookup(location: string): Promise<Point | null> {
         const key = normalizeLocation(location);
         if (this.cache.has(key)) return this.cache.get(key) ?? null;
-
-        const now = this.options.now ?? Date.now;
-        const wait = (this.options.spacingMs ?? 1100) - (now() - this.lastRequest);
-        if (this.lastRequest > 0 && wait > 0) {
-            await (this.options.sleep ?? ((ms) => new Promise<void>((r) => setTimeout(r, ms))))(wait);
-        }
-        this.lastRequest = now();
+        await this.throttle.acquire();
+        // Someone else may have asked while this waited its turn.
+        if (this.cache.has(key)) return this.cache.get(key) ?? null;
 
         const query = new URLSearchParams({ format: 'jsonv2', q: location, limit: '1' });
         const response = await (this.options.fetch ?? fetch)(`${SEARCH_URL}?${query}`, {

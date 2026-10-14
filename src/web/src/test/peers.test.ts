@@ -1,7 +1,10 @@
+import { mount } from '@vue/test-utils';
 import { describe, expect, it } from 'vitest';
+import PeerMarker from '../components/map/PeerMarker.vue';
+import { userColor, userInitial } from '../lib/avatars';
 import { applyMessage, hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
 import { escapeHtml, formatElapsed } from '../lib/format';
-import { initials, markerHtml } from '../lib/marker';
+import { presence } from '../lib/presence';
 
 const NOW = Date.parse('2026-10-14T12:00:00Z');
 
@@ -116,17 +119,64 @@ describe('formatting', () => {
         expect(formatElapsed(-5)).toBe('0s');
     });
 
-    it('takes initials from one or two words', () => {
-        expect(initials('Ada Lovelace Byron')).toBe('AL');
-        expect(initials('iQuick')).toBe('IQ');
-        expect(initials('   ')).toBe('?');
+    it('takes the first letter of a name for the avatar, like the app', () => {
+        expect(userInitial('ada Lovelace')).toBe('A');
+        expect(userInitial('  iQuick')).toBe('I');
+        expect(userInitial('   ')).toBe('?');
+    });
+
+    it('gives each person the same colour the phone app does', () => {
+        expect(userColor('bob')).toBe('#d81b60');
+        expect(userColor('acc3b458-2b51-4e73-9a48-092450b882ee')).toBe('#8e24aa');
     });
 
     it('never lets a name inject markup into a marker', () => {
-        const peers = roster({ user_id: 'a', username: '"><img src=x onerror=alert(1)>', latitude: 1, longitude: 2 });
-        const html = markerHtml(peers.get('a')!, { self: false, selected: false, now: NOW });
+        const peer = roster({
+            user_id: 'a',
+            username: '"><img src=x onerror=alert(1)>',
+            latitude: 1,
+            longitude: 2
+        }).get('a')!;
+        const marker = mount(PeerMarker, {
+            props: {
+                userId: peer.id,
+                name: peer.name,
+                self: false,
+                selected: false,
+                stale: false,
+                moving: false,
+                heading: null,
+                speedKmh: 0,
+                battery: null,
+                charging: false
+            }
+        });
 
-        expect(html).not.toContain('<img');
+        expect(marker.find('img').exists()).toBe(false);
         expect(escapeHtml(`<a href="x">&'`)).toBe('&lt;a href=&quot;x&quot;&gt;&amp;&#39;');
+    });
+});
+
+describe('presence', () => {
+    const base = roster({
+        user_id: 'a',
+        latitude: 1,
+        longitude: 2,
+        recorded_at: '2026-10-14T11:00:00Z',
+        last_seen_at: '2026-10-14T11:59:00Z',
+        here_since: '2026-10-14T09:15:00Z'
+    }).get('a')!;
+
+    it('says how long someone has been where they are', () => {
+        expect(presence(base, NOW)).toMatchObject({ label: 'Here for', value: '2h 45m', sentence: 'Here for 2h 45m' });
+    });
+
+    it('says when someone is moving, or when we last heard from them', () => {
+        expect(presence({ ...base, speed: 12 }, NOW).sentence).toBe('Moving');
+        expect(presence({ ...base, lastSeenAt: NOW - 2 * 3600_000 }, NOW).sentence).toBe('Last seen 2h ago');
+    });
+
+    it('says nothing about where someone is who hides from you', () => {
+        expect(presence({ ...base, sharing: false }, NOW).sentence).toBe('Location hidden');
     });
 });
