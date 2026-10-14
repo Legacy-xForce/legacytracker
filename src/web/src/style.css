@@ -1,0 +1,17 @@
+@import 'tailwindcss';
+
+@theme {
+    --color-brand: #3b82f6;
+}
+
+html,
+body,
+#app {
+    height: 100%;
+}
+
+body {
+    background: #000;
+    color: #fff;
+    font-family: Inter, system-ui, sans-serif;
+}
