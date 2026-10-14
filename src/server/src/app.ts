@@ -1453,7 +1453,7 @@ app.register(async () => {
         if (typeof active !== "boolean") {
           return;
         }
-        connectionManager.setMapActive(userId, active);
+        connectionManager.setMapActive(userId, connection.socket, active);
         void updateViewerState();
         return;
       }
@@ -1478,7 +1478,7 @@ app.register(async () => {
         { userId, totalConnections: connectionManager.count - 1 },
         "[ws] client disconnected",
       );
-      connectionManager.remove(userId);
+      connectionManager.remove(userId, connection.socket);
       updateViewerState();
     });
   });

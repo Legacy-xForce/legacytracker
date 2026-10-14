@@ -7,86 +7,109 @@ interface ClientEntry {
   mapActive: boolean;
 }
 
+// One account can be connected from several places at once (the phone and a
+// browser tab). The cap keeps a client that reconnects without its old socket
+// ever closing from piling up entries — each active one keeps live mode on.
+const MAX_SOCKETS_PER_USER = 5;
+
 class ConnectionManager {
-  private readonly clients = new Map<string, ClientEntry>();
+  private readonly clients = new Map<string, ClientEntry[]>();
 
   add(userId: string, socket: any) {
-    if (this.clients.has(userId)) {
-      const existing = this.clients.get(userId);
+    const entries = this.clients.get(userId) ?? [];
+    while (entries.length >= MAX_SOCKETS_PER_USER) {
       try {
-        existing?.socket.close();
+        entries.shift()?.socket.close();
       } catch (_) {
         // ignore existing close failures
       }
     }
-
-    this.clients.set(userId, { socket, mapActive: true });
+    entries.push({ socket, mapActive: true });
+    this.clients.set(userId, entries);
   }
 
-  remove(userId: string) {
-    this.clients.delete(userId);
+  remove(userId: string, socket: any) {
+    this.drop(userId, (entry) => entry.socket === socket);
   }
 
-  setMapActive(userId: string, active: boolean) {
-    const entry = this.clients.get(userId);
+  setMapActive(userId: string, socket: any, active: boolean) {
+    const entry = this.clients
+      .get(userId)
+      ?.find((candidate) => candidate.socket === socket);
     if (entry) {
       entry.mapActive = active;
     }
   }
 
   broadcast(message: unknown) {
-    const text = JSON.stringify(message);
-    for (const [userId, entry] of [...this.clients.entries()]) {
-      try {
-        entry.socket.send(text);
-      } catch (_) {
-        this.clients.delete(userId);
-      }
-    }
+    this.broadcastEach(() => message);
   }
 
   /**
    * Sends each connected viewer the message `build` returns for them, or
-   * nothing when it returns null.
+   * nothing when it returns null. A viewer with several connections gets it
+   * on each.
    */
   broadcastEach(build: (viewerId: string) => unknown | null) {
-    for (const [userId, entry] of [...this.clients.entries()]) {
+    for (const [userId, entries] of [...this.clients.entries()]) {
       const message = build(userId);
       if (message == null) continue;
-      try {
-        entry.socket.send(JSON.stringify(message));
-      } catch (_) {
-        this.clients.delete(userId);
-      }
+      this.deliver(userId, entries, JSON.stringify(message));
     }
   }
 
   /** Sends one connected viewer a message; false when they aren't connected. */
   sendTo(viewerId: string, message: unknown): boolean {
-    const entry = this.clients.get(viewerId);
-    if (!entry) return false;
-    try {
-      entry.socket.send(JSON.stringify(message));
-      return true;
-    } catch (_) {
-      this.clients.delete(viewerId);
-      return false;
-    }
+    const entries = this.clients.get(viewerId);
+    if (!entries || entries.length === 0) return false;
+    return this.deliver(viewerId, entries, JSON.stringify(message));
   }
 
+  /** Number of open connections (a user on two devices counts twice). */
   get count(): number {
-    return this.clients.size;
+    let count = 0;
+    for (const entries of this.clients.values()) {
+      count += entries.length;
+    }
+    return count;
   }
 
-  /** Number of connected viewers that currently have the map tab in the foreground. */
+  /** Number of connections that currently have the map tab in the foreground. */
   get activeMapCount(): number {
     let count = 0;
-    for (const entry of this.clients.values()) {
-      if (entry.mapActive) {
-        count += 1;
+    for (const entries of this.clients.values()) {
+      for (const entry of entries) {
+        if (entry.mapActive) {
+          count += 1;
+        }
       }
     }
     return count;
+  }
+
+  /** True when at least one of the user's connections took the message. */
+  private deliver(userId: string, entries: ClientEntry[], text: string): boolean {
+    let delivered = false;
+    for (const entry of [...entries]) {
+      try {
+        entry.socket.send(text);
+        delivered = true;
+      } catch (_) {
+        this.drop(userId, (candidate) => candidate === entry);
+      }
+    }
+    return delivered;
+  }
+
+  private drop(userId: string, matches: (entry: ClientEntry) => boolean) {
+    const entries = this.clients.get(userId);
+    if (!entries) return;
+    const remaining = entries.filter((entry) => !matches(entry));
+    if (remaining.length === 0) {
+      this.clients.delete(userId);
+    } else {
+      this.clients.set(userId, remaining);
+    }
   }
 }
 
