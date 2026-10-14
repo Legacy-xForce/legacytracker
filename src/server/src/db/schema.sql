@@ -86,3 +86,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS checkpoints_name_uniq
 
 CREATE INDEX IF NOT EXISTS checkpoints_location_gist_idx
   ON checkpoints USING GIST (location);
+
+-- A user's opt-out from showing their location to one specific other user.
+-- Sharing is on by default, so only the pairs switched off have a row.
+CREATE TABLE IF NOT EXISTS location_share_blocks (
+  owner_id text NOT NULL REFERENCES users(id),
+  viewer_id text NOT NULL REFERENCES users(id),
+  created_at timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (owner_id, viewer_id)
+);
+
+CREATE INDEX IF NOT EXISTS location_share_blocks_viewer_idx
+  ON location_share_blocks (viewer_id);

@@ -4,6 +4,14 @@ import 'package:http/http.dart' as http;
 
 import '../models/location_session.dart';
 
+/// The user whose history was requested has switched off sharing with us.
+class NotSharingException implements Exception {
+  const NotSharingException();
+
+  @override
+  String toString() => "This user isn't sharing their location with you.";
+}
+
 class HistoryService {
   HistoryService({required String baseUrl, http.Client? httpClient})
     : _httpClient = httpClient ?? http.Client(),
@@ -38,6 +46,10 @@ class HistoryService {
           },
         );
 
+    if (response.statusCode == 403 &&
+        response.body.contains('"not_sharing"')) {
+      throw const NotSharingException();
+    }
     if (response.statusCode != 200) {
       throw Exception('Unable to fetch history: ${response.body}');
     }

@@ -29,6 +29,11 @@ import {
 } from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
+import {
+  messageFor,
+  redactedEntry,
+  SharingRegistry,
+} from "./services/sharing";
 import { hasTrackerScope } from "./services/tracker-scope";
 
 const JWKS = createRemoteJWKSet(
@@ -53,6 +58,7 @@ const app = Fastify({
 });
 const connectionManager = new ConnectionManager();
 const deviceAuth = new DeviceAuth(pool);
+const sharing = new SharingRegistry();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
 const lastKnownName = new Map<string, string>();
@@ -452,6 +458,18 @@ async function ensureBackendSchema(): Promise<void> {
       `CREATE INDEX IF NOT EXISTS checkpoints_location_gist_idx
        ON checkpoints USING GIST (location)`,
     );
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS location_share_blocks (
+         owner_id text NOT NULL REFERENCES users(id),
+         viewer_id text NOT NULL REFERENCES users(id),
+         created_at timestamptz NOT NULL DEFAULT now(),
+         PRIMARY KEY (owner_id, viewer_id)
+       )`,
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS location_share_blocks_viewer_idx
+       ON location_share_blocks (viewer_id)`,
+    );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert
     // below would then throw.
@@ -667,33 +685,181 @@ async function ingestPoints(
   }
 
   const lastSeenAt = new Date().toISOString();
-  if (isNewer && !isSamePosition(newest, previous)) {
-    connectionManager.broadcast({
-      user_id: userId,
-      username: displayName,
-      latitude: newest.latitude,
-      longitude: newest.longitude,
-      speed: newest.speed,
-      heading: newest.heading,
-      recorded_at: newest.recordedAt,
-      here_since: hereSince,
-      battery_level: newest.batteryLevel,
-      is_charging: newest.isCharging,
-      last_seen_at: lastSeenAt,
-    });
-  } else {
-    connectionManager.broadcast({
-      user_id: userId,
-      username: displayName,
-      here_since: hereSince,
-      battery_level: newest.batteryLevel,
-      is_charging: newest.isCharging,
-      last_seen_at: lastSeenAt,
-    });
-  }
+  const update =
+    isNewer && !isSamePosition(newest, previous)
+      ? {
+          user_id: userId,
+          username: displayName,
+          latitude: newest.latitude,
+          longitude: newest.longitude,
+          speed: newest.speed,
+          heading: newest.heading,
+          recorded_at: newest.recordedAt,
+          here_since: hereSince,
+          battery_level: newest.batteryLevel,
+          is_charging: newest.isCharging,
+          last_seen_at: lastSeenAt,
+        }
+      : {
+          user_id: userId,
+          username: displayName,
+          here_since: hereSince,
+          battery_level: newest.batteryLevel,
+          is_charging: newest.isCharging,
+          last_seen_at: lastSeenAt,
+        };
+  // Viewers this user hides from get nothing: they already hold a redacted
+  // entry and must learn nothing new, not even that the phone is active.
+  connectionManager.broadcastEach(messageFor(sharing, userId, update));
 
   return { stored: stored.length };
 }
+
+/**
+ * The roster as `viewerId` may see it. Every registered user is included
+ * regardless of whether they've ever broadcast a location, so it is built
+ * from the `users` table. Positions come from the newest of the in-memory
+ * last-known point (includes unstored live points) and the latest stored
+ * row — the latter keeps the map populated instantly after a restart,
+ * even for users who are parked and therefore not sending anything. Users
+ * not sharing with the viewer appear as redacted entries.
+ */
+async function buildSnapshot(viewerId: string, onlyUserId?: string) {
+  const allUsers = await pool.query<{
+    id: string;
+    name: string;
+    last_seen_at: Date | null;
+    battery_level: number | null;
+    is_charging: boolean | null;
+    recorded_at: Date | null;
+    latitude: number | null;
+    longitude: number | null;
+    speed: number | null;
+    heading: number | null;
+  }>(
+    `SELECT u.id, u.name, u.last_seen_at, u.battery_level, u.is_charging,
+            l.recorded_at, l.latitude, l.longitude, l.speed, l.heading
+     FROM users u
+     LEFT JOIN LATERAL (
+       SELECT recorded_at,
+              ST_Y(location::geometry) AS latitude,
+              ST_X(location::geometry) AS longitude,
+              speed, heading
+       FROM location_history
+       WHERE user_id = u.id
+       ORDER BY recorded_at DESC
+       LIMIT 1
+     ) l ON true
+     WHERE $1::text IS NULL OR u.id = $1`,
+    [onlyUserId ?? null],
+  );
+  const visible = allUsers.rows.filter(
+    (row) => !sharing.isHidden(row.id, viewerId),
+  );
+  const dwells = new Map(
+    await Promise.all(
+      visible.map(
+        async (row) =>
+          [row.id, row.recorded_at ? await getDwell(row.id) : null] as const,
+      ),
+    ),
+  );
+  return allUsers.rows.map((row) => {
+    if (sharing.isHidden(row.id, viewerId)) {
+      return redactedEntry(row.id, lastKnownName.get(row.id) ?? row.name);
+    }
+    const memory = lastKnownLocation.get(row.id);
+    const storedAt = row.recorded_at
+      ? new Date(row.recorded_at).toISOString()
+      : null;
+    const useMemory =
+      memory != null && (storedAt == null || memory.recordedAt >= storedAt);
+    return {
+      user_id: row.id,
+      username: lastKnownName.get(row.id) ?? row.name,
+      sharing: true,
+      latitude: useMemory ? memory.latitude : row.latitude,
+      longitude: useMemory ? memory.longitude : row.longitude,
+      speed: useMemory ? memory.speed : row.speed,
+      heading: useMemory ? memory.heading : row.heading,
+      recorded_at: useMemory ? memory.recordedAt : storedAt,
+      here_since: dwells.get(row.id)?.since ?? null,
+      battery_level: memory?.batteryLevel ?? row.battery_level,
+      is_charging: memory?.isCharging ?? row.is_charging,
+      last_seen_at: row.last_seen_at
+        ? new Date(row.last_seen_at).toISOString()
+        : null,
+    };
+  });
+}
+
+async function loadSharing(): Promise<void> {
+  const { rows } = await pool.query<{ owner_id: string; viewer_id: string }>(
+    "SELECT owner_id, viewer_id FROM location_share_blocks",
+  );
+  sharing.load(
+    rows.map((r) => ({ ownerId: r.owner_id, viewerId: r.viewer_id })),
+  );
+}
+
+app.get("/api/v1/sharing", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/sharing", identity);
+  }
+  return reply.send({ hidden_from: sharing.hiddenFrom(identity.userId) });
+});
+
+app.put("/api/v1/sharing/:viewerId", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/sharing/:viewerId", identity);
+  }
+  const { viewerId } = request.params as { viewerId: string };
+  const enabled = (request.body as { enabled?: unknown } | null)?.enabled;
+  if (typeof enabled !== "boolean") {
+    return reply.code(400).send({ error: "`enabled` must be a boolean" });
+  }
+  if (viewerId === identity.userId) {
+    return reply
+      .code(400)
+      .send({ error: "You can't change sharing with yourself" });
+  }
+  const { rows: known } = await pool.query(
+    "SELECT 1 FROM users WHERE id = $1",
+    [viewerId],
+  );
+  if (known.length === 0) {
+    return reply.code(404).send({ error: "Unknown user" });
+  }
+
+  await ensureUserExists(identity.userId, identity.displayName);
+  if (enabled) {
+    await pool.query(
+      "DELETE FROM location_share_blocks WHERE owner_id = $1 AND viewer_id = $2",
+      [identity.userId, viewerId],
+    );
+  } else {
+    await pool.query(
+      `INSERT INTO location_share_blocks (owner_id, viewer_id)
+       VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+      [identity.userId, viewerId],
+    );
+  }
+  sharing.set(identity.userId, viewerId, enabled);
+
+  // Tell the viewer right away: the marker disappears (or comes back with the
+  // current position) without waiting for the next upload.
+  const [entry] = await buildSnapshot(viewerId, identity.userId);
+  if (entry) {
+    connectionManager.sendTo(viewerId, entry);
+  }
+  app.log.info(
+    { ownerId: identity.userId, viewerId, enabled },
+    "[sharing] changed location sharing",
+  );
+  return reply.send({ hidden_from: sharing.hiddenFrom(identity.userId) });
+});
 
 app.get("/api/v1/profile", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request);
@@ -1121,6 +1287,10 @@ app.get("/api/v1/history", async (request, reply) => {
       ? query.user_id.trim()
       : identity.userId;
 
+  if (sharing.isHidden(userId, identity.userId)) {
+    return reply.code(403).send({ error: "not_sharing" });
+  }
+
   const to = query.to ? new Date(query.to) : new Date();
   const from = query.from
     ? new Date(query.from)
@@ -1251,69 +1421,7 @@ app.register(async () => {
     );
     updateViewerState();
 
-    // Every registered user should show up in the roster regardless of
-    // whether they've ever broadcast a location, so the snapshot is built
-    // from the `users` table. Positions come from the newest of the in-memory
-    // last-known point (includes unstored live points) and the latest stored
-    // row — the latter keeps the map populated instantly after a restart,
-    // even for users who are parked and therefore not sending anything.
-    const allUsers = await pool.query<{
-      id: string;
-      name: string;
-      last_seen_at: Date | null;
-      battery_level: number | null;
-      is_charging: boolean | null;
-      recorded_at: Date | null;
-      latitude: number | null;
-      longitude: number | null;
-      speed: number | null;
-      heading: number | null;
-    }>(
-      `SELECT u.id, u.name, u.last_seen_at, u.battery_level, u.is_charging,
-              l.recorded_at, l.latitude, l.longitude, l.speed, l.heading
-       FROM users u
-       LEFT JOIN LATERAL (
-         SELECT recorded_at,
-                ST_Y(location::geometry) AS latitude,
-                ST_X(location::geometry) AS longitude,
-                speed, heading
-         FROM location_history
-         WHERE user_id = u.id
-         ORDER BY recorded_at DESC
-         LIMIT 1
-       ) l ON true`,
-    );
-    const dwells = new Map(
-      await Promise.all(
-        allUsers.rows.map(
-          async (row) =>
-            [row.id, row.recorded_at ? await getDwell(row.id) : null] as const,
-        ),
-      ),
-    );
-    const snapshot = allUsers.rows.map((row) => {
-      const memory = lastKnownLocation.get(row.id);
-      const storedAt = row.recorded_at
-        ? new Date(row.recorded_at).toISOString()
-        : null;
-      const useMemory =
-        memory != null && (storedAt == null || memory.recordedAt >= storedAt);
-      return {
-        user_id: row.id,
-        username: lastKnownName.get(row.id) ?? row.name,
-        latitude: useMemory ? memory.latitude : row.latitude,
-        longitude: useMemory ? memory.longitude : row.longitude,
-        speed: useMemory ? memory.speed : row.speed,
-        heading: useMemory ? memory.heading : row.heading,
-        recorded_at: useMemory ? memory.recordedAt : storedAt,
-        here_since: dwells.get(row.id)?.since ?? null,
-        battery_level: memory?.batteryLevel ?? row.battery_level,
-        is_charging: memory?.isCharging ?? row.is_charging,
-        last_seen_at: row.last_seen_at
-          ? new Date(row.last_seen_at).toISOString()
-          : null,
-      };
-    });
+    const snapshot = await buildSnapshot(userId);
     app.log.info(
       { userId, userCount: snapshot.length },
       "[ws] sending snapshot",
@@ -1382,6 +1490,7 @@ const start = async (): Promise<void> => {
   try {
     initializeFcm();
     await ensureBackendSchema();
+    await loadSharing();
     await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
     if (androidReleases) {

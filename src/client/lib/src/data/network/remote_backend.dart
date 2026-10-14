@@ -294,6 +294,18 @@ class RemoteBackend implements Backend {
     profile.batteryLevel =
         (payload['battery_level'] as num?)?.toInt() ?? profile.batteryLevel;
     profile.isCharging = payload['is_charging'] as bool? ?? profile.isCharging;
+    // Present on roster entries and on changes to who is sharing with us.
+    if (payload.containsKey('sharing')) {
+      profile.sharesWithMe = payload['sharing'] as bool? ?? true;
+      if (!profile.sharesWithMe) {
+        profile.lastLocation = null;
+        profile.history = [];
+        profile.hereSince = null;
+        profile.lastSeenAt = null;
+        profile.batteryLevel = null;
+        profile.isCharging = null;
+      }
+    }
     _peerCache[remoteUserId] = profile;
     _peerController.add(
       List<UserProfile>.unmodifiable(_peerCache.values.toList()),
