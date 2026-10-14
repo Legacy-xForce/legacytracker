@@ -1,18 +1,23 @@
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/core/constants.dart';
 import 'src/core/theme.dart';
 import 'src/data/network/auth_service.dart';
+import 'src/data/network/calendar_service.dart';
 import 'src/data/network/checkpoint_service.dart';
 import 'src/data/network/device_service.dart';
+import 'src/data/network/event_geocoder.dart';
+import 'src/data/network/place_search_service.dart';
 import 'src/data/network/profile_service.dart';
 import 'src/data/network/remote_backend.dart';
 import 'src/data/network/sharing_service.dart';
 import 'src/features/auth/access_denied_screen.dart';
 import 'src/features/auth/auth_provider.dart';
 import 'src/features/auth/login_screen.dart';
+import 'src/features/calendar/calendar_events_provider.dart';
 import 'src/features/checkpoints/checkpoints_provider.dart';
 import 'src/features/tracking/sharing_provider.dart';
 import 'src/features/tracking/tracking_controller.dart';
@@ -61,6 +66,27 @@ class App extends StatelessWidget {
             return sharing!
               ..bindSession(
                 userId: usable ? auth.profile?.id : null,
+                getAccessToken: () => auth.tokens?.accessToken,
+              );
+          },
+        ),
+        // Events from Legacy Calendar on the map, for accounts whose token
+        // carries the calendar scope.
+        ChangeNotifierProxyProvider<AuthProvider, CalendarEventsProvider>(
+          create: (_) {
+            final prefs = SharedPreferences.getInstance();
+            return CalendarEventsProvider(
+              service: CalendarService(baseUrl: AppConstants.calendarBaseUrl),
+              geocoder: EventGeocoder(search: PlaceSearchService(), prefs: prefs),
+              prefs: prefs,
+            );
+          },
+          update: (_, auth, events) {
+            final usable = auth.isAuthenticated && auth.accessDenial == null;
+            return events!
+              ..bindSession(
+                userId: usable ? auth.profile?.id : null,
+                hasCalendarScope: auth.hasCalendarScope,
                 getAccessToken: () => auth.tokens?.accessToken,
               );
           },

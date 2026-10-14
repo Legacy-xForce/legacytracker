@@ -61,3 +61,10 @@ String formatShortDate(DateTime time, {DateTime? now}) {
       ? label
       : '$label ${local.year}';
 }
+
+/// Time left until something, in whole minutes: "3h 20m", "5m". Under a
+/// minute reads "<1m" rather than counting seconds nobody can act on.
+String formatUntil(Duration duration) {
+  if (duration.inMinutes < 1) return '<1m';
+  return formatElapsed(Duration(minutes: duration.inMinutes));
+}

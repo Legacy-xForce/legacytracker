@@ -12,6 +12,13 @@ class AppConstants {
       ? _productionBackendUrl
       : String.fromEnvironment('BACKEND_URL', defaultValue: _productionBackendUrl);
 
+  // Legacy Calendar, which accepts the same access token as the tracker. Like
+  // the tracker backend, release builds always talk to production.
+  static const _productionCalendarUrl = 'https://calendar.legacy-group.tech';
+  static const calendarBaseUrl = kReleaseMode
+      ? _productionCalendarUrl
+      : String.fromEnvironment('CALENDAR_URL', defaultValue: _productionCalendarUrl);
+
   // Default map center (San Francisco)
   static const defaultMapCenter = LatLng(37.7749, -122.4194);
   static const defaultZoom = 13.0;
