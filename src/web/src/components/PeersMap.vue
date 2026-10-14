@@ -2,7 +2,8 @@
 import L from 'leaflet';
 import 'leaflet.markercluster';
 import 'leaflet.markercluster/dist/MarkerCluster.css';
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, provide, ref, shallowRef, watch } from 'vue';
+import { mapKey } from '../lib/mapContext';
 import { hasPosition, type Peer } from '../lib/peers';
 import { markerHtml, markerIcon } from '../lib/marker';
 import { MAP_STYLES, tileLayers, type MapStyle } from '../lib/tiles';
@@ -22,6 +23,8 @@ const element = ref<HTMLElement | null>(null);
 const style = ref<MapStyle>(readStyle());
 
 let map: L.Map | null = null;
+const mapRef = shallowRef<L.Map | null>(null);
+provide(mapKey, mapRef);
 let tiles: L.TileLayer[] = [];
 let cluster: L.MarkerClusterGroup | null = null;
 const markers = new Map<string, L.Marker>();
@@ -102,9 +105,11 @@ onMounted(() => {
     map.addLayer(cluster);
     applyStyle();
     sync();
+    mapRef.value = map;
 });
 
 onBeforeUnmount(() => {
+    mapRef.value = null;
     map?.remove();
     map = null;
     markers.clear();
@@ -121,6 +126,8 @@ watch(style, (next) => {
 <template>
     <div class="relative h-full w-full">
         <div ref="element" class="h-full w-full bg-neutral-900" />
+        <!-- Overlay layers (checkpoints, events, replay) draw onto the map through the injected handle. -->
+        <slot />
         <label class="absolute top-3 right-3 z-[1000]">
             <span class="sr-only">Map style</span>
             <select

@@ -22,6 +22,15 @@ async function send(path: string, init: RequestInit, token: string): Promise<Res
     }
 }
 
+/** A 403 that means "that person hides from you", not "you may not use the tracker". */
+async function isNotSharing(response: Response): Promise<boolean> {
+    const body = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as { error?: unknown } | null;
+    return body?.error === 'not_sharing';
+}
+
 /** A tracker request with the user's access token, retried once with a fresh token after a 401. */
 export async function trackerFetch(path: string, init: RequestInit = {}): Promise<Response> {
     const session = useSessionStore();
@@ -39,7 +48,7 @@ export async function trackerFetch(path: string, init: RequestInit = {}): Promis
         if (!fresh) throw new ApiError('Session expired.', 401);
         response = await send(path, init, fresh);
     }
-    if (response.status === 403) {
+    if (response.status === 403 && !(await isNotSharing(response))) {
         // The server is stricter than the token's own claims (it re-checks the scope).
         session.markForbidden();
         throw new ApiError('Access denied.', 403);
