@@ -1,0 +1,107 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+
+import ConnectionManager from "../src/services/connection-manager";
+
+function fakeSocket() {
+  const sent: string[] = [];
+  let closed = false;
+  return {
+    sent,
+    get closed() {
+      return closed;
+    },
+    send: (text: string) => void sent.push(text),
+    close: () => void (closed = true),
+  };
+}
+
+test("a second connection for the same user does not replace the first", () => {
+  const manager = new ConnectionManager();
+  const phone = fakeSocket();
+  const browser = fakeSocket();
+  manager.add("a", phone);
+  manager.add("a", browser);
+
+  assert.equal(phone.closed, false);
+  assert.equal(manager.count, 2);
+  manager.sendTo("a", { x: 1 });
+  assert.deepEqual(phone.sent, ['{"x":1}']);
+  assert.deepEqual(browser.sent, ['{"x":1}']);
+});
+
+test("broadcastEach reaches every connection of a viewer", () => {
+  const manager = new ConnectionManager();
+  const one = fakeSocket();
+  const two = fakeSocket();
+  const other = fakeSocket();
+  manager.add("a", one);
+  manager.add("a", two);
+  manager.add("b", other);
+
+  manager.broadcastEach((viewerId) => (viewerId === "a" ? { for: "a" } : null));
+
+  assert.equal(one.sent.length, 1);
+  assert.equal(two.sent.length, 1);
+  assert.equal(other.sent.length, 0);
+});
+
+test("closing one connection leaves the user's other connection in place", () => {
+  const manager = new ConnectionManager();
+  const phone = fakeSocket();
+  const browser = fakeSocket();
+  manager.add("a", phone);
+  manager.add("a", browser);
+
+  manager.remove("a", phone);
+
+  assert.equal(manager.count, 1);
+  assert.equal(manager.sendTo("a", { x: 1 }), true);
+  assert.equal(phone.sent.length, 0);
+  assert.equal(browser.sent.length, 1);
+  manager.remove("a", browser);
+  assert.equal(manager.sendTo("a", { x: 1 }), false);
+});
+
+test("map-active is tracked per connection", () => {
+  const manager = new ConnectionManager();
+  const phone = fakeSocket();
+  const browser = fakeSocket();
+  manager.add("a", phone);
+  manager.add("a", browser);
+  assert.equal(manager.activeMapCount, 2);
+
+  manager.setMapActive("a", browser, false);
+  assert.equal(manager.activeMapCount, 1);
+  manager.setMapActive("a", phone, false);
+  assert.equal(manager.activeMapCount, 0);
+  manager.setMapActive("a", phone, true);
+  assert.equal(manager.activeMapCount, 1);
+});
+
+test("a connection whose send throws is dropped, the others still get the message", () => {
+  const manager = new ConnectionManager();
+  const broken = {
+    send: () => {
+      throw new Error("closed");
+    },
+    close() {},
+  };
+  const healthy = fakeSocket();
+  manager.add("a", broken);
+  manager.add("a", healthy);
+
+  assert.equal(manager.sendTo("a", { x: 1 }), true);
+  assert.equal(healthy.sent.length, 1);
+  assert.equal(manager.count, 1);
+});
+
+test("the oldest connection is closed once a user has too many", () => {
+  const manager = new ConnectionManager();
+  const sockets = Array.from({ length: 6 }, fakeSocket);
+  for (const socket of sockets) manager.add("a", socket);
+
+  assert.equal(sockets[0].closed, true);
+  assert.equal(sockets[1].closed, false);
+  assert.equal(manager.count, 5);
+});
