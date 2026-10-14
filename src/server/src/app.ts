@@ -127,9 +127,11 @@ interface LocationPayload {
   source?: string;
 }
 
+// The web client calls from its own origin: every method a route uses must be
+// listed, or the browser blocks the request (PUT /api/v1/sharing/:viewerId).
 app.register(cors, {
   origin: true,
-  methods: ["GET", "POST", "PATCH", "DELETE"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
 });
 app.register(websocket);
 
