@@ -6,6 +6,10 @@ import websocket from "@fastify/websocket";
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
 import pool from "./config/db";
 import { AndroidReleaseSource } from "./services/app-releases";
+import {
+  canModifyCheckpoint,
+  validateCheckpointInput,
+} from "./services/checkpoints";
 import ConnectionManager from "./services/connection-manager";
 import { DeviceAuth } from "./services/device-auth";
 import {
@@ -429,6 +433,25 @@ async function ensureBackendSchema(): Promise<void> {
     await pool.query(
       "CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id)",
     );
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS checkpoints (
+         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+         name text NOT NULL,
+         location geography(Point, 4326) NOT NULL,
+         radius_m integer NOT NULL CHECK (radius_m BETWEEN 10 AND 250),
+         created_by text NOT NULL REFERENCES users(id),
+         created_at timestamptz NOT NULL DEFAULT now(),
+         updated_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    );
+    await pool.query(
+      `CREATE UNIQUE INDEX IF NOT EXISTS checkpoints_name_uniq
+       ON checkpoints (lower(btrim(name)))`,
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS checkpoints_location_gist_idx
+       ON checkpoints USING GIST (location)`,
+    );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert
     // below would then throw.
@@ -818,6 +841,169 @@ app.delete("/api/v1/devices/:id", async (request, reply) => {
   }
   const revoked = await deviceAuth.revoke(id, identity.userId);
   return reply.send({ revoked });
+});
+
+// Checkpoints: shared named circles. Everyone with the tracker scope can
+// list and create; only the creator or an admin can change or delete one.
+const CHECKPOINT_COLUMNS = `
+  id, name, radius_m, created_by, created_at, updated_at,
+  ST_Y(location::geometry) AS latitude,
+  ST_X(location::geometry) AS longitude`;
+
+function checkpointResponse(row: Record<string, unknown>, canEdit: boolean) {
+  return {
+    id: row.id,
+    name: row.name,
+    latitude: row.latitude,
+    longitude: row.longitude,
+    radius_m: row.radius_m,
+    created_by: row.created_by,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    can_edit: canEdit,
+  };
+}
+
+async function getUserRole(userId: string): Promise<string> {
+  const { rows } = await pool.query("SELECT role FROM users WHERE id = $1", [
+    userId,
+  ]);
+  return (rows[0]?.role as string | undefined) ?? "user";
+}
+
+function isUniqueViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "23505"
+  );
+}
+
+app.get("/api/v1/checkpoints", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/checkpoints", identity);
+  }
+  await ensureUserExists(identity.userId, identity.displayName);
+  const role = await getUserRole(identity.userId);
+  const { rows } = await pool.query(
+    `SELECT ${CHECKPOINT_COLUMNS} FROM checkpoints ORDER BY lower(name)`,
+  );
+  return reply.send({
+    checkpoints: rows.map((row) =>
+      checkpointResponse(
+        row,
+        canModifyCheckpoint(role, row.created_by, identity.userId),
+      ),
+    ),
+  });
+});
+
+app.post("/api/v1/checkpoints", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/checkpoints", identity);
+  }
+  const input = validateCheckpointInput(request.body);
+  if (!input.ok) {
+    return reply.code(400).send({ error: input.error });
+  }
+  const { name, latitude, longitude, radiusM } = input.value;
+
+  await ensureUserExists(identity.userId, identity.displayName);
+  try {
+    const { rows } = await pool.query(
+      `INSERT INTO checkpoints (name, location, radius_m, created_by)
+       VALUES ($1, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, $4, $5)
+       RETURNING ${CHECKPOINT_COLUMNS}`,
+      [name, latitude, longitude, radiusM, identity.userId],
+    );
+    return reply.code(201).send(checkpointResponse(rows[0], true));
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return reply.code(409).send({ error: "Checkpoint name already exists" });
+    }
+    throw error;
+  }
+});
+
+app.patch("/api/v1/checkpoints/:id", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/checkpoints/:id", identity);
+  }
+  const { id } = request.params as { id: string };
+  const input = validateCheckpointInput(request.body);
+  if (!input.ok) {
+    return reply.code(400).send({ error: input.error });
+  }
+  const { name, latitude, longitude, radiusM } = input.value;
+
+  await ensureUserExists(identity.userId, identity.displayName);
+  const role = await getUserRole(identity.userId);
+  try {
+    // Ownership is checked in the UPDATE itself so a concurrent delete or
+    // reassignment can't slip between a read and the write.
+    const { rows } = await pool.query(
+      `UPDATE checkpoints
+       SET name = $2,
+           location = ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
+           radius_m = $5,
+           updated_at = now()
+       WHERE id = $1 AND ($6 OR created_by = $7)
+       RETURNING ${CHECKPOINT_COLUMNS}`,
+      [id, name, latitude, longitude, radiusM, role === "admin", identity.userId],
+    );
+    if (rows.length > 0) {
+      return reply.send(checkpointResponse(rows[0], true));
+    }
+  } catch (error) {
+    if (isUniqueViolation(error)) {
+      return reply.code(409).send({ error: "Checkpoint name already exists" });
+    }
+    if ((error as { code?: unknown }).code === "22P02") {
+      // Not a valid uuid.
+      return reply.code(404).send({ error: "Checkpoint not found" });
+    }
+    throw error;
+  }
+  const exists = await pool.query("SELECT 1 FROM checkpoints WHERE id = $1", [
+    id,
+  ]);
+  return exists.rowCount
+    ? reply.code(403).send({ error: "Forbidden" })
+    : reply.code(404).send({ error: "Checkpoint not found" });
+});
+
+app.delete("/api/v1/checkpoints/:id", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/checkpoints/:id", identity);
+  }
+  const { id } = request.params as { id: string };
+
+  await ensureUserExists(identity.userId, identity.displayName);
+  const role = await getUserRole(identity.userId);
+  try {
+    const deleted = await pool.query(
+      "DELETE FROM checkpoints WHERE id = $1 AND ($2 OR created_by = $3)",
+      [id, role === "admin", identity.userId],
+    );
+    if (deleted.rowCount) {
+      return reply.send({ deleted: true });
+    }
+  } catch (error) {
+    if ((error as { code?: unknown }).code === "22P02") {
+      return reply.code(404).send({ error: "Checkpoint not found" });
+    }
+    throw error;
+  }
+  const exists = await pool.query("SELECT 1 FROM checkpoints WHERE id = $1", [
+    id,
+  ]);
+  return exists.rowCount
+    ? reply.code(403).send({ error: "Forbidden" })
+    : reply.code(404).send({ error: "Checkpoint not found" });
 });
 
 // Public, like the GitHub releases behind it: the app also checks for
