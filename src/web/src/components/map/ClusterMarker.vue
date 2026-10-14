@@ -1,0 +1,129 @@
+<script setup lang="ts">
+import { computed } from 'vue';
+import UserAvatar from '../UserAvatar.vue';
+import { CLUSTER, clusterWidth } from '../../lib/clusters';
+
+const props = defineProps<{
+    members: { id: string; name: string; stale: boolean }[];
+}>();
+
+const width = computed(() => clusterWidth(props.members.length));
+const faces = computed(() => props.members.slice(0, CLUSTER.maxFaces));
+const overflow = computed(() => props.members.length - faces.value.length);
+const allStale = computed(() => props.members.every((m) => m.stale));
+
+// A fully rounded pill with a short tail into its bottom edge, as one path so the shadow never
+// doubles up at the seam.
+const bubble = computed(() => {
+    const w = width.value;
+    const h = CLUSTER.bubbleHeight;
+    const r = h / 2;
+    const cx = w / 2;
+    const { tailHeight: th, tailHalfWidth: tw } = CLUSTER;
+    return (
+        `M${r} 0H${w - r}A${r} ${r} 0 0 1 ${w - r} ${h}H${cx + tw}` +
+        `Q${cx + 2} ${h + th * 0.6} ${cx} ${h + th}Q${cx - 2} ${h + th * 0.6} ${cx - tw} ${h}` +
+        `H${r}A${r} ${r} 0 0 1 ${r} 0Z`
+    );
+});
+
+function left(index: number): string {
+    return `${CLUSTER.padding + index * CLUSTER.faceStep}px`;
+}
+</script>
+
+<template>
+    <!-- Several people close together on screen: their faces in one bubble. A face selects that
+         person; the rest of the bubble zooms in until they separate. -->
+    <div
+        class="peer-cluster"
+        :style="{ width: `${width}px`, height: `${CLUSTER.height}px` }"
+        :title="members.map((m) => m.name).join(', ')"
+    >
+        <svg
+            class="peer-cluster__bubble lt-hit"
+            :width="width"
+            :height="CLUSTER.bubbleHeight + CLUSTER.tailHeight"
+            aria-hidden="true"
+        >
+            <path :d="bubble" fill="#fff" />
+        </svg>
+        <!-- Leftmost on top, both visually and for clicks. -->
+        <span
+            v-for="(member, i) in faces"
+            :key="member.id"
+            class="peer-cluster__face lt-hit"
+            :data-member="member.id"
+            :style="{ left: left(i), zIndex: faces.length - i + 1 }"
+        >
+            <UserAvatar
+                :user-id="member.id"
+                :name="member.name"
+                :size="CLUSTER.faceSize"
+                ring-color="#fff"
+                :ring-width="2.5"
+                :dimmed="member.stale"
+            />
+        </span>
+        <span
+            v-if="overflow > 0"
+            class="peer-cluster__face peer-cluster__more lt-hit"
+            :style="{ left: left(faces.length) }"
+            >+{{ overflow }}</span
+        >
+        <span class="peer-cluster__dot" :class="{ 'peer-cluster__dot--stale': allStale }" />
+    </div>
+</template>
+
+<style>
+.peer-cluster {
+    position: relative;
+}
+
+/* Leaflet gives every SVG in the map pane z-index 200 (meant for its vector layers), which put
+   the bubble over the faces: an empty white cloud. */
+.peer-cluster > .peer-cluster__bubble {
+    position: absolute;
+    left: 0;
+    top: 0;
+    z-index: 0;
+    overflow: visible;
+    filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
+}
+
+.peer-cluster__face {
+    position: absolute;
+    top: 5px;
+    border-radius: 9999px;
+}
+
+.peer-cluster__more {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #2b3134;
+    box-shadow: inset 0 0 0 2.5px #fff;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+.peer-cluster__dot {
+    position: absolute;
+    left: 50%;
+    bottom: 0;
+    width: 14px;
+    height: 14px;
+    margin-left: -7px;
+    border-radius: 9999px;
+    background: var(--color-beam);
+    border: 2.5px solid #fff;
+    box-shadow: 0 1px 4px rgb(0 0 0 / 0.38);
+}
+
+.peer-cluster__dot--stale {
+    background: #757575;
+}
+</style>
