@@ -42,14 +42,24 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
         working-directory: src/client
-      - name: Build iOS app without codesign
-        run: flutter build ios --no-codesign
+      - name: Build iOS release app without code signing
+        run: flutter build ios --release --no-codesign
         working-directory: src/client
-      - name: Upload iOS build artifact
+
+      # Flutter cannot export an IPA with --no-codesign. Package the unsigned
+      # app using the standard IPA Payload layout for artifact handoff.
+      - name: Package unsigned IPA
+        run: |
+          mkdir -p build/ios/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
+          cd build/ios/ipa
+          ditto -c -k --sequesterRsrc --keepParent Payload LegacyTracker.ipa
+        working-directory: src/client
+      - name: Upload unsigned iOS IPA artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ios-app
-          path: src/client/build/ios/iphoneos/Runner.app
+          name: ios-unsigned-ipa
+          path: src/client/build/ios/ipa/LegacyTracker.ipa
 
   server-docker:
     name: Build server Docker image
