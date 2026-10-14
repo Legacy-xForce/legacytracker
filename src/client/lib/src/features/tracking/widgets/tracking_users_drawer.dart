@@ -9,8 +9,10 @@ import '../../../core/formatters.dart';
 import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
+import '../../../data/network/sharing_service.dart';
 import '../../auth/auth_provider.dart';
 import '../local_avatar_store.dart';
+import '../sharing_provider.dart';
 import '../tracking_controller.dart';
 import 'location_history_screen.dart';
 import 'tracking_location_street_label.dart';
@@ -184,7 +186,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
         batterySavingEnabled: widget.selfBatterySavingEnabled,
       ),
       ...widget.peers
-          .where((peer) => peer.lastLocation != null)
+          .where((peer) => peer.lastLocation != null || !peer.sharesWithMe)
           .map(
             (peer) => _DrawerUser(
               profile: peer,
@@ -449,6 +451,15 @@ class _DrawerUser {
 
   List<_UserStatus> get statuses {
     final result = <_UserStatus>[];
+    if (!profile.sharesWithMe) {
+      result.add(
+        _UserStatus(
+          'Not sharing with you',
+          Icons.visibility_off_outlined,
+          Colors.blueGrey,
+        ),
+      );
+    }
     if (trackingPaused) {
       result.add(
         _UserStatus('Sharing paused', Icons.pause_circle, Colors.amber),
@@ -470,6 +481,14 @@ class _DrawerUser {
   /// Where this user is in time: how long they've been here, that they're
   /// on the move, or — if their phone went quiet — when we last heard.
   _Presence presence(DateTime now) {
+    if (!profile.sharesWithMe) {
+      return const _Presence(
+        Icons.visibility_off_outlined,
+        'Location',
+        'Hidden',
+        'Location hidden',
+      );
+    }
     final location = profile.lastLocation;
     if (location == null) {
       return const _Presence(
@@ -586,7 +605,7 @@ class _UserRow extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
-        onTap: location != null ? onSelect : null,
+        onTap: location != null || !user.profile.sharesWithMe ? onSelect : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
           child: Row(
@@ -815,7 +834,9 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
 
   Future<List<LocationSession>> _loadTodaySessions() {
     final accessToken = context.read<AuthProvider>().tokens?.accessToken;
-    if (accessToken == null) return Future.value(const []);
+    if (accessToken == null || !widget.user.profile.sharesWithMe) {
+      return Future.value(const []);
+    }
 
     final baseUrl = context.read<TrackingController>().baseUrl;
     final now = DateTime.now();
@@ -845,12 +866,22 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
     );
   }
 
+  Future<void> _setSharing(SharingProvider sharing, bool enabled) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    try {
+      await sharing.setSharing(widget.user.profile.id, enabled);
+    } on SharingException catch (e) {
+      messenger?.showSnackBar(SnackBar(content: Text(e.message)));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final user = widget.user;
     final profile = user.profile;
     final loc = profile.lastLocation;
+    final sharing = user.isSelf ? null : context.watch<SharingProvider?>();
 
     return ListView(
       controller: widget.scrollController,
@@ -895,8 +926,30 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
             ],
           ),
         ],
+        if (sharing != null) ...[
+          const SizedBox(height: 12),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            secondary: const Icon(Icons.share_location_rounded),
+            title: Text('Share my location with ${profile.name}'),
+            subtitle: Text(
+              sharing.isSharingWith(profile.id)
+                  ? '${profile.name} can see you on the map'
+                  : "${profile.name} can't see you on the map",
+            ),
+            value: sharing.isSharingWith(profile.id),
+            onChanged: (enabled) => _setSharing(sharing, enabled),
+          ),
+        ],
         const SizedBox(height: 18),
-        if (loc != null)
+        if (!profile.sharesWithMe)
+          Text(
+            "${profile.name} isn't sharing their location with you.",
+            style: theme.textTheme.bodyMedium?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          )
+        else if (loc != null)
           Row(
             children: [
               Expanded(
@@ -935,55 +988,57 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
           )
         else
           Text('No recent location', style: theme.textTheme.bodyMedium),
-        const SizedBox(height: 22),
-        const _SectionHeader(title: 'Today'),
-        const SizedBox(height: 10),
-        FutureBuilder<List<LocationSession>>(
-          future: _todaySessions,
-          builder: (context, snapshot) {
-            final loading = snapshot.connectionState != ConnectionState.done;
-            final summary = _TripStatsSummary.fromSessions(
-              snapshot.data ?? const [],
-            );
-            return Row(
-              children: [
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.route_outlined,
-                    label: summary.driveCount == 1 ? 'Trip' : 'Trips',
-                    value: loading ? '…' : '${summary.driveCount}',
+        if (profile.sharesWithMe) ...[
+          const SizedBox(height: 22),
+          const _SectionHeader(title: 'Today'),
+          const SizedBox(height: 10),
+          FutureBuilder<List<LocationSession>>(
+            future: _todaySessions,
+            builder: (context, snapshot) {
+              final loading = snapshot.connectionState != ConnectionState.done;
+              final summary = _TripStatsSummary.fromSessions(
+                snapshot.data ?? const [],
+              );
+              return Row(
+                children: [
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.route_outlined,
+                      label: summary.driveCount == 1 ? 'Trip' : 'Trips',
+                      value: loading ? '…' : '${summary.driveCount}',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.trending_up_rounded,
-                    label: 'Top speed',
-                    value: loading
-                        ? '…'
-                        : '${summary.topSpeedKmh.round()} km/h',
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.trending_up_rounded,
+                      label: 'Top speed',
+                      value: loading
+                          ? '…'
+                          : '${summary.topSpeedKmh.round()} km/h',
+                    ),
                   ),
-                ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: _StatCard(
-                    icon: Icons.speed_outlined,
-                    label: 'Avg speed',
-                    value: loading
-                        ? '…'
-                        : '${summary.avgSpeedKmh.round()} km/h',
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _StatCard(
+                      icon: Icons.speed_outlined,
+                      label: 'Avg speed',
+                      value: loading
+                          ? '…'
+                          : '${summary.avgSpeedKmh.round()} km/h',
+                    ),
                   ),
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 22),
-        FilledButton.tonalIcon(
-          onPressed: _openHistory,
-          icon: const Icon(Icons.calendar_month_rounded),
-          label: const Text('Trip history'),
-        ),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 22),
+          FilledButton.tonalIcon(
+            onPressed: _openHistory,
+            icon: const Icon(Icons.calendar_month_rounded),
+            label: const Text('Trip history'),
+          ),
+        ],
       ],
     );
   }

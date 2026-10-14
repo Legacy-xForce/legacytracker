@@ -45,6 +45,35 @@ class ConnectionManager {
     }
   }
 
+  /**
+   * Sends each connected viewer the message `build` returns for them, or
+   * nothing when it returns null.
+   */
+  broadcastEach(build: (viewerId: string) => unknown | null) {
+    for (const [userId, entry] of [...this.clients.entries()]) {
+      const message = build(userId);
+      if (message == null) continue;
+      try {
+        entry.socket.send(JSON.stringify(message));
+      } catch (_) {
+        this.clients.delete(userId);
+      }
+    }
+  }
+
+  /** Sends one connected viewer a message; false when they aren't connected. */
+  sendTo(viewerId: string, message: unknown): boolean {
+    const entry = this.clients.get(viewerId);
+    if (!entry) return false;
+    try {
+      entry.socket.send(JSON.stringify(message));
+      return true;
+    } catch (_) {
+      this.clients.delete(viewerId);
+      return false;
+    }
+  }
+
   get count(): number {
     return this.clients.size;
   }

@@ -154,6 +154,24 @@ original timestamp: nothing new stored, but `last_seen_at` and battery
 refresh). Markers grey out after 90 min without contact — not by position age,
 since a parked user's last point is old by design.
 
+## Sharing with specific users
+
+Everyone with the tracker scope sees everyone by default. A user can switch
+their location off for one other user from that user's detail pane in the
+drawer. Admins get no exception.
+
+- Stored as a deny-list (`location_share_blocks`: owner, viewer); no row
+  means sharing. The server keeps it in memory for the broadcast path.
+- Enforced on the server, not the client: live updates skip hidden viewers,
+  the WS snapshot carries a redacted entry (`{user_id, username,
+  sharing: false}`: no position, battery, last-seen or dwell time), and
+  `GET /api/v1/history?user_id=` answers 403 `not_sharing`.
+- A hidden user stays in the viewer's roster, marked "Not sharing with you".
+- Toggling pushes the viewer an immediate entry: redacted when switched off,
+  the current position when switched back on.
+- API: `GET /api/v1/sharing` (`hidden_from`), `PUT /api/v1/sharing/:viewerId`
+  with `{"enabled": bool}`.
+
 ## Server protocol changes
 
 | | |

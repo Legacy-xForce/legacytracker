@@ -8,6 +8,10 @@ class UserProfile {
   bool locationTrackingPaused;
   bool missingPermissions;
   bool batterySavingEnabled;
+
+  /// False when this user has switched off sharing their location with us:
+  /// they stay in the roster, but nothing about where they are comes through.
+  bool sharesWithMe;
   int? batteryLevel;
   bool? isCharging;
   LocationPoint? lastLocation;
@@ -36,6 +40,7 @@ class UserProfile {
     this.locationTrackingPaused = false,
     this.missingPermissions = false,
     this.batterySavingEnabled = false,
+    this.sharesWithMe = true,
     this.batteryLevel,
     this.isCharging,
     this.lastLocation,

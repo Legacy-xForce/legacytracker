@@ -9,10 +9,12 @@ import 'src/data/network/checkpoint_service.dart';
 import 'src/data/network/device_service.dart';
 import 'src/data/network/profile_service.dart';
 import 'src/data/network/remote_backend.dart';
+import 'src/data/network/sharing_service.dart';
 import 'src/features/auth/access_denied_screen.dart';
 import 'src/features/auth/auth_provider.dart';
 import 'src/features/auth/login_screen.dart';
 import 'src/features/checkpoints/checkpoints_provider.dart';
+import 'src/features/tracking/sharing_provider.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
 import 'src/data/models/user_model.dart';
@@ -44,6 +46,19 @@ class App extends StatelessWidget {
           update: (_, auth, checkpoints) {
             final usable = auth.isAuthenticated && auth.accessDenial == null;
             return checkpoints!
+              ..bindSession(
+                userId: usable ? auth.profile?.id : null,
+                getAccessToken: () => auth.tokens?.accessToken,
+              );
+          },
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, SharingProvider>(
+          create: (_) => SharingProvider(
+            service: SharingService(baseUrl: AppConstants.backendBaseUrl),
+          ),
+          update: (_, auth, sharing) {
+            final usable = auth.isAuthenticated && auth.accessDenial == null;
+            return sharing!
               ..bindSession(
                 userId: usable ? auth.profile?.id : null,
                 getAccessToken: () => auth.tokens?.accessToken,
