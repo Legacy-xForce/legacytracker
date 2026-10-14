@@ -2,10 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../auth/auth_provider.dart';
 import '../../auth/passkeys_screen.dart';
+import '../../checkpoints/checkpoints_screen.dart';
 import '../../debug/debug_log_screen.dart';
 import '../../updates/app_updater.dart';
 import '../../updates/app_updates_card.dart';
@@ -62,6 +64,29 @@ class TrackingProfileTab extends StatelessWidget {
           const SizedBox(height: 28),
           const _SectionLabel('Location sharing'),
           TrackingStatusCard(controller: controller),
+          const SizedBox(height: 24),
+          const _SectionLabel('Places'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.place_outlined),
+              title: const Text('Checkpoints'),
+              subtitle: const Text('Named places shown instead of the street'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () {
+                final last = self.lastLocation;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CheckpointsScreen(
+                      initialCenter: last == null
+                          ? null
+                          : LatLng(last.latitude, last.longitude),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
           const SizedBox(height: 24),
           const _SectionLabel('Sign-in'),
           Card(
