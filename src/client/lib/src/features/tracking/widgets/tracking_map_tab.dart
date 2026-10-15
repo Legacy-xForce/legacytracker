@@ -11,6 +11,7 @@ import '../../../data/models/location_model.dart';
 import '../../../data/models/user_model.dart';
 import '../../calendar/calendar_events_provider.dart';
 import '../../calendar/event_marker.dart';
+import '../../checkpoints/checkpoints_provider.dart';
 import 'map_layers.dart';
 import 'tracked_user_cluster_marker.dart';
 import 'tracked_user_marker.dart';
@@ -26,6 +27,40 @@ final LatLngBounds _worldBounds = LatLngBounds(
   const LatLng(-AppConstants.maxMercatorLatitude, -180),
   const LatLng(AppConstants.maxMercatorLatitude, 180),
 );
+
+const Color _checkpointColor = Color(0xFF82D5C8);
+
+/// Zoomed out further, the names would pile up into noise; circles stay.
+const double _checkpointLabelsFromZoom = 13;
+
+class _CheckpointLabel extends StatelessWidget {
+  const _CheckpointLabel({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xEB252B2A),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class TrackingMapTab extends StatefulWidget {
   const TrackingMapTab({
@@ -449,6 +484,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     final events = context.watch<CalendarEventsProvider?>();
+    final checkpoints =
+        context.watch<CheckpointsProvider?>()?.checkpoints ?? const [];
     return Stack(
       children: [
         Listener(
@@ -478,6 +515,43 @@ class _TrackingMapTabState extends State<TrackingMapTab>
             ),
             children: [
               ...buildMapTileLayers(widget.selectedLayer),
+              // Checkpoints sit at the bottom, so a place never hides who is in
+              // it. Names are dropped when zoomed out, like on the web map.
+              if (checkpoints.isNotEmpty) ...[
+                CircleLayer(
+                  circles: [
+                    for (final checkpoint in checkpoints)
+                      CircleMarker(
+                        point: checkpoint.center,
+                        radius: checkpoint.radiusM.toDouble(),
+                        useRadiusInMeter: true,
+                        color: _checkpointColor.withValues(alpha: 0.14),
+                        borderColor: _checkpointColor,
+                        borderStrokeWidth: 1.5,
+                      ),
+                  ],
+                ),
+                Builder(
+                  builder: (context) =>
+                      MapCamera.of(context).zoom < _checkpointLabelsFromZoom
+                      ? const SizedBox.shrink()
+                      : MarkerLayer(
+                          markers: [
+                            for (final checkpoint in checkpoints)
+                              Marker(
+                                point: checkpoint.center,
+                                width: 160,
+                                height: 24,
+                                child: IgnorePointer(
+                                  child: _CheckpointLabel(
+                                    name: checkpoint.name,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
               // Under the people, so an event never hides someone's marker.
               if (events != null && events.visibleEvents.isNotEmpty)
                 MarkerLayer(
