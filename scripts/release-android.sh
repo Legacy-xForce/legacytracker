@@ -72,9 +72,14 @@ sdk="$(sed -n 's/^sdk\.dir=//p' "$client/android/local.properties" 2>/dev/null |
 sdk="${sdk:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}}"
 apksigner="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name apksigner 2>/dev/null | sort -V | tail -1)"
 [[ -x "$apksigner" ]] || die "apksigner not found under ${sdk:-<no Android SDK>}/build-tools"
-certs="$("$apksigner" verify --print-certs "$asset")"
+set +e
+certs="$("$apksigner" verify --print-certs "$asset" 2>&1)"
+verify_status=$?
+set -e
+((verify_status == 0)) || die "apksigner could not verify the APK:\n$certs"
 fingerprint="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs")"
 subject="$(sed -n 's/^Signer #1 certificate DN: //p' <<<"$certs")"
+[[ -n "$fingerprint" ]] || die "could not read the APK signing certificate from apksigner:\n$certs"
 if [[ -f "$cert_file" ]]; then
   expected="$(tr -d '[:space:]' <"$cert_file")"
   [[ "$fingerprint" == "$expected" ]] ||
