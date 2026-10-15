@@ -59,9 +59,10 @@ class TrackedUserClusterMarker extends StatelessWidget {
   static const int maxFaces = 3;
   static const double _faceSize = 42;
   static const double _faceStep = 30; // faces overlap by 12 px
-  static const double _ring = 2.5;
-  static const double _padding = 5;
-  static const double _tailHeight = 9;
+  static const double _ring = 1.5;
+  static const double _padding = 3;
+  // The tail runs to the dot's centre, so the two read as one pin.
+  static const double _tailHeight = 13;
   static const double _tailHalfWidth = 8;
   static const double _dotSize = 14;
   static const double _bubbleHeight = _faceSize + _padding * 2;
@@ -76,7 +77,7 @@ class TrackedUserClusterMarker extends StatelessWidget {
     return _padding * 2 + _faceSize + (slots - 1) * _faceStep;
   }
 
-  static const double height = _bubbleHeight + _tailHeight + _dotSize - 2;
+  static const double height = _bubbleHeight + _tailHeight + _dotSize / 2;
 
   static Alignment alignmentFor(int memberCount) =>
       Marker.computePixelAlignment(
@@ -183,7 +184,7 @@ class _OverflowFace extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: const Color(0xFF2B3134),
-        border: Border.all(color: Colors.white, width: 2.5),
+        border: Border.all(color: Colors.white, width: 1.5),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -212,7 +213,7 @@ class _LocationDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        border: Border.all(color: Colors.white, width: 2.5),
+        border: Border.all(color: Colors.white, width: 2),
         boxShadow: const [
           BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1)),
         ],
