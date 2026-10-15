@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -13,7 +12,6 @@ import '../../calendar/calendar_events_provider.dart';
 import '../../calendar/event_marker.dart';
 import 'map_layers.dart';
 import 'tracked_user_cluster_marker.dart';
-import 'tracked_user_marker.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_users_drawer.dart';
 import '../local_avatar_store.dart';
@@ -591,13 +589,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   List<Marker> _buildMarkers(MapCamera camera) {
     final clusters = _clusterEntries(_collectMarkerEntries(), camera);
-    return [
-      for (final cluster in clusters)
-        if (cluster.length == 1)
-          _buildEntryMarker(cluster.single)
-        else
-          _buildClusterMarker(cluster),
-    ];
+    return [for (final cluster in clusters) _buildClusterMarker(cluster)];
   }
 
   /// Self (if it has a fix) plus every peer with a fix, paired with their
@@ -695,24 +687,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     return clusters;
   }
 
-  Marker _buildEntryMarker(_UserMarkerEntry entry) {
-    final profile = entry.profile;
-    return _buildTrackedUserMarker(
-      profile: profile,
-      location: entry.location,
-      point: entry.point,
-      isSelected: widget.selectedUserId == profile.id,
-      onTap: () => _selectUser(profile),
-      tooltipMessage: entry.isSelf ? '${profile.name} (you)' : profile.name,
-      avatarBytes: entry.isSelf
-          ? context.watch<LocalAvatarStore?>()?.bytes
-          : null,
-      beamColor: const Color(0xFF0985FB),
-      ringColor: entry.isSelf ? const Color(0xFF0985FB) : Colors.white,
-      badgeColor: entry.isSelf ? Colors.teal.shade800 : Colors.grey.shade900,
-    );
-  }
-
   Marker _buildClusterMarker(List<_UserMarkerEntry> members) {
     return Marker(
       point: _centroid(members.map((m) => m.point)),
@@ -728,6 +702,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               name: m.isSelf ? '${m.profile.name} (you)' : m.profile.name,
               avatarUrl: m.profile.avatarUrl,
               isStale: _isStale(m.profile),
+              isSelected: widget.selectedUserId == m.profile.id,
+              avatarBytes: m.isSelf
+                  ? context.watch<LocalAvatarStore?>()?.bytes
+                  : null,
               onTap: () => _selectUser(m.profile),
             ),
         ],
@@ -774,43 +752,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _animateMapTo(
       _centerShowing(fitted.center, fitted.zoom, _sheetFraction),
       zoomTarget: fitted.zoom,
-    );
-  }
-
-  Marker _buildTrackedUserMarker({
-    required UserProfile profile,
-    required LocationPoint location,
-    required LatLng point,
-    required bool isSelected,
-    required VoidCallback onTap,
-    required String tooltipMessage,
-    Uint8List? avatarBytes,
-    required Color beamColor,
-    required Color ringColor,
-    required Color badgeColor,
-  }) {
-    return Marker(
-      point: point,
-      width: TrackedUserMarker.width,
-      height: TrackedUserMarker.height,
-      child: TrackedUserMarker(
-        userId: profile.id,
-        name: profile.name,
-        avatarUrl: profile.avatarUrl,
-        avatarBytes: avatarBytes,
-        speedKmh: location.speed * 3.6,
-        isMoving: location.isMoving,
-        heading: location.heading,
-        isStale: _isStale(profile),
-        batteryLevel: profile.batteryLevel,
-        isCharging: profile.isCharging ?? false,
-        isSelected: isSelected,
-        onTap: onTap,
-        tooltipMessage: tooltipMessage,
-        beamColor: beamColor,
-        ringColor: ringColor,
-        badgeColor: badgeColor,
-      ),
     );
   }
 

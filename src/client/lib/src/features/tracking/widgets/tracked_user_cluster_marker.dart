@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 
@@ -11,6 +13,8 @@ class ClusterMember {
     required this.avatarUrl,
     required this.isStale,
     required this.onTap,
+    this.avatarBytes,
+    this.isSelected = false,
   });
 
   final String id;
@@ -18,14 +22,20 @@ class ClusterMember {
   final String avatarUrl;
   final bool isStale;
 
+  /// Our own locally picked photo, which has no URL.
+  final Uint8List? avatarBytes;
+
+  /// Rings the face in the accent colour.
+  final bool isSelected;
+
   /// Selects this member, mirroring [TrackedUserMarker]'s own onTap so the
   /// drawer shows that person's stats just like a lone marker would.
   final VoidCallback onTap;
 }
 
-/// A Life360-style "group" marker: shown instead of individual
-/// [TrackedUserMarker]s when several users are close enough together on
-/// screen that their pins would otherwise overlap and become indistinguishable.
+/// A Life360-style pin: one face per person in a white pill whose short tail
+/// ends in a dot on the location, so the exact spot is always readable. Used
+/// for a lone user (one face) and for a group of users who are close together.
 ///
 /// The members' faces overlap inside a white pill whose short tail ends in a
 /// dot on the shared location. Tapping a face selects that member; tapping
@@ -103,8 +113,9 @@ class TrackedUserClusterMarker extends StatelessWidget {
               userId: members[i].id,
               name: members[i].name,
               avatarUrl: members[i].avatarUrl,
+              imageBytes: members[i].avatarBytes,
               size: _faceSize,
-              ringColor: Colors.white,
+              ringColor: members[i].isSelected ? accentColor : Colors.white,
               ringWidth: _ring,
               dimmed: members[i].isStale,
             ),
