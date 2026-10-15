@@ -1,9 +1,13 @@
+import '../models/map_viewer.dart';
 import '../models/user_model.dart';
 
 /// Realtime view of the other users. Our own location is uploaded by the
 /// native tracking engine, not through this interface.
 abstract class Backend {
   Stream<List<UserProfile>> get peerStream;
+
+  /// Who has the live map open right now, ourselves included.
+  Stream<List<MapViewer>> get viewerStream;
 
   Future<void> initialize();
 

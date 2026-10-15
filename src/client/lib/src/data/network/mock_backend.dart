@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'backend.dart';
 import '../models/location_model.dart';
+import '../models/map_viewer.dart';
 import '../models/user_model.dart';
 
 class MockBackend implements Backend {
@@ -63,6 +64,12 @@ class MockBackend implements Backend {
 
   @override
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
+
+  @override
+  Stream<List<MapViewer>> get viewerStream => Stream.value(const [
+    MapViewer(id: 'alice', name: 'Alice'),
+    MapViewer(id: 'carla', name: 'Carla'),
+  ]);
 
   @override
   Future<void> initialize() async {}

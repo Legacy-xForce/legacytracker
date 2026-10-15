@@ -10,6 +10,7 @@ import TripHistory from '../components/history/TripHistory.vue';
 import MapControlButton from '../components/map/MapControlButton.vue';
 import MapControlGroup from '../components/map/MapControlGroup.vue';
 import StatusPill from '../components/map/StatusPill.vue';
+import ViewersStack from '../components/map/ViewersStack.vue';
 import PeopleSheet from '../components/people/PeopleSheet.vue';
 import PersonDetail from '../components/people/PersonDetail.vue';
 import PersonRow from '../components/people/PersonRow.vue';
@@ -220,8 +221,9 @@ watch(replaying, (isReplaying) => {
             />
         </PeersMap>
 
-        <div class="absolute top-3 z-[1000]" :class="wide ? 'left-[404px]' : 'left-4'">
+        <div class="absolute top-3 z-[1000] flex items-center gap-2" :class="wide ? 'left-[404px]' : 'left-4'">
             <StatusPill :status="peers.status" />
+            <ViewersStack :viewers="peers.viewers" :self-id="selfId" />
         </div>
 
         <div class="absolute top-3 right-3 z-[1001] flex flex-col items-end gap-3">

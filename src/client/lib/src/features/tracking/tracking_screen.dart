@@ -83,6 +83,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     selfBatterySavingEnabled:
                         controller.selfProfile.batterySavingEnabled,
                     selfLive: controller.status.live,
+                    viewers: controller.viewers,
                     selectedUserId: _selectedUserId,
                     onLayerSelected: (layer) =>
                         setState(() => _selectedLayer = layer),

@@ -6,13 +6,23 @@ import ConnectionManager from "../src/services/connection-manager";
 function fakeSocket() {
   const sent: string[] = [];
   let closed = false;
+  let terminated = false;
+  let pings = 0;
   return {
     sent,
     get closed() {
       return closed;
     },
+    get terminated() {
+      return terminated;
+    },
+    get pings() {
+      return pings;
+    },
     send: (text: string) => void sent.push(text),
     close: () => void (closed = true),
+    terminate: () => void (terminated = true),
+    ping: () => void (pings += 1),
   };
 }
 
@@ -104,4 +114,41 @@ test("the oldest connection is closed once a user has too many", () => {
   assert.equal(sockets[0].closed, true);
   assert.equal(sockets[1].closed, false);
   assert.equal(manager.count, 5);
+});
+
+test("active map users count a user once, however many maps they have open", () => {
+  const manager = new ConnectionManager();
+  const phone = fakeSocket();
+  const browser = fakeSocket();
+  const other = fakeSocket();
+  manager.add("a", phone);
+  manager.add("a", browser);
+  manager.add("b", other);
+  assert.deepEqual([...manager.activeMapUsers()], ["a", "b"]);
+
+  manager.setMapActive("a", phone, false);
+  assert.deepEqual([...manager.activeMapUsers()], ["a", "b"]);
+  manager.setMapActive("a", browser, false);
+  manager.setMapActive("b", other, false);
+  assert.deepEqual([...manager.activeMapUsers()], []);
+});
+
+test("the heartbeat pings every socket and drops one that never answered", () => {
+  const manager = new ConnectionManager();
+  const answering = fakeSocket();
+  const silent = fakeSocket();
+  manager.add("a", answering);
+  manager.add("b", silent);
+
+  assert.equal(manager.sweep(), 0);
+  assert.equal(answering.pings, 1);
+  assert.equal(silent.pings, 1);
+
+  manager.markAlive("a", answering);
+  assert.equal(manager.sweep(), 1);
+  assert.equal(silent.terminated, true);
+  assert.equal(answering.terminated, false);
+  assert.equal(answering.pings, 2);
+  assert.equal(manager.count, 1);
+  assert.deepEqual([...manager.activeMapUsers()], ["a"]);
 });
