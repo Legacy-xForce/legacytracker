@@ -181,7 +181,13 @@ function regroup() {
     const list = [...entries.values()];
     const zoom = map.getZoom();
     const wanted = new Map<string, Entry[]>();
-    for (const indexes of groupByDistance(list.map((e) => map!.project(e.motion.target, zoom)))) {
+    for (const indexes of groupByDistance(
+        list.map((e) => ({
+            ...map!.project(e.motion.target, zoom),
+            lat: e.motion.target.lat,
+            lng: e.motion.target.lng
+        }))
+    )) {
         const members = indexes.map((i) => list[i]);
         if (members.length === 1) show(members[0].view.marker);
         else {
