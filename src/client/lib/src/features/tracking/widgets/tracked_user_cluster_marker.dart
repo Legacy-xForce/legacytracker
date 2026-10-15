@@ -124,40 +124,37 @@ class TrackedUserClusterMarker extends StatelessWidget {
         ),
     ];
 
-    return Tooltip(
-      message: members.map((m) => m.name).join(', '),
-      child: GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                width: width,
-                height: _bubbleHeight + _tailHeight,
-                child: CustomPaint(
-                  painter: _BubblePainter(
-                    bubbleHeight: _bubbleHeight,
-                    tailHeight: _tailHeight,
-                    tailHalfWidth: _tailHalfWidth,
-                  ),
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              width: width,
+              height: _bubbleHeight + _tailHeight,
+              child: CustomPaint(
+                painter: _BubblePainter(
+                  bubbleHeight: _bubbleHeight,
+                  tailHeight: _tailHeight,
+                  tailHalfWidth: _tailHalfWidth,
                 ),
               ),
-              ...slots,
-              Positioned(
-                left: (width - _dotSize) / 2,
-                bottom: 0,
-                child: _LocationDot(
-                  size: _dotSize,
-                  color: allStale ? Colors.grey.shade600 : accentColor,
-                ),
+            ),
+            ...slots,
+            Positioned(
+              left: (width - _dotSize) / 2,
+              bottom: 0,
+              child: _LocationDot(
+                size: _dotSize,
+                color: allStale ? Colors.grey.shade600 : accentColor,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
