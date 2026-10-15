@@ -362,13 +362,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     _bearingController.stop();
-    _bearingAnimation =
-        Tween<double>(begin: currentBearing, end: 0.0).animate(
-          CurvedAnimation(
-            parent: _bearingController,
-            curve: Curves.easeOutCubic,
-          ),
-        );
+    _bearingAnimation = Tween<double>(begin: currentBearing, end: 0.0).animate(
+      CurvedAnimation(parent: _bearingController, curve: Curves.easeOutCubic),
+    );
     _bearingController.duration = const Duration(milliseconds: 600);
     _bearingController.forward(from: 0);
   }
@@ -396,8 +392,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         if (_lastRotationAngle != null) {
           final angleDelta = (angle - _lastRotationAngle!).abs();
           // Normalize angle delta to 0-180 range
-          final normalizedDelta =
-              angleDelta > 180 ? 360 - angleDelta : angleDelta;
+          final normalizedDelta = angleDelta > 180
+              ? 360 - angleDelta
+              : angleDelta;
 
           if (normalizedDelta > _rotationThreshold && _isRotationLocked) {
             _isRotationLocked = false;
@@ -585,6 +582,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// other's tap target) while staying just outside the threshold.
   static const double _clusterPixelRadius = 96;
 
+  /// Real-world distance under which markers may be folded together. The
+  /// pixel radius alone shrinks in metres as the map zooms out, which would
+  /// merge people kilometres apart; this keeps a cluster meaning "actually
+  /// together". Both limits must hold.
+  static const double clusterMaxMeters = 100;
+  static const Distance _geoDistance = Distance();
+
   List<Marker> _buildMarkers(MapCamera camera) {
     final clusters = _clusterEntries(_collectMarkerEntries(), camera);
     return [
@@ -640,7 +644,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   }
 
   /// Greedily groups entries whose projected screen position falls within
-  /// [_clusterPixelRadius] of an existing cluster's running centroid. Cheap
+  /// [_clusterPixelRadius] *and* whose real position falls within
+  /// [clusterMaxMeters] of an existing cluster's running centroid. Cheap
   /// and order-dependent, but with only a handful of tracked users on screen
   /// at once the result is visually indistinguishable from an optimal
   /// grouping.
@@ -656,11 +661,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
     final clusters = <List<_UserMarkerEntry>>[];
     final centroids = <Offset>[];
+    final geoCentroids = <LatLng>[];
     for (final entry in entries) {
       final px = camera.projectAtZoom(entry.point);
       var placedIndex = -1;
       for (var i = 0; i < clusters.length; i++) {
-        if ((px - centroids[i]).distance <= _clusterPixelRadius) {
+        if ((px - centroids[i]).distance <= _clusterPixelRadius &&
+            _geoDistance(entry.point, geoCentroids[i]) <= clusterMaxMeters) {
           placedIndex = i;
           break;
         }
@@ -668,6 +675,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       if (placedIndex == -1) {
         clusters.add([entry]);
         centroids.add(px);
+        geoCentroids.add(entry.point);
       } else {
         clusters[placedIndex].add(entry);
         final members = clusters[placedIndex];
@@ -676,6 +684,12 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           (sum, member) => sum + camera.projectAtZoom(member.point),
         );
         centroids[placedIndex] = sum / members.length.toDouble();
+        geoCentroids[placedIndex] = LatLng(
+          members.fold<double>(0, (t, m) => t + m.point.latitude) /
+              members.length,
+          members.fold<double>(0, (t, m) => t + m.point.longitude) /
+              members.length,
+        );
       }
     }
     return clusters;

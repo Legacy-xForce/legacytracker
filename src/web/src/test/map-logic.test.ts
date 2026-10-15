@@ -43,6 +43,31 @@ describe('groupByDistance', () => {
     });
 });
 
+describe('groupByDistance real-world limit', () => {
+    // 0.0005 deg of latitude is about 55 m; 0.005 is about 555 m.
+    it('keeps people apart when zoomed out far enough that pixels are close but metres are not', () => {
+        const near = groupByDistance([
+            { x: 0, y: 0, lat: 45, lng: 9 },
+            { x: 5, y: 0, lat: 45.0005, lng: 9 }
+        ]);
+        expect(near).toEqual([[0, 1]]);
+        const far = groupByDistance([
+            { x: 0, y: 0, lat: 45, lng: 9 },
+            { x: 5, y: 0, lat: 45.005, lng: 9 }
+        ]);
+        expect(far).toEqual([[0], [1]]);
+    });
+
+    it('still requires the pixel radius when people are close in metres', () => {
+        expect(
+            groupByDistance([
+                { x: 0, y: 0, lat: 45, lng: 9 },
+                { x: 400, y: 0, lat: 45.0005, lng: 9 }
+            ])
+        ).toEqual([[0], [1]]);
+    });
+});
+
 describe('group bubble', () => {
     it('grows a face at a time and folds the rest into "+N"', () => {
         expect(clusterWidth(2)).toBe(82);
