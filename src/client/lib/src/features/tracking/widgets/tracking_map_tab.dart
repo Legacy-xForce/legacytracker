@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
@@ -12,10 +11,10 @@ import '../../../data/models/map_viewer.dart';
 import '../../../data/models/user_model.dart';
 import '../../calendar/calendar_events_provider.dart';
 import '../../calendar/event_marker.dart';
+import '../../checkpoints/checkpoints_provider.dart';
 import 'map_layers.dart';
 import 'map_viewers_row.dart';
 import 'tracked_user_cluster_marker.dart';
-import 'tracked_user_marker.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_users_drawer.dart';
 import '../local_avatar_store.dart';
@@ -28,6 +27,40 @@ final LatLngBounds _worldBounds = LatLngBounds(
   const LatLng(-AppConstants.maxMercatorLatitude, -180),
   const LatLng(AppConstants.maxMercatorLatitude, 180),
 );
+
+const Color _checkpointColor = Color(0xFF82D5C8);
+
+/// Zoomed out further, the names would pile up into noise; circles stay.
+const double _checkpointLabelsFromZoom = 13;
+
+class _CheckpointLabel extends StatelessWidget {
+  const _CheckpointLabel({required this.name});
+
+  final String name;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: const Color(0xEB252B2A),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          name,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 class TrackingMapTab extends StatefulWidget {
   const TrackingMapTab({
@@ -368,13 +401,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     _bearingController.stop();
-    _bearingAnimation =
-        Tween<double>(begin: currentBearing, end: 0.0).animate(
-          CurvedAnimation(
-            parent: _bearingController,
-            curve: Curves.easeOutCubic,
-          ),
-        );
+    _bearingAnimation = Tween<double>(begin: currentBearing, end: 0.0).animate(
+      CurvedAnimation(parent: _bearingController, curve: Curves.easeOutCubic),
+    );
     _bearingController.duration = const Duration(milliseconds: 600);
     _bearingController.forward(from: 0);
   }
@@ -402,8 +431,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         if (_lastRotationAngle != null) {
           final angleDelta = (angle - _lastRotationAngle!).abs();
           // Normalize angle delta to 0-180 range
-          final normalizedDelta =
-              angleDelta > 180 ? 360 - angleDelta : angleDelta;
+          final normalizedDelta = angleDelta > 180
+              ? 360 - angleDelta
+              : angleDelta;
 
           if (normalizedDelta > _rotationThreshold && _isRotationLocked) {
             _isRotationLocked = false;
@@ -455,6 +485,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     final events = context.watch<CalendarEventsProvider?>();
+    final checkpoints =
+        context.watch<CheckpointsProvider?>()?.checkpoints ?? const [];
     return Stack(
       children: [
         Listener(
@@ -484,6 +516,43 @@ class _TrackingMapTabState extends State<TrackingMapTab>
             ),
             children: [
               ...buildMapTileLayers(widget.selectedLayer),
+              // Checkpoints sit at the bottom, so a place never hides who is in
+              // it. Names are dropped when zoomed out, like on the web map.
+              if (checkpoints.isNotEmpty) ...[
+                CircleLayer(
+                  circles: [
+                    for (final checkpoint in checkpoints)
+                      CircleMarker(
+                        point: checkpoint.center,
+                        radius: checkpoint.radiusM.toDouble(),
+                        useRadiusInMeter: true,
+                        color: _checkpointColor.withValues(alpha: 0.14),
+                        borderColor: _checkpointColor,
+                        borderStrokeWidth: 1.5,
+                      ),
+                  ],
+                ),
+                Builder(
+                  builder: (context) =>
+                      MapCamera.of(context).zoom < _checkpointLabelsFromZoom
+                      ? const SizedBox.shrink()
+                      : MarkerLayer(
+                          markers: [
+                            for (final checkpoint in checkpoints)
+                              Marker(
+                                point: checkpoint.center,
+                                width: 160,
+                                height: 24,
+                                child: IgnorePointer(
+                                  child: _CheckpointLabel(
+                                    name: checkpoint.name,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                ),
+              ],
               // Under the people, so an event never hides someone's marker.
               if (events != null && events.visibleEvents.isNotEmpty)
                 MarkerLayer(
@@ -601,15 +670,16 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// other's tap target) while staying just outside the threshold.
   static const double _clusterPixelRadius = 96;
 
+  /// Real-world distance under which markers may be folded together. The
+  /// pixel radius alone shrinks in metres as the map zooms out, which would
+  /// merge people kilometres apart; this keeps a cluster meaning "actually
+  /// together". Both limits must hold.
+  static const double clusterMaxMeters = 100;
+  static const Distance _geoDistance = Distance();
+
   List<Marker> _buildMarkers(MapCamera camera) {
     final clusters = _clusterEntries(_collectMarkerEntries(), camera);
-    return [
-      for (final cluster in clusters)
-        if (cluster.length == 1)
-          _buildEntryMarker(cluster.single)
-        else
-          _buildClusterMarker(cluster),
-    ];
+    return [for (final cluster in clusters) _buildClusterMarker(cluster)];
   }
 
   /// Self (if it has a fix) plus every peer with a fix, paired with their
@@ -656,7 +726,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   }
 
   /// Greedily groups entries whose projected screen position falls within
-  /// [_clusterPixelRadius] of an existing cluster's running centroid. Cheap
+  /// [_clusterPixelRadius] *and* whose real position falls within
+  /// [clusterMaxMeters] of an existing cluster's running centroid. Cheap
   /// and order-dependent, but with only a handful of tracked users on screen
   /// at once the result is visually indistinguishable from an optimal
   /// grouping.
@@ -672,11 +743,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
     final clusters = <List<_UserMarkerEntry>>[];
     final centroids = <Offset>[];
+    final geoCentroids = <LatLng>[];
     for (final entry in entries) {
       final px = camera.projectAtZoom(entry.point);
       var placedIndex = -1;
       for (var i = 0; i < clusters.length; i++) {
-        if ((px - centroids[i]).distance <= _clusterPixelRadius) {
+        if ((px - centroids[i]).distance <= _clusterPixelRadius &&
+            _geoDistance(entry.point, geoCentroids[i]) <= clusterMaxMeters) {
           placedIndex = i;
           break;
         }
@@ -684,6 +757,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       if (placedIndex == -1) {
         clusters.add([entry]);
         centroids.add(px);
+        geoCentroids.add(entry.point);
       } else {
         clusters[placedIndex].add(entry);
         final members = clusters[placedIndex];
@@ -692,27 +766,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           (sum, member) => sum + camera.projectAtZoom(member.point),
         );
         centroids[placedIndex] = sum / members.length.toDouble();
+        geoCentroids[placedIndex] = LatLng(
+          members.fold<double>(0, (t, m) => t + m.point.latitude) /
+              members.length,
+          members.fold<double>(0, (t, m) => t + m.point.longitude) /
+              members.length,
+        );
       }
     }
     return clusters;
-  }
-
-  Marker _buildEntryMarker(_UserMarkerEntry entry) {
-    final profile = entry.profile;
-    return _buildTrackedUserMarker(
-      profile: profile,
-      location: entry.location,
-      point: entry.point,
-      isSelected: widget.selectedUserId == profile.id,
-      onTap: () => _selectUser(profile),
-      tooltipMessage: entry.isSelf ? '${profile.name} (you)' : profile.name,
-      avatarBytes: entry.isSelf
-          ? context.watch<LocalAvatarStore?>()?.bytes
-          : null,
-      beamColor: const Color(0xFF0985FB),
-      ringColor: entry.isSelf ? const Color(0xFF0985FB) : Colors.white,
-      badgeColor: entry.isSelf ? Colors.teal.shade800 : Colors.grey.shade900,
-    );
   }
 
   Marker _buildClusterMarker(List<_UserMarkerEntry> members) {
@@ -730,6 +792,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               name: m.isSelf ? '${m.profile.name} (you)' : m.profile.name,
               avatarUrl: m.profile.avatarUrl,
               isStale: _isStale(m.profile),
+              isSelected: widget.selectedUserId == m.profile.id,
+              avatarBytes: m.isSelf
+                  ? context.watch<LocalAvatarStore?>()?.bytes
+                  : null,
               onTap: () => _selectUser(m.profile),
             ),
         ],
@@ -776,43 +842,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _animateMapTo(
       _centerShowing(fitted.center, fitted.zoom, _sheetFraction),
       zoomTarget: fitted.zoom,
-    );
-  }
-
-  Marker _buildTrackedUserMarker({
-    required UserProfile profile,
-    required LocationPoint location,
-    required LatLng point,
-    required bool isSelected,
-    required VoidCallback onTap,
-    required String tooltipMessage,
-    Uint8List? avatarBytes,
-    required Color beamColor,
-    required Color ringColor,
-    required Color badgeColor,
-  }) {
-    return Marker(
-      point: point,
-      width: TrackedUserMarker.width,
-      height: TrackedUserMarker.height,
-      child: TrackedUserMarker(
-        userId: profile.id,
-        name: profile.name,
-        avatarUrl: profile.avatarUrl,
-        avatarBytes: avatarBytes,
-        speedKmh: location.speed * 3.6,
-        isMoving: location.isMoving,
-        heading: location.heading,
-        isStale: _isStale(profile),
-        batteryLevel: profile.batteryLevel,
-        isCharging: profile.isCharging ?? false,
-        isSelected: isSelected,
-        onTap: onTap,
-        tooltipMessage: tooltipMessage,
-        beamColor: beamColor,
-        ringColor: ringColor,
-        badgeColor: badgeColor,
-      ),
     );
   }
 

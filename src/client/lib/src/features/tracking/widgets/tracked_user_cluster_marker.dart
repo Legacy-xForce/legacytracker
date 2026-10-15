@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 
@@ -11,6 +13,8 @@ class ClusterMember {
     required this.avatarUrl,
     required this.isStale,
     required this.onTap,
+    this.avatarBytes,
+    this.isSelected = false,
   });
 
   final String id;
@@ -18,14 +22,20 @@ class ClusterMember {
   final String avatarUrl;
   final bool isStale;
 
+  /// Our own locally picked photo, which has no URL.
+  final Uint8List? avatarBytes;
+
+  /// Rings the face in the accent colour.
+  final bool isSelected;
+
   /// Selects this member, mirroring [TrackedUserMarker]'s own onTap so the
   /// drawer shows that person's stats just like a lone marker would.
   final VoidCallback onTap;
 }
 
-/// A Life360-style "group" marker: shown instead of individual
-/// [TrackedUserMarker]s when several users are close enough together on
-/// screen that their pins would otherwise overlap and become indistinguishable.
+/// A Life360-style pin: one face per person in a white pill whose short tail
+/// ends in a dot on the location, so the exact spot is always readable. Used
+/// for a lone user (one face) and for a group of users who are close together.
 ///
 /// The members' faces overlap inside a white pill whose short tail ends in a
 /// dot on the shared location. Tapping a face selects that member; tapping
@@ -49,9 +59,10 @@ class TrackedUserClusterMarker extends StatelessWidget {
   static const int maxFaces = 3;
   static const double _faceSize = 42;
   static const double _faceStep = 30; // faces overlap by 12 px
-  static const double _ring = 2.5;
-  static const double _padding = 5;
-  static const double _tailHeight = 9;
+  static const double _ring = 1.5;
+  static const double _padding = 3;
+  // The tail runs to the dot's centre, so the two read as one pin.
+  static const double _tailHeight = 13;
   static const double _tailHalfWidth = 8;
   static const double _dotSize = 14;
   static const double _bubbleHeight = _faceSize + _padding * 2;
@@ -66,7 +77,7 @@ class TrackedUserClusterMarker extends StatelessWidget {
     return _padding * 2 + _faceSize + (slots - 1) * _faceStep;
   }
 
-  static const double height = _bubbleHeight + _tailHeight + _dotSize - 2;
+  static const double height = _bubbleHeight + _tailHeight + _dotSize / 2;
 
   static Alignment alignmentFor(int memberCount) =>
       Marker.computePixelAlignment(
@@ -103,8 +114,9 @@ class TrackedUserClusterMarker extends StatelessWidget {
               userId: members[i].id,
               name: members[i].name,
               avatarUrl: members[i].avatarUrl,
+              imageBytes: members[i].avatarBytes,
               size: _faceSize,
-              ringColor: Colors.white,
+              ringColor: members[i].isSelected ? accentColor : Colors.white,
               ringWidth: _ring,
               dimmed: members[i].isStale,
             ),
@@ -112,40 +124,37 @@ class TrackedUserClusterMarker extends StatelessWidget {
         ),
     ];
 
-    return Tooltip(
-      message: members.map((m) => m.name).join(', '),
-      child: GestureDetector(
-        onTap: onTap,
-        child: SizedBox(
-          width: width,
-          height: height,
-          child: Stack(
-            clipBehavior: Clip.none,
-            children: [
-              Positioned(
-                left: 0,
-                top: 0,
-                width: width,
-                height: _bubbleHeight + _tailHeight,
-                child: CustomPaint(
-                  painter: _BubblePainter(
-                    bubbleHeight: _bubbleHeight,
-                    tailHeight: _tailHeight,
-                    tailHalfWidth: _tailHalfWidth,
-                  ),
+    return GestureDetector(
+      onTap: onTap,
+      child: SizedBox(
+        width: width,
+        height: height,
+        child: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            Positioned(
+              left: 0,
+              top: 0,
+              width: width,
+              height: _bubbleHeight + _tailHeight,
+              child: CustomPaint(
+                painter: _BubblePainter(
+                  bubbleHeight: _bubbleHeight,
+                  tailHeight: _tailHeight,
+                  tailHalfWidth: _tailHalfWidth,
                 ),
               ),
-              ...slots,
-              Positioned(
-                left: (width - _dotSize) / 2,
-                bottom: 0,
-                child: _LocationDot(
-                  size: _dotSize,
-                  color: allStale ? Colors.grey.shade600 : accentColor,
-                ),
+            ),
+            ...slots,
+            Positioned(
+              left: (width - _dotSize) / 2,
+              bottom: 0,
+              child: _LocationDot(
+                size: _dotSize,
+                color: allStale ? Colors.grey.shade600 : accentColor,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -172,7 +181,7 @@ class _OverflowFace extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: const Color(0xFF2B3134),
-        border: Border.all(color: Colors.white, width: 2.5),
+        border: Border.all(color: Colors.white, width: 1.5),
       ),
       alignment: Alignment.center,
       child: Text(
@@ -201,7 +210,7 @@ class _LocationDot extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        border: Border.all(color: Colors.white, width: 2.5),
+        border: Border.all(color: Colors.white, width: 2),
         boxShadow: const [
           BoxShadow(color: Colors.black38, blurRadius: 4, offset: Offset(0, 1)),
         ],
