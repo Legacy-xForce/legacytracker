@@ -77,8 +77,14 @@ certs="$("$apksigner" verify --print-certs "$asset" 2>&1)"
 verify_status=$?
 set -e
 ((verify_status == 0)) || die "apksigner could not verify the APK:\n$certs"
-fingerprint="$(sed -n 's/^Signer #1 certificate SHA-256 digest: //p' <<<"$certs")"
-subject="$(sed -n 's/^Signer #1 certificate DN: //p' <<<"$certs")"
+fingerprint="$(sed -n \
+  -e 's/^Signer #1 certificate SHA-256 digest: //p' \
+  -e 's/^V2 Signer: certificate SHA-256 digest: //p' \
+  <<<"$certs" | head -n 1)"
+subject="$(sed -n \
+  -e 's/^Signer #1 certificate DN: //p' \
+  -e 's/^V2 Signer: certificate DN: //p' \
+  <<<"$certs" | head -n 1)"
 [[ -n "$fingerprint" ]] || die "could not read the APK signing certificate from apksigner:\n$certs"
 if [[ -f "$cert_file" ]]; then
   expected="$(tr -d '[:space:]' <"$cert_file")"
