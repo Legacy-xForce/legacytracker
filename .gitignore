@@ -68,3 +68,5 @@ app.*.map.json
 
 # Miscellaneous OS files
 .DS_Store
+
+/src/client/legacytracker-release.jks
