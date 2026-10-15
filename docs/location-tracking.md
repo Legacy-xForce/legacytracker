@@ -149,6 +149,24 @@ red light, 12 m-radius junction turn, roundabout, highway bend, exit ramp):
 
 `live` points are never stored — recorded points already describe the path.
 
+### Who's viewing
+
+The same `map_active` signal drives the row of faces next to the sharing pill
+(the app) and the Live pill (web): everyone with the map in the foreground,
+yourself included, shown to everyone — no per-user filtering.
+
+- The server broadcasts `{type: "viewers", viewers: [{id, name}]}` (in the
+  order people started looking) whenever the set changes, and sends it to
+  every new connection right after the snapshot.
+- A face appears once a map has been open 0.5 s (a tab opened in the
+  background never flashes in) and leaves 3 s after the map closes (the web
+  reconnects on every tab focus, the app on every resume).
+- The server pings every socket every 25 s and drops any that missed the
+  previous ping, so a viewer whose connection died silently (laptop asleep,
+  phone out of signal) disappears within about a minute — and stops holding
+  live mode on.
+- Older clients ignore the message: it has no top-level `user_id`.
+
 Parked devices check in every ~30 min (re-sending the parking spot with its
 original timestamp: nothing new stored, but `last_seen_at` and battery
 refresh). Markers grey out after 90 min without contact — not by position age,

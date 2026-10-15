@@ -8,10 +8,12 @@ import 'package:provider/provider.dart';
 
 import '../../../core/constants.dart';
 import '../../../data/models/location_model.dart';
+import '../../../data/models/map_viewer.dart';
 import '../../../data/models/user_model.dart';
 import '../../calendar/calendar_events_provider.dart';
 import '../../calendar/event_marker.dart';
 import 'map_layers.dart';
+import 'map_viewers_row.dart';
 import 'tracked_user_cluster_marker.dart';
 import 'tracked_user_marker.dart';
 import 'tracking_map_layer.dart';
@@ -39,6 +41,7 @@ class TrackingMapTab extends StatefulWidget {
     required this.selfMissingPermissions,
     required this.selfBatterySavingEnabled,
     required this.selfLive,
+    required this.viewers,
     required this.selectedUserId,
     required this.onLayerSelected,
     required this.onUserSelected,
@@ -56,6 +59,9 @@ class TrackingMapTab extends StatefulWidget {
 
   /// Someone is watching the map, so devices are streaming in realtime.
   final bool selfLive;
+
+  /// Who has the live map open right now, us included.
+  final List<MapViewer> viewers;
   final String? selectedUserId;
   final ValueChanged<MapLayer> onLayerSelected;
   final ValueChanged<UserProfile> onUserSelected;
@@ -524,11 +530,21 @@ class _TrackingMapTabState extends State<TrackingMapTab>
         Positioned(
           top: topInset + 12,
           left: 16,
-          child: _SharingStatusPill(
-            paused: widget.selfTrackingPaused,
-            missingPermissions: widget.selfMissingPermissions,
-            live: widget.selfLive,
-            onTap: widget.onStatusTap,
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _SharingStatusPill(
+                paused: widget.selfTrackingPaused,
+                missingPermissions: widget.selfMissingPermissions,
+                live: widget.selfLive,
+                onTap: widget.onStatusTap,
+              ),
+              MapViewersRow(
+                viewers: widget.viewers,
+                selfId: widget.selfProfile.id,
+                selfAvatarBytes: context.watch<LocalAvatarStore?>()?.bytes,
+              ),
+            ],
           ),
         ),
         Positioned(

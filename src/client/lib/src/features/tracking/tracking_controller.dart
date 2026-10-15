@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants.dart';
 import '../../data/models/location_model.dart';
+import '../../data/models/map_viewer.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/backend.dart';
 import '../../data/network/device_service.dart';
@@ -44,6 +45,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       peers = data;
       notifyListeners();
     });
+    _viewerSubscription = backend.viewerStream.listen((data) {
+      viewers = data;
+      notifyListeners();
+    });
   }
 
   final Backend backend;
@@ -58,9 +63,13 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   LocationPoint? lastLocation;
   List<LocationPoint> history = [];
   List<UserProfile> peers = [];
+
+  /// Who has the live map open right now, ourselves included.
+  List<MapViewer> viewers = [];
   TrackingStatus status = const TrackingStatus();
 
   StreamSubscription<List<UserProfile>>? _peerSubscription;
+  StreamSubscription<List<MapViewer>>? _viewerSubscription;
   StreamSubscription<Map<String, dynamic>>? _engineSubscription;
   StreamSubscription<void>? _batterySubscription;
   Timer? _batteryRefreshTimer;
@@ -396,6 +405,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _engineSubscription?.cancel();
     _peerSubscription?.cancel();
+    _viewerSubscription?.cancel();
     _stopBatteryMonitoring();
     backend.dispose();
     super.dispose();

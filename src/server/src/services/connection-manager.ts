@@ -5,6 +5,8 @@ interface ClientEntry {
   // Profile tab). Defaults to true so a freshly-connected viewer counts
   // until it tells us otherwise.
   mapActive: boolean;
+  // Whether the socket answered the last heartbeat ping.
+  alive: boolean;
 }
 
 // One account can be connected from several places at once (the phone and a
@@ -24,7 +26,7 @@ class ConnectionManager {
         // ignore existing close failures
       }
     }
-    entries.push({ socket, mapActive: true });
+    entries.push({ socket, mapActive: true, alive: true });
     this.clients.set(userId, entries);
   }
 
@@ -39,6 +41,48 @@ class ConnectionManager {
     if (entry) {
       entry.mapActive = active;
     }
+  }
+
+  /** The socket answered a heartbeat ping. */
+  markAlive(userId: string, socket: any) {
+    const entry = this.clients
+      .get(userId)
+      ?.find((candidate) => candidate.socket === socket);
+    if (entry) {
+      entry.alive = true;
+    }
+  }
+
+  /**
+   * One heartbeat round: drops every socket that didn't answer the previous
+   * ping and pings the rest. Browsers can't ping, and a sleeping laptop or a
+   * phone out of signal leaves its socket open here until TCP gives up —
+   * minutes in which it would still count as someone looking at the map.
+   * Returns how many sockets were dropped.
+   */
+  sweep(): number {
+    let dropped = 0;
+    for (const [userId, entries] of [...this.clients.entries()]) {
+      for (const entry of [...entries]) {
+        if (!entry.alive) {
+          try {
+            entry.socket.terminate();
+          } catch (_) {
+            // already gone
+          }
+          this.drop(userId, (candidate) => candidate === entry);
+          dropped += 1;
+          continue;
+        }
+        entry.alive = false;
+        try {
+          entry.socket.ping();
+        } catch (_) {
+          // a failed ping is caught by the next round
+        }
+      }
+    }
+    return dropped;
   }
 
   broadcast(message: unknown) {
@@ -85,6 +129,17 @@ class ConnectionManager {
       }
     }
     return count;
+  }
+
+  /** Users with at least one connection that has the map in the foreground. */
+  activeMapUsers(): Set<string> {
+    const users = new Set<string>();
+    for (const [userId, entries] of this.clients) {
+      if (entries.some((entry) => entry.mapActive)) {
+        users.add(userId);
+      }
+    }
+    return users;
   }
 
   /** True when at least one of the user's connections took the message. */

@@ -115,6 +115,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         selfMissingPermissions: false,
         selfBatterySavingEnabled: false,
         selfLive: false,
+        viewers: const [],
         selectedUserId: null,
         onLayerSelected: (l) => setState(() => _layer = l),
         onUserSelected: (_) {},

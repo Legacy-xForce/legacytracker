@@ -7,6 +7,7 @@ import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../data/models/location_model.dart';
+import '../../data/models/map_viewer.dart';
 import '../../data/models/user_model.dart';
 import 'backend.dart';
 
@@ -26,6 +27,8 @@ class RemoteBackend implements Backend {
   final http.Client _httpClient = http.Client();
   final StreamController<List<UserProfile>> _peerController =
       StreamController<List<UserProfile>>.broadcast();
+  final StreamController<List<MapViewer>> _viewerController =
+      StreamController<List<MapViewer>>.broadcast();
   final Map<String, UserProfile> _peerCache = {};
   WebSocketChannel? _channel;
   String? _ticket;
@@ -43,6 +46,9 @@ class RemoteBackend implements Backend {
 
   @override
   Stream<List<UserProfile>> get peerStream => _peerController.stream;
+
+  @override
+  Stream<List<MapViewer>> get viewerStream => _viewerController.stream;
 
   @override
   Future<void> initialize() async {
@@ -98,6 +104,9 @@ class RemoteBackend implements Backend {
     final channel = _channel;
     _channel = null;
     channel?.sink.close();
+    // Not kept up to date from here on; the server sends a fresh list when we
+    // reconnect.
+    _viewerController.add(const []);
   }
 
   @override
@@ -119,6 +128,7 @@ class RemoteBackend implements Backend {
     _reconnectTimer = null;
     _channel?.sink.close();
     _peerController.close();
+    _viewerController.close();
     _httpClient.close();
   }
 
@@ -207,6 +217,11 @@ class RemoteBackend implements Backend {
     if (decoded is Map<String, dynamic>) {
       if (decoded['type'] == 'snapshot' && decoded['users'] is List) {
         _handleSnapshot(List<dynamic>.from(decoded['users'] as List));
+        return;
+      }
+      final viewers = MapViewer.listFromMessage(decoded);
+      if (viewers != null) {
+        _viewerController.add(viewers);
         return;
       }
       _handlePeerUpdate(decoded);

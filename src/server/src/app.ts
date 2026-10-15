@@ -28,6 +28,7 @@ import {
   sendTrackingCommand,
 } from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
+import { ViewerPresence } from "./services/viewer-presence";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
 import {
   messageFor,
@@ -78,6 +79,14 @@ const MAX_SUMMARY_WINDOW_MS = 93 * 24 * 60 * 60 * 1000;
 const LIVE_TTL_SECONDS = 600;
 const LIVE_RENEW_INTERVAL_MS = 4 * 60_000;
 const LIVE_OFF_DEBOUNCE_MS = 45_000;
+
+// Who is looking at the map, shown to everyone. A face appears once a map has
+// been open briefly and stays through a reconnect; see ViewerPresence.
+const VIEWER_JOIN_SETTLE_MS = 500;
+const VIEWER_LEAVE_GRACE_MS = 3_000;
+// Sockets that miss a ping are dropped on the next round, so a viewer whose
+// connection died silently disappears within two intervals.
+const HEARTBEAT_INTERVAL_MS = 25_000;
 
 // Android self-update: releases are read from GitHub (see
 // services/app-releases.ts). An empty ANDROID_RELEASES_REPO turns it off.
@@ -175,6 +184,26 @@ const liveController = new LiveController({
     app.log.warn({ error }, "Unable to send tracking command via FCM"),
 });
 
+// Everyone sees everyone looking at the map, themselves included.
+const viewerPresence = new ViewerPresence({
+  joinSettleMs: VIEWER_JOIN_SETTLE_MS,
+  leaveGraceMs: VIEWER_LEAVE_GRACE_MS,
+  onChange: (viewerIds) => {
+    app.log.info({ viewerIds }, "[viewers] map viewers changed");
+    connectionManager.broadcast(viewersMessage());
+  },
+});
+
+function viewersMessage() {
+  return {
+    type: "viewers",
+    viewers: viewerPresence.viewerIds.map((id) => ({
+      id,
+      name: lastKnownName.get(id) ?? id,
+    })),
+  };
+}
+
 const androidReleases = ANDROID_RELEASES_REPO
   ? new AndroidReleaseSource({
       repo: ANDROID_RELEASES_REPO,
@@ -224,6 +253,7 @@ function getPacingMode(): PacingMode {
 
 async function updateViewerState(): Promise<void> {
   liveController.update(connectionManager.activeMapCount);
+  viewerPresence.update(connectionManager.activeMapUsers());
   try {
     await pool.query(
       `INSERT INTO viewer_state (id, active_viewers)
@@ -1423,14 +1453,11 @@ app.register(async () => {
     );
     updateViewerState();
 
-    const snapshot = await buildSnapshot(userId);
-    app.log.info(
-      { userId, userCount: snapshot.length },
-      "[ws] sending snapshot",
-    );
-    connection.socket.send(
-      JSON.stringify({ type: "snapshot", users: snapshot }),
-    );
+    // Listen before the snapshot query: clients announce their map state as
+    // soon as the socket opens, and anything sent while nobody listens is lost.
+    connection.socket.on("pong", () => {
+      connectionManager.markAlive(userId, connection.socket);
+    });
 
     connection.socket.on("message", async (raw: Buffer | string) => {
       const rawStr = raw.toString();
@@ -1483,6 +1510,16 @@ app.register(async () => {
       connectionManager.remove(userId, connection.socket);
       updateViewerState();
     });
+
+    const snapshot = await buildSnapshot(userId);
+    app.log.info(
+      { userId, userCount: snapshot.length },
+      "[ws] sending snapshot",
+    );
+    connection.socket.send(
+      JSON.stringify({ type: "snapshot", users: snapshot }),
+    );
+    connection.socket.send(JSON.stringify(viewersMessage()));
   });
 });
 
@@ -1495,6 +1532,9 @@ const start = async (): Promise<void> => {
     await loadSharing();
     await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
+    setInterval(() => {
+      if (connectionManager.sweep() > 0) void updateViewerState();
+    }, HEARTBEAT_INTERVAL_MS).unref();
     if (androidReleases) {
       void announceNewAndroidRelease();
       setInterval(() => void announceNewAndroidRelease(), RELEASE_CHECK_INTERVAL_MS).unref();
