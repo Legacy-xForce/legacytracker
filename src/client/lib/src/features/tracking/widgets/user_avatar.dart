@@ -33,6 +33,26 @@ String userInitial(String name) {
   return trimmed.isEmpty ? '?' : trimmed.characters.first.toUpperCase();
 }
 
+// Luma-weighted desaturation. A matrix, not BlendMode.saturation, which paints a
+// grey block over the surrounding scrolling list on Impeller.
+const _greyscale = <double>[
+  0.2126, 0.7152, 0.0722, 0, 0, //
+  0.2126, 0.7152, 0.0722, 0, 0,
+  0.2126, 0.7152, 0.0722, 0, 0,
+  0, 0, 0, 1, 0,
+];
+
+final _accountId = RegExp(
+  r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$',
+  caseSensitive: false,
+);
+
+/// Legacy Auth keeps profile pictures by account id, which is also the
+/// tracker's user id. Ids that aren't accounts can't have one.
+String? profilePictureUrl(String userId) => _accountId.hasMatch(userId)
+    ? 'https://auth.legacy-group.tech/auth/profile-picture/$userId'
+    : null;
+
 /// A user's photo, or their initial on their own color.
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
@@ -62,29 +82,39 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final ImageProvider? image = imageBytes != null
-        ? MemoryImage(imageBytes!)
-        : avatarUrl.isNotEmpty
-        ? NetworkImage(avatarUrl)
-        : null;
+    final url = avatarUrl.isNotEmpty ? avatarUrl : profilePictureUrl(userId);
     final color = dimmed ? Colors.grey.shade600 : userColor(userId);
+
+    // The initial always sits underneath, so it shows while the picture loads
+    // and stays when there is none (Legacy Auth answers 404).
+    final Widget photo = imageBytes != null
+        ? Image.memory(imageBytes!, fit: BoxFit.cover)
+        : url != null
+        ? Image.network(
+            url,
+            fit: BoxFit.cover,
+            errorBuilder: (_, _, _) => const SizedBox.shrink(),
+          )
+        : const SizedBox.shrink();
 
     Widget avatar = Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: color,
-        image: image == null
-            ? null
-            : DecorationImage(image: image, fit: BoxFit.cover),
-        border: ringWidth > 0 && ringColor != null
-            ? Border.all(color: ringColor!, width: ringWidth)
-            : null,
-      ),
-      alignment: Alignment.center,
-      child: image == null
-          ? Text(
+      clipBehavior: Clip.antiAlias,
+      decoration: BoxDecoration(shape: BoxShape.circle, color: color),
+      // Over the photo, so the ring stays visible and separates overlapping faces.
+      foregroundDecoration: ringWidth > 0 && ringColor != null
+          ? BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(color: ringColor!, width: ringWidth),
+            )
+          : null,
+      child: Stack(
+        fit: StackFit.expand,
+        alignment: Alignment.center,
+        children: [
+          Center(
+            child: Text(
               userInitial(name),
               style: TextStyle(
                 color: Colors.white,
@@ -92,13 +122,16 @@ class UserAvatar extends StatelessWidget {
                 fontWeight: FontWeight.w700,
                 height: 1,
               ),
-            )
-          : null,
+            ),
+          ),
+          photo,
+        ],
+      ),
     );
 
-    if (dimmed && image != null) {
+    if (dimmed) {
       avatar = ColorFiltered(
-        colorFilter: const ColorFilter.mode(Colors.grey, BlendMode.saturation),
+        colorFilter: const ColorFilter.matrix(_greyscale),
         child: avatar,
       );
     }
