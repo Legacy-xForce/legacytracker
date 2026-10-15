@@ -1,0 +1,79 @@
+name: Release Android
+
+on:
+  workflow_dispatch:
+    inputs:
+      notes:
+        description: Release notes shown in the app
+        required: false
+        type: string
+      prerelease:
+        description: Publish as a prerelease without rolling it out
+        required: false
+        default: false
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish Android release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+
+      - name: Restore Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          test -n "$ANDROID_KEYSTORE_PASSWORD"
+          test -n "$ANDROID_KEY_ALIAS"
+          test -n "$ANDROID_KEY_PASSWORD"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/legacytracker-release.jks"
+          chmod 600 "$RUNNER_TEMP/legacytracker-release.jks"
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
+            "$RUNNER_TEMP/legacytracker-release.jks" \
+            "$ANDROID_KEYSTORE_PASSWORD" \
+            "$ANDROID_KEY_ALIAS" \
+            "$ANDROID_KEY_PASSWORD" \
+            > src/client/android/key.properties
+          chmod 600 src/client/android/key.properties
+
+      - name: Install Flutter dependencies
+        run: flutter pub get
+        working-directory: src/client
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_NOTES: ${{ inputs.notes }}
+        run: |
+          args=(--yes)
+          if [[ -n "$RELEASE_NOTES" ]]; then
+            args+=(--notes "$RELEASE_NOTES")
+          fi
+          if [[ '${{ inputs.prerelease }}' == 'true' ]]; then
+            args+=(--prerelease)
+          fi
+          scripts/release-android.sh "${args[@]}"
