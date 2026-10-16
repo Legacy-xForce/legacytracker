@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/formatters.dart';
+import '../../../core/navigation.dart';
+import '../../../data/models/location_model.dart';
 import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
@@ -269,6 +273,8 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                               ? _UserDetailPane(
                                   key: ValueKey(detailUser.profile.id),
                                   user: detailUser,
+                                  viewerLocation:
+                                      widget.selfProfile.lastLocation,
                                   scrollController: scrollController,
                                   bottomInset: bottomInset,
                                 )
@@ -822,11 +828,15 @@ class _UserDetailPane extends StatefulWidget {
   const _UserDetailPane({
     super.key,
     required this.user,
+    required this.viewerLocation,
     required this.scrollController,
     required this.bottomInset,
   });
 
   final _DrawerUser user;
+
+  /// Where the viewer's own phone last reported, for the distance to `user`.
+  final LocationPoint? viewerLocation;
   final ScrollController scrollController;
   final double bottomInset;
 
@@ -901,6 +911,26 @@ class _UserDetailPaneState extends State<_UserDetailPane>
       to: to,
       includePoints: false,
     );
+  }
+
+  Future<void> _navigate(LocationPoint to) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final uri = directionsUri(
+      to.latitude,
+      to.longitude,
+      apple: defaultTargetPlatform == TargetPlatform.iOS,
+    );
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on Object {
+      // Falls through to the message below.
+    }
+    if (!opened) {
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('Could not open the maps app.')),
+      );
+    }
   }
 
   void _openHistory() {
@@ -996,6 +1026,35 @@ class _UserDetailPaneState extends State<_UserDetailPane>
               ),
           ],
         ),
+        if (!user.isSelf && profile.sharesWithMe && loc != null) ...[
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.tonalIcon(
+              onPressed: () => _navigate(loc),
+              // The theme's buttons are full-width rounded rectangles; this one is a compact pill.
+              style: FilledButton.styleFrom(
+                minimumSize: const Size(0, 44),
+                shape: const StadiumBorder(),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+              icon: const Icon(Icons.directions_rounded),
+              label: Text(
+                widget.viewerLocation == null
+                    ? 'Navigate'
+                    : formatDistance(
+                        metersBetween(
+                          LatLng(
+                            widget.viewerLocation!.latitude,
+                            widget.viewerLocation!.longitude,
+                          ),
+                          LatLng(loc.latitude, loc.longitude),
+                        ),
+                      ),
+              ),
+            ),
+          ),
+        ],
         if (user.statuses.isNotEmpty) ...[
           const SizedBox(height: 12),
           Wrap(

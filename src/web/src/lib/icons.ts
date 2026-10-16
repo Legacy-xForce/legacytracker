@@ -18,6 +18,7 @@ import chevronLeft from '@material-symbols/svg-400/rounded/chevron_left.svg?raw'
 import chevronRight from '@material-symbols/svg-400/rounded/chevron_right.svg?raw';
 import close from '@material-symbols/svg-400/rounded/close.svg?raw';
 import cloudOff from '@material-symbols/svg-400/rounded/cloud_off-fill.svg?raw';
+import directions from '@material-symbols/svg-400/rounded/directions-fill.svg?raw';
 import error from '@material-symbols/svg-400/rounded/error.svg?raw';
 import event from '@material-symbols/svg-400/rounded/event-fill.svg?raw';
 import eventBusy from '@material-symbols/svg-400/rounded/event_busy.svg?raw';
@@ -75,6 +76,7 @@ const raw = {
     chevronRight,
     close,
     cloudOff,
+    directions,
     error,
     event,
     eventBusy,

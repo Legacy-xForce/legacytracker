@@ -347,6 +347,7 @@ watch(replaying, (isReplaying) => {
                 :peer="selected"
                 :self="selected.id === selfId"
                 :now="now"
+                :viewer="self && hasPosition(self) ? { lat: self.latitude!, lng: self.longitude! } : null"
                 @history="openHistory"
             />
             <div v-else class="px-3 pb-4">
