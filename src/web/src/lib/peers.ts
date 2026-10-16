@@ -1,3 +1,5 @@
+import { parseTrackingIssues, type TrackingIssue } from './tracking-issues';
+
 /** One person on the map, as the tracker stream describes them. */
 export interface Peer {
     id: string;
@@ -16,6 +18,8 @@ export interface Peer {
     lastSeenAt: number | null;
     batteryLevel: number | null;
     isCharging: boolean | null;
+    /** Phone settings that block their location updates, as they last reported them. */
+    trackingIssues: TrackingIssue[];
 }
 
 // Same thresholds as the phone app: >= 1 m/s counts as moving, and silence
@@ -70,7 +74,8 @@ function applyUpdate(peers: Map<string, Peer>, payload: Record<string, unknown>)
               hereSince: null,
               lastSeenAt: null,
               batteryLevel: null,
-              isCharging: null
+              isCharging: null,
+              trackingIssues: []
           };
     if (incomingName !== null && incomingName !== id) peer.name = incomingName;
 
@@ -91,6 +96,8 @@ function applyUpdate(peers: Map<string, Peer>, payload: Record<string, unknown>)
     const battery = num(payload.battery_level);
     if (battery !== null) peer.batteryLevel = Math.round(battery);
     if (typeof payload.is_charging === 'boolean') peer.isCharging = payload.is_charging;
+    // An empty list is a report that nothing is wrong; a missing field leaves it as it was.
+    if (Array.isArray(payload.tracking_issues)) peer.trackingIssues = parseTrackingIssues(payload.tracking_issues);
 
     if ('sharing' in payload) {
         peer.sharing = payload.sharing !== false;
@@ -104,6 +111,7 @@ function applyUpdate(peers: Map<string, Peer>, payload: Record<string, unknown>)
             peer.lastSeenAt = null;
             peer.batteryLevel = null;
             peer.isCharging = null;
+            peer.trackingIssues = [];
         }
     }
 

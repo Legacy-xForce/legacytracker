@@ -1,4 +1,5 @@
 import 'location_model.dart';
+import 'tracking_issue.dart';
 
 class UserProfile {
   final String id;
@@ -14,6 +15,10 @@ class UserProfile {
   bool sharesWithMe;
   int? batteryLevel;
   bool? isCharging;
+
+  /// Phone settings this user's device last reported as blocking location
+  /// updates; empty when nothing is wrong (or nothing was reported yet).
+  List<TrackingIssue> trackingIssues;
   LocationPoint? lastLocation;
   List<LocationPoint> history;
 
@@ -43,6 +48,7 @@ class UserProfile {
     this.sharesWithMe = true,
     this.batteryLevel,
     this.isCharging,
+    this.trackingIssues = const [],
     this.lastLocation,
     this.lastSeenAt,
     this.hereSince,

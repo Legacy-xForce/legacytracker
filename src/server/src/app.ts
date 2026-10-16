@@ -39,6 +39,10 @@ import {
   SharingRegistry,
 } from "./services/sharing";
 import { hasTrackerScope } from "./services/tracker-scope";
+import {
+  parseTrackingIssues,
+  type TrackingIssue,
+} from "./services/tracking-issues";
 
 const JWKS = createRemoteJWKSet(
   new URL("https://auth.legacy-group.tech/.well-known/jwks.json"),
@@ -127,6 +131,8 @@ interface KnownLocation {
   batteryLevel: number | null;
   isCharging: boolean | null;
   source: string | null;
+  /** Settings blocking updates, as the device reported them; null if it didn't say. */
+  trackingIssues: TrackingIssue[] | null;
 }
 
 interface LocationPayload {
@@ -141,6 +147,7 @@ interface LocationPayload {
   battery_level?: number;
   is_charging?: boolean;
   source?: string;
+  tracking_issues?: unknown;
 }
 
 // The web client calls from its own origin: every method a route uses must be
@@ -485,6 +492,9 @@ async function ensureBackendSchema(): Promise<void> {
       "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_charging boolean",
     );
     await pool.query(
+      "ALTER TABLE users ADD COLUMN IF NOT EXISTS tracking_issues text[] NOT NULL DEFAULT '{}'",
+    );
+    await pool.query(
       "ALTER TABLE location_history ADD COLUMN IF NOT EXISTS source text",
     );
     await pool.query(
@@ -605,6 +615,7 @@ function parseLocationItem(item: unknown): KnownLocation | null {
     batteryLevel,
     isCharging,
     source,
+    trackingIssues: parseTrackingIssues(payload.tracking_issues),
   };
 }
 
@@ -661,15 +672,17 @@ async function touchLastSeen(
   userId: string,
   batteryLevel: number | null,
   isCharging: boolean | null,
+  trackingIssues: TrackingIssue[] | null,
 ): Promise<void> {
   try {
     await pool.query(
       `UPDATE users
        SET last_seen_at = now(),
            battery_level = COALESCE($2, battery_level),
-           is_charging = COALESCE($3, is_charging)
+           is_charging = COALESCE($3, is_charging),
+           tracking_issues = COALESCE($4::text[], tracking_issues)
        WHERE id = $1`,
-      [userId, batteryLevel, isCharging],
+      [userId, batteryLevel, isCharging, trackingIssues],
     );
   } catch (error) {
     app.log.warn({ error, userId }, "Unable to update last_seen_at");
@@ -741,7 +754,18 @@ async function ingestPoints(
   }
 
   const newest = points[points.length - 1];
-  await touchLastSeen(userId, newest.batteryLevel, newest.isCharging);
+  // The device attaches its current settings to one point of the upload;
+  // points are sorted, so the last one that carries them is the freshest.
+  let trackingIssues: TrackingIssue[] | null = null;
+  for (const point of points) {
+    if (point.trackingIssues !== null) trackingIssues = point.trackingIssues;
+  }
+  await touchLastSeen(
+    userId,
+    newest.batteryLevel,
+    newest.isCharging,
+    trackingIssues,
+  );
 
   const previous = lastKnownLocation.get(userId);
   const isNewer = previous == null || newest.recordedAt >= previous.recordedAt;
@@ -750,6 +774,8 @@ async function ingestPoints(
   }
 
   const lastSeenAt = new Date().toISOString();
+  // Only when the device reported them: a missing field means "unchanged".
+  const issues = trackingIssues === null ? {} : { tracking_issues: trackingIssues };
   const update =
     isNewer && !isSamePosition(newest, previous)
       ? {
@@ -764,6 +790,7 @@ async function ingestPoints(
           battery_level: newest.batteryLevel,
           is_charging: newest.isCharging,
           last_seen_at: lastSeenAt,
+          ...issues,
         }
       : {
           user_id: userId,
@@ -772,6 +799,7 @@ async function ingestPoints(
           battery_level: newest.batteryLevel,
           is_charging: newest.isCharging,
           last_seen_at: lastSeenAt,
+          ...issues,
         };
   // Viewers this user hides from get nothing: they already hold a redacted
   // entry and must learn nothing new, not even that the phone is active.
@@ -799,6 +827,7 @@ async function buildSnapshot(viewerId: string, onlyUserId?: string) {
     last_seen_at: Date | null;
     battery_level: number | null;
     is_charging: boolean | null;
+    tracking_issues: string[] | null;
     recorded_at: Date | null;
     latitude: number | null;
     longitude: number | null;
@@ -806,7 +835,7 @@ async function buildSnapshot(viewerId: string, onlyUserId?: string) {
     heading: number | null;
   }>(
     `SELECT u.id, u.name, u.last_seen_at, u.battery_level, u.is_charging,
-            l.recorded_at, l.latitude, l.longitude, l.speed, l.heading
+            u.tracking_issues, l.recorded_at, l.latitude, l.longitude, l.speed, l.heading
      FROM users u
      LEFT JOIN LATERAL (
        SELECT recorded_at,
@@ -854,6 +883,7 @@ async function buildSnapshot(viewerId: string, onlyUserId?: string) {
       here_since: dwells.get(row.id)?.since ?? null,
       battery_level: memory?.batteryLevel ?? row.battery_level,
       is_charging: memory?.isCharging ?? row.is_charging,
+      tracking_issues: row.tracking_issues ?? [],
       last_seen_at: row.last_seen_at
         ? new Date(row.last_seen_at).toISOString()
         : null,

@@ -128,9 +128,20 @@ Request body (single object or array, any order):
   "timestamp": "2026-06-13T10:00:00.000Z",
   "source": "move",
   "battery_level": 81,
-  "is_charging": false
+  "is_charging": false,
+  "tracking_issues": ["battery_optimization"]
 }
 ```
+
+`tracking_issues` (optional): the phone settings that currently block or delay
+location updates, sent by the device on the newest point of an upload. Codes:
+`location_services_off`, `location_permission`, `background_location`,
+`precise_location`, `battery_optimization`; unknown codes are dropped. `[]`
+means nothing is wrong; leaving the field out (older builds) keeps the last
+report. Stored in `users.tracking_issues` and sent to viewers as
+`tracking_issues` on snapshot entries and live/presence updates (never in the
+redacted entry of a user who hides from the viewer). See
+`services/tracking-issues.ts`.
 
 `source`: `trip_start` / `move` / `trip_end` (recorded path), `ping` (on-demand
 fix), `heartbeat` (parked liveness), `live` (realtime while watched — broadcast
@@ -188,7 +199,7 @@ someone watches. See `services/dwell-tracker.ts`.
 **Live update** (broadcast on ingest when a user's newest point moved forward):
 
 ```json
-{ "user_id": "alice", "latitude": 45.07, "longitude": 7.68, "speed": 12.5, "heading": 270, "recorded_at": "...", "here_since": "...", "battery_level": 81, "is_charging": false, "last_seen_at": "..." }
+{ "user_id": "alice", "latitude": 45.07, "longitude": 7.68, "speed": 12.5, "heading": 270, "recorded_at": "...", "here_since": "...", "battery_level": 81, "is_charging": false, "tracking_issues": [], "last_seen_at": "..." }
 ```
 
 **Presence update** (same position, or an older batch arriving late): the same

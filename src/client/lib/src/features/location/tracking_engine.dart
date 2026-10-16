@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import '../../data/models/location_model.dart';
+import '../../data/models/tracking_issue.dart';
 
 /// Where the native engine is in its cycle.
 ///
@@ -68,6 +69,7 @@ class TrackingStatus {
     this.activityRecognition = true,
     this.batteryOptimizationIgnored = true,
     this.notificationsEnabled = false,
+    this.issues = const [],
   });
 
   factory TrackingStatus.fromMap(Map<String, dynamic> map) {
@@ -98,6 +100,7 @@ class TrackingStatus {
       batteryOptimizationIgnored:
           map['batteryOptimizationIgnored'] as bool? ?? true,
       notificationsEnabled: map['notificationsEnabled'] as bool? ?? false,
+      issues: TrackingIssue.parse(map['issues']),
     );
   }
 
@@ -116,6 +119,10 @@ class TrackingStatus {
   final bool activityRecognition;
   final bool batteryOptimizationIgnored;
   final bool notificationsEnabled;
+
+  /// Phone settings currently blocking location updates, as the engine reports
+  /// them to the server with each upload.
+  final List<TrackingIssue> issues;
 }
 
 class TrackingLogEntry {

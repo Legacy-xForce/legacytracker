@@ -16,6 +16,7 @@ import '../local_avatar_store.dart';
 import '../sharing_provider.dart';
 import '../tracking_controller.dart';
 import 'location_history_screen.dart';
+import 'tracking_issues_banner.dart';
 import 'tracking_location_street_label.dart';
 import 'user_avatar.dart';
 
@@ -939,6 +940,12 @@ class _UserDetailPaneState extends State<_UserDetailPane>
       controller: widget.scrollController,
       padding: EdgeInsets.fromLTRB(20, 4, 20, 20 + widget.bottomInset),
       children: [
+        if (profile.sharesWithMe)
+          TrackingIssuesBanner(
+            issues: profile.trackingIssues,
+            name: profile.name,
+            isSelf: user.isSelf,
+          ),
         Row(
           children: [
             _PresenceAvatar(user: user, size: 52),

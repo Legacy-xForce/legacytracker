@@ -16,7 +16,8 @@ function peer(id: string, name: string, latitude: number | null, longitude: numb
         hereSince: null,
         lastSeenAt: Date.now(),
         batteryLevel: null,
-        isCharging: null
+        isCharging: null,
+        trackingIssues: []
     };
 }
 

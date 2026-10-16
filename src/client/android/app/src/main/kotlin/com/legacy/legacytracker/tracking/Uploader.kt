@@ -65,6 +65,10 @@ class Uploader(context: Context, private val state: EngineState, private val sto
                 val (level, charging) = battery()
                 body.put(pointJson(it, SOURCE_LIVE, level, charging))
             }
+            // The phone's settings as of now ride on the newest point; the
+            // server keeps the latest report, so older queued points needn't.
+            val issues = JSONArray(TrackingIssues.detect(appContext))
+            (body.opt(body.length() - 1) as? JSONObject)?.put("tracking_issues", issues)
 
             val response = try {
                 post("$baseUrl/api/v1/location", auth, body.toString())
