@@ -70,6 +70,30 @@ export async function sendTrackingCommand(
 }
 
 /**
+ * Asks one user's devices for a fresh position right now (`lt_cmd: refresh`),
+ * whatever live mode says. Same delivery rules as `live`: high priority for
+ * the brief background-start allowance, and a short TTL, since a viewer is
+ * waiting on the answer and gives up after about half a minute.
+ */
+export async function sendRefreshCommand(tokens: string[]): Promise<string[]> {
+  return sendToTokens(tokens, {
+    data: { type: 'tracking_command', lt_cmd: 'refresh' },
+    android: {
+      priority: 'high',
+      ttl: COMMAND_TTL_SECONDS * 1000,
+    },
+    apns: {
+      headers: {
+        'apns-push-type': 'background',
+        'apns-priority': '5',
+        'apns-expiration': String(Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS),
+      },
+      payload: { aps: { contentAvailable: true } },
+    },
+  });
+}
+
+/**
  * Tells devices a new Android release is out (`lt_cmd: update`), so the
  * native updater fetches and installs it now instead of at its next periodic
  * check. Normal priority: it can wait for the phone's next maintenance

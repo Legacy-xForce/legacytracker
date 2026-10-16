@@ -967,6 +967,9 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             if !wasLive || sincePing > Tuning.pingMinInterval { requestPing("someone opened the map") }
         case "idle":
             applyLiveTtl(0)
+        case "refresh":
+            // Someone is waiting on this phone: skip the ping throttle.
+            requestPing("location refresh requested")
         default:
             break
         }

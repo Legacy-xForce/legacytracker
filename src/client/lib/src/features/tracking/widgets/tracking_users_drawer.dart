@@ -9,6 +9,7 @@ import '../../../core/formatters.dart';
 import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
+import '../../../data/network/location_refresh_service.dart';
 import '../../../data/network/sharing_service.dart';
 import '../../auth/auth_provider.dart';
 import '../local_avatar_store.dart';
@@ -832,13 +833,54 @@ class _UserDetailPane extends StatefulWidget {
   State<_UserDetailPane> createState() => _UserDetailPaneState();
 }
 
-class _UserDetailPaneState extends State<_UserDetailPane> {
+class _UserDetailPaneState extends State<_UserDetailPane>
+    with SingleTickerProviderStateMixin {
   late final Future<List<LocationSession>> _todaySessions;
+  late final AnimationController _spin = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 900),
+  );
+  bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
     _todaySessions = _loadTodaySessions();
+  }
+
+  @override
+  void dispose() {
+    _spin.dispose();
+    super.dispose();
+  }
+
+  /// Wakes their phone for a fresh position (it may have been put to sleep by
+  /// battery management). The icon spins until the phone answers; the new
+  /// position itself arrives over the realtime stream.
+  Future<void> _forceRefresh() async {
+    if (_refreshing) return;
+    final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+    if (accessToken == null) return;
+    final service = LocationRefreshService(
+      baseUrl: context.read<TrackingController>().baseUrl,
+    );
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    setState(() => _refreshing = true);
+    _spin.repeat();
+    try {
+      await service.refresh(
+        accessToken,
+        widget.user.profile.id,
+        name: widget.user.profile.name,
+      );
+    } on LocationRefreshException catch (e) {
+      messenger
+        ?..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(content: Text(e.message)));
+    } finally {
+      _spin.stop();
+      if (mounted) setState(() => _refreshing = false);
+    }
   }
 
   Future<List<LocationSession>> _loadTodaySessions() {
@@ -936,6 +978,15 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
                 ],
               ),
             ),
+            if (profile.sharesWithMe)
+              IconButton(
+                tooltip: 'Force location update',
+                onPressed: _refreshing ? null : _forceRefresh,
+                icon: RotationTransition(
+                  turns: _spin,
+                  child: const Icon(Icons.refresh_rounded),
+                ),
+              ),
           ],
         ),
         if (user.statuses.isNotEmpty) ...[

@@ -172,6 +172,33 @@ original timestamp: nothing new stored, but `last_seen_at` and battery
 refresh). Markers grey out after 90 min without contact — not by position age,
 since a parked user's last point is old by design.
 
+### Force location update
+
+When a phone stops reporting (battery optimisation, Doze), anyone can wake it
+from that person's detail view: a refresh icon at the far right of the header
+row, in the app and on the web.
+
+1. The viewer's client `POST`s `/api/v1/users/:userId/location-refresh` and
+   spins the icon until the request returns.
+2. The server sends the target's devices a high-priority data push,
+   `lt_cmd=refresh` (60 s TTL; iOS: background push, priority 5), and holds the
+   request open.
+3. The device skips the usual ping throttle and takes one fresh fix, then
+   uploads it right away (a moving device sends its latest fix instead). Even
+   a coarse fix ends in an upload, so the server always hears back.
+4. The next upload from that user, whatever its source, completes the request:
+   `200` with their roster entry (the same position also reaches viewers over
+   the stream).
+5. If nothing arrives within 25 s the server answers `504 device_unreachable`
+   and the client shows a toast / snackbar ("Unable to reach device for
+   location update. The device may be offline or in battery saver mode.").
+
+Other answers: `404` unknown user, `403 not_sharing` when they hide from the
+requester (the button isn't offered then), `409 no_device` when the user has
+no registered push token. Concurrent requests for one user share one push and
+one wait. Builds that predate `refresh` ignore the push, so it ends in the
+504 path.
+
 ## Sharing with specific users
 
 Everyone with the tracker scope sees everyone by default. A user can switch
@@ -197,7 +224,8 @@ drawer. Admins get no exception.
 | `POST /api/v1/devices` (JWT) | `{platform, replaces?}` → `{device_id, device_token}` |
 | `DELETE /api/v1/devices/:id` | JWT, or the device's own token |
 | `POST /api/v1/location` | Also accepts `Authorization: Device <token>`; `coords.accuracy`; `source` ∈ `move`, `trip_start`, `trip_end`, `ping`, `heartbeat`, `live` (not stored); response adds `stored`, `live_ttl_s`; broadcast only moves a marker forward in time |
-| FCM data | `lt_cmd` (`live`/`idle`), `lt_ttl`; `pacing` kept for older builds |
+| FCM data | `lt_cmd` (`live`/`idle`/`refresh`), `lt_ttl`; `pacing` kept for older builds |
+| `POST /api/v1/users/:userId/location-refresh` (JWT) | Wakes that user's phone; `200` roster entry / `504 device_unreachable` / `403 not_sharing` / `409 no_device` / `404` |
 | History | `trip_start`/`trip_end` delimit sessions; silent stops (≥ 10 min, < 75 m) split; `heartbeat`/`ping` excluded; average speed = distance / time |
 | Schema | `location_history.accuracy`, `users.battery_level/is_charging`, `devices` (created by `ensureBackendSchema()` on boot) |
 
