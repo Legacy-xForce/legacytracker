@@ -84,7 +84,8 @@ describe('the refresh button', () => {
         lastSeenAt: Date.now(),
         hereSince: null,
         batteryLevel: 80,
-        isCharging: false
+        isCharging: false,
+        trackingIssues: []
     };
 
     function open(overrides: Partial<Peer> = {}) {

@@ -10,6 +10,9 @@ CREATE TABLE IF NOT EXISTS users (
   -- snapshot can show battery badges even right after a server restart.
   battery_level integer,
   is_charging boolean,
+  -- Phone settings the device last reported as blocking location updates
+  -- (see services/tracking-issues.ts); empty when nothing is wrong.
+  tracking_issues text[] NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now()
 );
 

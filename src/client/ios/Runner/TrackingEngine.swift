@@ -638,6 +638,9 @@ final class Uploader {
     private let session: URLSession
     private(set) var busy = false
     var online = true
+    /// Phone settings blocking location updates right now; sent with each
+    /// upload so viewers can be told why this phone went quiet.
+    var trackingIssues: () -> [String] = { [] }
 
     init(state: EngineState, store: TrackingStore) {
         self.state = state
@@ -687,6 +690,8 @@ final class Uploader {
             let (level, charging) = Battery.read()
             body.append(Uploader.json(live, Uploader.sourceLive, level, charging))
         }
+        // The server keeps the latest report, so the newest point carries it.
+        if !body.isEmpty { body[body.count - 1]["tracking_issues"] = trackingIssues() }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -839,6 +844,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         guard !bootstrapped else { return }
         bootstrapped = true
         manager.delegate = self
+        uploader.trackingIssues = { [weak self] in self?.trackingIssues() ?? [] }
         manager.pausesLocationUpdatesAutomatically = false
         manager.activityType = .other
         manager.allowsBackgroundLocationUpdates = true
@@ -1542,6 +1548,30 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
 
     // MARK: Status and events for the UI
 
+    /// Codes from the server's closed set (`services/tracking-issues.ts`).
+    /// iOS reports a phone-wide "Location Services" switch as `.denied`, so
+    /// that case and a refused permission both read as a missing permission.
+    func trackingIssues() -> [String] {
+        let authorization: CLAuthorizationStatus
+        if #available(iOS 14.0, *) {
+            authorization = manager.authorizationStatus
+        } else {
+            authorization = CLLocationManager.authorizationStatus()
+        }
+        switch authorization {
+        case .denied, .restricted, .notDetermined:
+            return ["location_permission"]
+        default:
+            break
+        }
+        var issues: [String] = []
+        if authorization != .authorizedAlways { issues.append("background_location") }
+        if #available(iOS 14.0, *), manager.accuracyAuthorization != .fullAccuracy {
+            issues.append("precise_location")
+        }
+        return issues
+    }
+
     func status() -> [String: Any] {
         let anchor = state.anchor
         let authorization: CLAuthorizationStatus
@@ -1566,6 +1596,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             "activityRecognition": true,
             "batteryOptimizationIgnored": true,
             "notificationsEnabled": false,
+            "issues": trackingIssues(),
         ]
         if state.lastUploadOkAt > 0 { map["lastUploadAt"] = NSNumber(value: Int64(state.lastUploadOkAt * 1000)) }
         if let error = state.lastUploadError { map["lastUploadError"] = error }

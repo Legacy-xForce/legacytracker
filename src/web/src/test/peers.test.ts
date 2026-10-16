@@ -84,6 +84,28 @@ describe('applyMessage', () => {
         expect(ada.batteryLevel).toBeNull();
     });
 
+    it('tracks the settings a phone reports as blocking its updates', () => {
+        const peers = roster({ user_id: 'a', username: 'Ada', latitude: 1, longitude: 2 });
+        expect(peers.get('a')!.trackingIssues).toEqual([]);
+
+        applyMessage(peers, { user_id: 'a', tracking_issues: ['battery_optimization', 'location_services_off'] });
+        expect(peers.get('a')!.trackingIssues).toEqual(['location_services_off', 'battery_optimization']);
+
+        // Updates that don't mention it leave it alone; an empty list clears it.
+        applyMessage(peers, { user_id: 'a', battery_level: 50 });
+        expect(peers.get('a')!.trackingIssues).toEqual(['location_services_off', 'battery_optimization']);
+        applyMessage(peers, { user_id: 'a', tracking_issues: [] });
+        expect(peers.get('a')!.trackingIssues).toEqual([]);
+    });
+
+    it('ignores settings this client does not know and forgets them when sharing stops', () => {
+        const peers = roster({ user_id: 'a', username: 'Ada', tracking_issues: ['wifi_off', 'background_location'] });
+        expect(peers.get('a')!.trackingIssues).toEqual(['background_location']);
+
+        applyMessage(peers, { user_id: 'a', sharing: false });
+        expect(peers.get('a')!.trackingIssues).toEqual([]);
+    });
+
     it('keeps the name when an update only carries the id as username', () => {
         const peers = roster({ user_id: 'a', username: 'Ada' });
         applyMessage(peers, { user_id: 'a', username: 'a' });

@@ -8,6 +8,7 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../../data/models/location_model.dart';
 import '../../data/models/map_viewer.dart';
+import '../../data/models/tracking_issue.dart';
 import '../../data/models/user_model.dart';
 import 'backend.dart';
 
@@ -309,6 +310,11 @@ class RemoteBackend implements Backend {
     profile.batteryLevel =
         (payload['battery_level'] as num?)?.toInt() ?? profile.batteryLevel;
     profile.isCharging = payload['is_charging'] as bool? ?? profile.isCharging;
+    // An empty list is a report that nothing is wrong; a missing field
+    // leaves it as it was.
+    if (payload.containsKey('tracking_issues')) {
+      profile.trackingIssues = TrackingIssue.parse(payload['tracking_issues']);
+    }
     // Present on roster entries and on changes to who is sharing with us.
     if (payload.containsKey('sharing')) {
       profile.sharesWithMe = payload['sharing'] as bool? ?? true;
@@ -319,6 +325,7 @@ class RemoteBackend implements Backend {
         profile.lastSeenAt = null;
         profile.batteryLevel = null;
         profile.isCharging = null;
+        profile.trackingIssues = const [];
       }
     }
     _peerCache[remoteUserId] = profile;

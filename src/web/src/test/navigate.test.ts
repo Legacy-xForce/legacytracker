@@ -38,7 +38,8 @@ describe('the navigate pill', () => {
         lastSeenAt: Date.now(),
         hereSince: null,
         batteryLevel: 80,
-        isCharging: false
+        isCharging: false,
+        trackingIssues: []
     };
 
     beforeEach(() => {

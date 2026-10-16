@@ -201,6 +201,10 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     selfProfile.hereSince = status.mode == TrackingMode.stationary
         ? status.stationarySince
         : null;
+    // Only while sharing: with it off nothing is expected to update.
+    selfProfile.trackingIssues = isTracking && status.mode != TrackingMode.off
+        ? status.issues
+        : const [];
   }
 
   /// Re-applies configuration so the engine picks up permission changes.

@@ -884,6 +884,7 @@ class TrackingEngine private constructor(context: Context) {
             "activityRecognition" to hasActivityRecognition(),
             "batteryOptimizationIgnored" to power.isIgnoringBatteryOptimizations(app.packageName),
             "notificationsEnabled" to NotificationManagerCompat.from(app).areNotificationsEnabled(),
+            "issues" to TrackingIssues.detect(app),
         )
     }
 

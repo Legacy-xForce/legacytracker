@@ -199,6 +199,27 @@ no registered push token. Concurrent requests for one user share one push and
 one wait. Builds that predate `refresh` ignore the push, so it ends in the
 504 path.
 
+### Why a phone went quiet
+
+A phone can stop updating without anyone noticing: battery optimization,
+Location switched off for the whole phone, or a missing permission. The engine
+knows, so it reports the current problems as `tracking_issues` on the newest
+point of every upload (Android: `TrackingIssues.kt`; iOS: `trackingIssues()`):
+
+| Code | Meaning |
+|---|---|
+| `location_services_off` | Location is off phone-wide (Android) |
+| `location_permission` | No location permission (iOS also reports Location Services off this way) |
+| `background_location` | Not "Allow all the time" |
+| `precise_location` | Approximate location only |
+| `battery_optimization` | Android battery optimization applies to the app |
+
+The server keeps the last report per user and sends it to viewers, and the user
+detail pane (app and web) shows a warning with how to fix it. The report only
+travels with uploads, so a fix shows up with the next one (a parked phone
+checks in about every 30 min; opening the app uploads right away). A user who
+isn't sharing with the viewer never has it revealed.
+
 ## Sharing with specific users
 
 Everyone with the tracker scope sees everyone by default. A user can switch
@@ -227,7 +248,7 @@ drawer. Admins get no exception.
 | FCM data | `lt_cmd` (`live`/`idle`/`refresh`), `lt_ttl`; `pacing` kept for older builds |
 | `POST /api/v1/users/:userId/location-refresh` (JWT) | Wakes that user's phone; `200` roster entry / `504 device_unreachable` / `403 not_sharing` / `409 no_device` / `404` |
 | History | `trip_start`/`trip_end` delimit sessions; silent stops (≥ 10 min, < 75 m) split; `heartbeat`/`ping` excluded; average speed = distance / time |
-| Schema | `location_history.accuracy`, `users.battery_level/is_charging`, `devices` (created by `ensureBackendSchema()` on boot) |
+| Schema | `location_history.accuracy`, `users.battery_level/is_charging/tracking_issues`, `devices` (created by `ensureBackendSchema()` on boot) |
 
 ## Rollout
 

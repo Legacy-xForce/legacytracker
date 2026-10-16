@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue';
 import PresenceAvatar from './PresenceAvatar.vue';
 import StatusChip from './StatusChip.vue';
+import TrackingIssuesBanner from './TrackingIssuesBanner.vue';
 import PlaceLabel from '../PlaceLabel.vue';
 import Icon from '../ui/Icon.vue';
 import StatCard from '../ui/StatCard.vue';
@@ -121,6 +122,7 @@ async function changeSharing(enabled: boolean) {
 
 <template>
     <div class="px-5 pt-1 pb-5">
+        <TrackingIssuesBanner v-if="peer.sharing" :issues="peer.trackingIssues" :name="peer.name" :self="self" />
         <div class="flex items-center gap-3.5">
             <PresenceAvatar :user-id="peer.id" :name="peer.name" :size="52" :stale="stale" />
             <div class="min-w-0 flex-1">
