@@ -79,7 +79,7 @@ npm test
 ```
 
 Production services are used unless overridden (copy `.env.example` to `.env`):
-`VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`. When developing
+`VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL`. When developing
 against a local tracker server, use one with its own database and no
 `FIREBASE_SERVICE_ACCOUNT_JSON`: with it set, opening the map sends "go live"
 pushes to every registered device.

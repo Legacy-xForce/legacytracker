@@ -1,7 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../data/models/calendar_event.dart';
 import '../tracking/widgets/user_avatar.dart';
@@ -100,6 +102,22 @@ class _EventDetailsSheetState extends State<EventDetailsSheet> {
     return 'Starts in ${formatUntil(event.startTime.difference(now))}';
   }
 
+  Future<void> _openInCalendar() async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final uri = widget.event.webUri(AppConstants.calendarWebUrl);
+    var opened = false;
+    try {
+      opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } on Object {
+      // Falls through to the message below.
+    }
+    if (!opened) {
+      messenger?.showSnackBar(
+        const SnackBar(content: Text('Could not open Legacy Calendar.')),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final event = widget.event;
@@ -167,6 +185,12 @@ class _EventDetailsSheetState extends State<EventDetailsSheet> {
                 ],
               ),
             ],
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: _openInCalendar,
+              icon: const Icon(Icons.open_in_new_rounded, size: 18),
+              label: const Text('Open in Legacy Calendar'),
+            ),
           ],
         ),
       ),

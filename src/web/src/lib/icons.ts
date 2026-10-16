@@ -35,6 +35,7 @@ import locationSearching from '@material-symbols/svg-400/rounded/location_search
 import map from '@material-symbols/svg-400/rounded/map.svg?raw';
 import myLocation from '@material-symbols/svg-400/rounded/my_location-fill.svg?raw';
 import nearMe from '@material-symbols/svg-400/rounded/near_me-fill.svg?raw';
+import openInNew from '@material-symbols/svg-400/rounded/open_in_new.svg?raw';
 import pause from '@material-symbols/svg-400/rounded/pause-fill.svg?raw';
 import person from '@material-symbols/svg-400/rounded/person.svg?raw';
 import place from '@material-symbols/svg-400/rounded/location_on-fill.svg?raw';
@@ -90,6 +91,7 @@ const raw = {
     map,
     myLocation,
     nearMe,
+    openInNew,
     pause,
     person,
     place,

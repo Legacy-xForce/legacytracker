@@ -19,6 +19,14 @@ class AppConstants {
       ? _productionCalendarUrl
       : String.fromEnvironment('CALENDAR_URL', defaultValue: _productionCalendarUrl);
 
+  // The Legacy Calendar web app (not its API): where an event's "Open in
+  // Legacy Calendar" link goes. Debug builds can override it with
+  // `--dart-define=CALENDAR_WEB_URL=...`.
+  static const _productionCalendarWebUrl = 'https://legacy-calendar.pages.dev';
+  static const calendarWebUrl = kReleaseMode
+      ? _productionCalendarWebUrl
+      : String.fromEnvironment('CALENDAR_WEB_URL', defaultValue: _productionCalendarWebUrl);
+
   // Default map center (San Francisco)
   static const defaultMapCenter = LatLng(37.7749, -122.4194);
   static const defaultZoom = 13.0;

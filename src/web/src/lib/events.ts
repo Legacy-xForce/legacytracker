@@ -1,3 +1,4 @@
+import { config } from '../config';
 import { formatClock, formatElapsed } from './format';
 
 export interface Attendee {
@@ -73,6 +74,11 @@ export function parseEvent(raw: unknown): CalendarEvent | null {
         attendees: [...attendees.values()],
         point: null
     };
+}
+
+/** The event's page in the Legacy Calendar web app. */
+export function eventUrl(event: CalendarEvent): string {
+    return `${config.calendarWebUrl}/event/${encodeURIComponent(event.id)}`;
 }
 
 /** When the event stops being worth showing: its end, or local midnight ending its start day if it has none. */

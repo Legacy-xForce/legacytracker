@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isOver, isRunning, parseEvent, parseHexColor, shownUntil, timing } from '../lib/events';
+import { eventUrl, isOver, isRunning, parseEvent, parseHexColor, shownUntil, timing } from '../lib/events';
 
 const raw = {
     id: 'e1',
@@ -77,5 +77,15 @@ describe('timing', () => {
         const event = parseEvent(raw)!;
         expect(timing(event, event.startTime - 90 * 60_000)).toMatch(/^Starts in 1h 30m/);
         expect(timing(event, event.endTime! - 40 * 60_000)).toBe('Ends in 40m');
+    });
+});
+
+describe('eventUrl', () => {
+    it('points at the event in Legacy Calendar', () => {
+        expect(eventUrl(parseEvent({ ...raw, id: 135 })!)).toBe('https://legacy-calendar.pages.dev/event/135');
+    });
+
+    it('escapes the id', () => {
+        expect(eventUrl(parseEvent({ ...raw, id: 'a/b' })!)).toBe('https://legacy-calendar.pages.dev/event/a%2Fb');
     });
 });

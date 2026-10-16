@@ -44,6 +44,16 @@ simply not shown.
   coordinates on the event in Legacy Calendar would avoid that and make
   placement reliable.
 
+## Link to the event
+
+The details (sheet in the app, popup on the web) end with "Open in Legacy
+Calendar", which opens `{calendar web app}/event/{id}` in the browser (a new
+tab on the web). The base is the Legacy Calendar *web app*, not the API above:
+`https://legacy-calendar.pages.dev` by default. Change it in one place:
+`AppConstants.calendarWebUrl` in the app (debug builds:
+`--dart-define=CALENDAR_WEB_URL=...`) and `calendarWebUrl` in
+`src/web/src/config.ts` (`VITE_CALENDAR_WEB_URL`).
+
 ## Code
 
 `features/calendar/` (provider, marker, details sheet),
