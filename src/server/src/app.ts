@@ -29,6 +29,7 @@ import {
 } from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
 import { ViewerPresence } from "./services/viewer-presence";
+import { parseHistoryRange } from "./services/history-range";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
 import {
   messageFor,
@@ -1404,6 +1405,44 @@ app.get("/api/v1/history", async (request, reply) => {
         : undefined,
     })),
   });
+});
+
+// Deletes the caller's own stored points between `from` and `to` (both
+// inclusive): one trip is its start..end window, a day is the whole day. There
+// is deliberately no `user_id` — nobody can erase someone else's history — and
+// no device-token access: it takes a signed-in user.
+app.delete("/api/v1/history", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/history", identity);
+  }
+
+  const range = parseHistoryRange(
+    request.query as Record<string, string | undefined>,
+    MAX_HISTORY_WINDOW_MS,
+  );
+  if (!range.ok) {
+    return reply.code(400).send({ error: range.error });
+  }
+
+  const result = await pool.query(
+    `DELETE FROM location_history
+     WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at <= $3`,
+    [identity.userId, range.from.toISOString(), range.to.toISOString()],
+  );
+  // The cached current stay was derived from the points just removed.
+  dwellByUser.delete(identity.userId);
+
+  app.log.info(
+    {
+      userId: identity.userId,
+      deleted: result.rowCount,
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+    },
+    "[history] deleted location history",
+  );
+  return reply.send({ deleted: result.rowCount ?? 0 });
 });
 
 // @fastify/websocket adds its `onRoute` hook only once the plugin finishes

@@ -153,6 +153,7 @@ Tokens FCM reports as unregistered are pruned.
 | Method | Path              | Description |
 |--------|-------------------|-------------|
 | `GET`  | `/api/v1/history` | Query `user_id` (default: caller), `from`, `to` (ISO 8601). Returns `{ "sessions": [...] }`: trips with `start_at`, `end_at`, `duration_seconds`, `distance_meters`, `avg_speed`, `top_speed`, `point_count` and `points`. With `points=false` the points are left out — the app's trip calendar fetches a month of summaries that way. Windows are capped at 30 days (93 without points). |
+| `DELETE` | `/api/v1/history` | Query `from`, `to` (ISO 8601, both required, both inclusive). Erases the **caller's own** stored points in that window and returns `{ "deleted": n }`. A trip is deleted with its `start_at`..`end_at`, a day with its whole local day; trips aren't stored, they are derived from the points. There is no `user_id`: nobody can delete someone else's history. Needs a signed-in user (not a device token); windows are capped at 30 days. |
 
 ### WebSocket stream
 
@@ -212,5 +213,6 @@ src/
     fcm-service.ts        # tracking commands via FCM
     live-controller.ts    # live-mode state (debounce, renewal, TTL)
     session-builder.ts    # trips for history/replay
+    history-range.ts      # from/to validation for deleting history
 test/                     # node:test unit tests (npm test)
 ```

@@ -861,6 +861,7 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
           user: widget.user.profile,
           baseUrl: baseUrl,
           accessToken: accessToken,
+          canDelete: widget.user.isSelf,
         ),
       ),
     );

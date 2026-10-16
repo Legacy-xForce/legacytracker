@@ -49,6 +49,7 @@ import speed from '@material-symbols/svg-400/rounded/speed-fill.svg?raw';
 import speedOutlined from '@material-symbols/svg-400/rounded/speed.svg?raw';
 import straighten from '@material-symbols/svg-400/rounded/straighten-fill.svg?raw';
 import timelapse from '@material-symbols/svg-400/rounded/timelapse-fill.svg?raw';
+import trash from '@material-symbols/svg-400/rounded/delete.svg?raw';
 import timer from '@material-symbols/svg-400/rounded/timer.svg?raw';
 import touchApp from '@material-symbols/svg-400/rounded/touch_app.svg?raw';
 import trendingUp from '@material-symbols/svg-400/rounded/trending_up.svg?raw';
@@ -105,6 +106,7 @@ const raw = {
     straighten,
     timelapse,
     timer,
+    trash,
     touchApp,
     trendingUp,
     visibility,
