@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { reactive } from 'vue';
 import { deleteHistory, type HistorySession } from '../api/history';
 import TripCard from '../components/history/TripCard.vue';
 import { useHistoryStore } from '../stores/history';
@@ -79,6 +80,14 @@ describe('history store deletion', () => {
         const [call] = deleteCalls();
         expect(call.searchParams.get('from')).toBe(new Date(first.startAt).toISOString());
         expect(call.searchParams.get('to')).toBe(new Date(first.endAt).toISOString());
+        expect(history.trips).toEqual([second]);
+    });
+
+    it('drops the trip even when the component hands it over as a reactive proxy', async () => {
+        const history = await openDay(true);
+        const [first, second] = history.trips;
+        // A deep `ref` in a component wraps what it holds, so identity can't be relied on.
+        await history.deleteTrip(reactive(first));
         expect(history.trips).toEqual([second]);
     });
 

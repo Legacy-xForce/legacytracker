@@ -143,8 +143,9 @@ export const useHistoryStore = defineStore('history', () => {
     /** Deletes one trip, all the points between its start and end. */
     function deleteTrip(session: HistorySession): Promise<boolean> {
         return removeRange(new Date(session.startAt), new Date(session.endAt), () => {
-            trips.value = trips.value.filter((trip) => trip !== session);
-            if (playing.value?.session === session) playing.value = null;
+            // By start, not identity: the session may arrive wrapped in a reactive proxy.
+            trips.value = trips.value.filter((trip) => trip.startAt !== session.startAt);
+            if (playing.value?.session.startAt === session.startAt) playing.value = null;
         });
     }
 

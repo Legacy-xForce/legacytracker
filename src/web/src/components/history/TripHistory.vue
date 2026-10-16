@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, shallowRef } from 'vue';
 import CalendarCard from './CalendarCard.vue';
 import TripCard from './TripCard.vue';
 import ConfirmDialog from '../ui/ConfirmDialog.vue';
@@ -12,7 +12,7 @@ import { addMonths, useHistoryStore } from '../../stores/history';
 const history = useHistoryStore();
 
 // What the open confirmation would erase: one trip, or the whole picked day.
-const pending = ref<{ trip: HistorySession } | { day: Date } | null>(null);
+const pending = shallowRef<{ trip: HistorySession } | { day: Date } | null>(null);
 
 const confirmation = computed(() => {
     const target = pending.value;
