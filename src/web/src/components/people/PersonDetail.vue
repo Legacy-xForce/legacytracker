@@ -7,8 +7,10 @@ import Icon from '../ui/Icon.vue';
 import StatCard from '../ui/StatCard.vue';
 import Switch from '../ui/Switch.vue';
 import { fetchSessions, type HistorySession } from '../../api/history';
-import { formatUpdatedAgo } from '../../lib/format';
+import { metersBetween } from '../../lib/clusters';
+import { formatDistance, formatUpdatedAgo } from '../../lib/format';
 import { batteryIcon } from '../../lib/icons';
+import { directionsUrl } from '../../lib/navigation';
 import { hasPosition, isStale, type Peer } from '../../lib/peers';
 import { presence } from '../../lib/presence';
 import { showToast } from '../../lib/toast';
@@ -16,7 +18,8 @@ import { addDays, startOfDay } from '../../stores/history';
 import { UNREACHABLE_MESSAGE, usePeersStore } from '../../stores/peers';
 import { useSharingStore } from '../../stores/sharing';
 
-const props = defineProps<{ peer: Peer; self: boolean; now: number }>();
+// `viewer` is where the viewer's own phone last reported; the browser never reads their position.
+const props = defineProps<{ peer: Peer; self: boolean; now: number; viewer?: { lat: number; lng: number } | null }>();
 const emit = defineEmits<{ history: [] }>();
 
 const sharing = useSharingStore();
@@ -29,6 +32,16 @@ const updated = computed(() => {
     const sent = props.peer.lastSeenAt ?? props.peer.recordedAt;
     return hasPosition(props.peer) && sent !== null ? `Updated ${formatUpdatedAgo(props.now - sent)}` : null;
 });
+
+// Straight-line distance to them, and a link that opens directions to where they are.
+const navigateTo = computed(() =>
+    !props.self && hasPosition(props.peer) ? directionsUrl(props.peer.latitude!, props.peer.longitude!) : null
+);
+const distance = computed(() =>
+    navigateTo.value && props.viewer
+        ? formatDistance(metersBetween(props.viewer, { lat: props.peer.latitude!, lng: props.peer.longitude! }))
+        : null
+);
 
 // Today's trips, summarised like the app: count, top speed, and the duration-weighted average of
 // each trip's own average speed (so short hops don't dilute a long drive).
@@ -133,6 +146,18 @@ async function changeSharing(enabled: boolean) {
                 <Icon name="refresh" :class="{ 'animate-spin': refreshing }" />
             </button>
         </div>
+
+        <a
+            v-if="navigateTo"
+            :href="navigateTo"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="bg-secondary-container text-on-secondary-container mt-3 inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition hover:brightness-110"
+            :aria-label="`Navigate to ${peer.name}${distance ? `, ${distance} away` : ''}`"
+        >
+            <Icon name="directions" :size="22" />
+            <span>{{ distance ?? 'Navigate' }}</span>
+        </a>
 
         <div v-if="!peer.sharing" class="mt-3 flex flex-wrap gap-1.5">
             <StatusChip icon="visibilityOff" label="Not sharing with you" color="var(--color-hidden)" />
