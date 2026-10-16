@@ -7,6 +7,7 @@ import Icon from '../ui/Icon.vue';
 import StatCard from '../ui/StatCard.vue';
 import Switch from '../ui/Switch.vue';
 import { fetchSessions, type HistorySession } from '../../api/history';
+import { formatUpdatedAgo } from '../../lib/format';
 import { batteryIcon } from '../../lib/icons';
 import { hasPosition, isStale, type Peer } from '../../lib/peers';
 import { presence } from '../../lib/presence';
@@ -21,6 +22,11 @@ const stale = computed(() => isStale(props.peer, props.now));
 const here = computed(() => presence(props.peer, props.now));
 const battery = computed(() => props.peer.batteryLevel);
 const charging = computed(() => props.peer.isCharging === true);
+// When their position last reached the server; `now` ticks, so this stays current.
+const updated = computed(() => {
+    const sent = props.peer.lastSeenAt ?? props.peer.recordedAt;
+    return hasPosition(props.peer) && sent !== null ? `Updated ${formatUpdatedAgo(props.now - sent)}` : null;
+});
 
 // Today's trips, summarised like the app: count, top speed, and the duration-weighted average of
 // each trip's own average speed (so short hops don't dilute a long drive).
@@ -94,6 +100,7 @@ async function changeSharing(enabled: boolean) {
                     :latitude="peer.latitude!"
                     :longitude="peer.longitude!"
                 />
+                <p v-if="updated" class="type-body-sm text-on-surface-variant">{{ updated }}</p>
             </div>
         </div>
 

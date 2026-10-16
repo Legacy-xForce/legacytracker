@@ -478,6 +478,15 @@ class _DrawerUser {
     return result;
   }
 
+  /// When this user's position last reached the server, as "Updated 5 min
+  /// ago". Null when there is no position to date.
+  String? updatedAgo(DateTime now) {
+    final location = profile.lastLocation;
+    if (!profile.sharesWithMe || location == null) return null;
+    final sent = profile.lastSeenAt ?? location.timestamp;
+    return 'Updated ${formatUpdatedAgo(now.difference(sent))}';
+  }
+
   /// Where this user is in time: how long they've been here, that they're
   /// on the move, or — if their phone went quiet — when we last heard.
   _Presence presence(DateTime now) {
@@ -911,6 +920,18 @@ class _UserDetailPaneState extends State<_UserDetailPane> {
                       maxLines: 1,
                       placeholder: 'Looking up street…',
                     ),
+                  _Ticking(
+                    builder: (context) {
+                      final updated = user.updatedAgo(DateTime.now());
+                      if (updated == null) return const SizedBox.shrink();
+                      return Text(
+                        updated,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: theme.colorScheme.onSurfaceVariant,
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
