@@ -112,6 +112,7 @@ push. See [`docs/app-updates.md`](../../docs/app-updates.md).
 | Method | Path                    | Description                                                                  |
 |--------|-------------------------|------------------------------------------------------------------------------|
 | `POST` | `/api/v1/location`      | Ingest one or more points. Auth: `Bearer <JWT>` or `Device <token>`. |
+| `POST` | `/api/v1/users/:userId/location-refresh` | Wakes that user's phone for a fresh fix and waits (up to 25 s) for it to report in. `200` with their roster entry, `504 device_unreachable`, `403 not_sharing`, `409 no_device`, `404`. Auth: `Bearer <JWT>`. |
 
 Request body (single object or array, any order):
 

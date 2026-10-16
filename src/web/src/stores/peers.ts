@@ -1,9 +1,12 @@
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
-import { ApiError, requestStreamTicket } from '../api/tracker';
+import { ApiError, requestStreamTicket, trackerFetch } from '../api/tracker';
 import { StreamClient, type StreamStatus } from '../api/stream';
 import { applyMessage, type Peer } from '../lib/peers';
 import { parseViewers, type Viewer } from '../lib/viewers';
+
+export const UNREACHABLE_MESSAGE =
+    'Unable to reach device for location update. The device may be offline or in battery saver mode.';
 
 export const usePeersStore = defineStore('peers', () => {
     const peers = shallowRef<Map<string, Peer>>(new Map());
@@ -60,5 +63,29 @@ export const usePeersStore = defineStore('peers', () => {
         client?.reconnect();
     }
 
-    return { peers, list, status, loaded, viewers, start, stop, setMapActive, reconnect };
+    /**
+     * Asks `userId`'s phone for a fresh position and resolves once it has reported in. Throws an
+     * Error with a message fit to show when the phone can't be reached.
+     */
+    async function refreshLocation(userId: string, name: string): Promise<void> {
+        let response: Response;
+        try {
+            response = await trackerFetch(`/api/v1/users/${encodeURIComponent(userId)}/location-refresh`, {
+                method: 'POST'
+            });
+        } catch (error) {
+            if (error instanceof ApiError && error.status === 0) throw new Error(error.message);
+            throw error;
+        }
+        if (response.ok) {
+            // The stream normally delivers this first; applying it covers a stream that is down.
+            receive(await response.json().catch(() => null));
+            return;
+        }
+        const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
+        if (body?.error === 'not_sharing') throw new Error(`${name} isn't sharing their location with you.`);
+        throw new Error(UNREACHABLE_MESSAGE);
+    }
+
+    return { peers, list, status, loaded, viewers, start, stop, setMapActive, reconnect, refreshLocation };
 });

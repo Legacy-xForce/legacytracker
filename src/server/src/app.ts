@@ -25,9 +25,11 @@ import {
 import {
   initializeFcm,
   sendAppUpdateNotice,
+  sendRefreshCommand,
   sendTrackingCommand,
 } from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
+import { LocationRefreshCoordinator } from "./services/location-refresh";
 import { ViewerPresence } from "./services/viewer-presence";
 import { parseHistoryRange } from "./services/history-range";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
@@ -80,6 +82,10 @@ const MAX_SUMMARY_WINDOW_MS = 93 * 24 * 60 * 60 * 1000;
 const LIVE_TTL_SECONDS = 600;
 const LIVE_RENEW_INTERVAL_MS = 4 * 60_000;
 const LIVE_OFF_DEBOUNCE_MS = 45_000;
+
+// "Force location update": how long a viewer's request waits for the target's
+// phone to report in. A woken phone needs up to ~15 s for a GPS fix.
+const REFRESH_TIMEOUT_MS = 25_000;
 
 // Who is looking at the map, shown to everyone. A face appears once a map has
 // been open briefly and stays through a reconnect; see ViewerPresence.
@@ -183,6 +189,32 @@ const liveController = new LiveController({
   send: sendLiveCommand,
   onError: (error) =>
     app.log.warn({ error }, "Unable to send tracking command via FCM"),
+});
+
+/** Pushes `refresh` to one user's devices, pruning dead tokens. */
+async function sendRefreshToUser(userId: string): Promise<void> {
+  const { rows } = await pool.query<{ token: string }>(
+    "SELECT token FROM user_fcm_tokens WHERE user_id = $1",
+    [userId],
+  );
+  const tokens = rows.map((r) => r.token);
+  const invalid = await sendRefreshCommand(tokens);
+  if (invalid.length > 0) {
+    await pool.query("DELETE FROM user_fcm_tokens WHERE token = ANY($1)", [
+      invalid,
+    ]);
+  }
+  app.log.info(
+    { userId, devices: tokens.length, pruned: invalid.length },
+    "[refresh] sent refresh command",
+  );
+}
+
+const locationRefresh = new LocationRefreshCoordinator({
+  timeoutMs: REFRESH_TIMEOUT_MS,
+  send: sendRefreshToUser,
+  onError: (error) =>
+    app.log.warn({ error }, "Unable to send refresh command via FCM"),
 });
 
 // Everyone sees everyone looking at the map, themselves included.
@@ -744,6 +776,9 @@ async function ingestPoints(
   // Viewers this user hides from get nothing: they already hold a redacted
   // entry and must learn nothing new, not even that the phone is active.
   connectionManager.broadcastEach(messageFor(sharing, userId, update));
+  // After the broadcast, so a viewer waiting on a forced refresh already holds
+  // the new position over the stream when its request completes.
+  locationRefresh.noteUpload(userId);
 
   return { stored: stored.length };
 }
@@ -892,6 +927,45 @@ app.put("/api/v1/sharing/:viewerId", async (request, reply) => {
     "[sharing] changed location sharing",
   );
   return reply.send({ hidden_from: sharing.hiddenFrom(identity.userId) });
+});
+
+// Wakes a user's phone for a fresh position and answers once it has reported
+// in (200 with their roster entry) or the wait runs out (504).
+app.post("/api/v1/users/:userId/location-refresh", async (request, reply) => {
+  const route = "/api/v1/users/:userId/location-refresh";
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  const { userId } = request.params as { userId: string };
+  const { rows: known } = await pool.query(
+    "SELECT 1 FROM users WHERE id = $1",
+    [userId],
+  );
+  if (known.length === 0) {
+    return reply.code(404).send({ error: "Unknown user" });
+  }
+  if (sharing.isHidden(userId, identity.userId)) {
+    return reply.code(403).send({ error: "not_sharing" });
+  }
+  const { rows: devices } = await pool.query(
+    "SELECT 1 FROM user_fcm_tokens WHERE user_id = $1 LIMIT 1",
+    [userId],
+  );
+  if (devices.length === 0) {
+    return reply.code(409).send({ error: "no_device" });
+  }
+
+  const outcome = await locationRefresh.request(userId);
+  app.log.info(
+    { requesterId: identity.userId, userId, outcome },
+    "[refresh] location refresh finished",
+  );
+  if (outcome === "timeout") {
+    return reply.code(504).send({ error: "device_unreachable" });
+  }
+  const [entry] = await buildSnapshot(identity.userId, userId);
+  return reply.send(entry);
 });
 
 app.get("/api/v1/profile", async (request, reply) => {

@@ -289,6 +289,9 @@ class TrackingEngine private constructor(context: Context) {
                 if (!wasLive || sincePing > Tuning.PING_MIN_INTERVAL_MS) requestPing("someone opened the map")
             }
             "idle" -> applyLiveTtl(0)
+            // Someone is waiting on this phone: skip the ping throttle. A trip in
+            // progress sends its latest fix at once; a parked phone takes a fresh one.
+            "refresh" -> requestPing("location refresh requested")
         }
     }
 

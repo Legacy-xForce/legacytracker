@@ -11,7 +11,9 @@ import { formatUpdatedAgo } from '../../lib/format';
 import { batteryIcon } from '../../lib/icons';
 import { hasPosition, isStale, type Peer } from '../../lib/peers';
 import { presence } from '../../lib/presence';
+import { showToast } from '../../lib/toast';
 import { addDays, startOfDay } from '../../stores/history';
+import { UNREACHABLE_MESSAGE, usePeersStore } from '../../stores/peers';
 import { useSharingStore } from '../../stores/sharing';
 
 const props = defineProps<{ peer: Peer; self: boolean; now: number }>();
@@ -66,6 +68,23 @@ function todayValue(text: string): string {
     return today.value === null ? '…' : text;
 }
 
+// Phones can stop reporting under battery management; this wakes one on demand. The spinner
+// runs until the phone answers, and a failure is a toast since the request outlives any inline hint.
+const peersStore = usePeersStore();
+const refreshing = ref(false);
+
+async function forceRefresh() {
+    if (refreshing.value) return;
+    refreshing.value = true;
+    try {
+        await peersStore.refreshLocation(props.peer.id, props.peer.name);
+    } catch (error) {
+        showToast(error instanceof Error ? error.message : UNREACHABLE_MESSAGE);
+    } finally {
+        refreshing.value = false;
+    }
+}
+
 // Hiding your location from someone is an account setting: it applies to your phone too.
 const sharingBusy = ref(false);
 const sharingError = ref<string | null>(null);
@@ -102,6 +121,17 @@ async function changeSharing(enabled: boolean) {
                 />
                 <p v-if="updated" class="type-body-sm text-on-surface-variant">{{ updated }}</p>
             </div>
+            <button
+                v-if="peer.sharing"
+                class="text-on-surface-variant flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-white/6 disabled:hover:bg-transparent"
+                :class="{ 'text-primary': refreshing }"
+                :disabled="refreshing"
+                :aria-busy="refreshing"
+                :aria-label="`Force location update for ${peer.name}`"
+                @click="forceRefresh"
+            >
+                <Icon name="refresh" :class="{ 'animate-spin': refreshing }" />
+            </button>
         </div>
 
         <div v-if="!peer.sharing" class="mt-3 flex flex-wrap gap-1.5">
