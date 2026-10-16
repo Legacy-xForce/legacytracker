@@ -19,6 +19,8 @@ import 'src/features/auth/auth_provider.dart';
 import 'src/features/auth/login_screen.dart';
 import 'src/features/calendar/calendar_events_provider.dart';
 import 'src/features/checkpoints/checkpoints_provider.dart';
+import 'src/features/connection/connection_banner.dart';
+import 'src/features/connection/connection_monitor.dart';
 import 'src/features/tracking/sharing_provider.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
@@ -35,6 +37,12 @@ class App extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // Outside the auth gate so the login screen reports a dead connection
+        // too.
+        ChangeNotifierProvider<ConnectionMonitor>(
+          create: (_) =>
+              ConnectionMonitor(baseUrl: AppConstants.backendBaseUrl)..start(),
+        ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             authService: authService,
@@ -99,6 +107,8 @@ class App extends StatelessWidget {
             themeMode: ThemeMode.dark,
             theme: buildAppTheme(),
             darkTheme: buildAppTheme(),
+            builder: (context, child) =>
+                ConnectionBannerOverlay(child: child ?? const SizedBox.shrink()),
             home: _home(auth),
           );
         },
