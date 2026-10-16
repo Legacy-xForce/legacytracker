@@ -17,6 +17,18 @@ String formatElapsed(Duration duration) {
   return '${d.inSeconds}s';
 }
 
+/// How long ago something last happened, as a sentence fragment that stays
+/// stable for a while: "just now", "5 min ago", "3 hours ago", "2 days ago".
+String formatUpdatedAgo(Duration duration) {
+  final d = duration.isNegative ? Duration.zero : duration;
+  if (d.inMinutes < 1) return 'just now';
+  if (d.inHours < 1) return '${d.inMinutes} min ago';
+  if (d.inDays < 1) {
+    return d.inHours == 1 ? '1 hour ago' : '${d.inHours} hours ago';
+  }
+  return d.inDays == 1 ? '1 day ago' : '${d.inDays} days ago';
+}
+
 /// A trip's length: whole minutes are precise enough ("8m", "1h 5m").
 String formatTripDuration(Duration d) {
   final hours = d.inHours;

@@ -24,6 +24,29 @@ void main() {
     });
   });
 
+  group('formatUpdatedAgo', () {
+    test('says just now under a minute', () {
+      expect(formatUpdatedAgo(Duration.zero), 'just now');
+      expect(formatUpdatedAgo(const Duration(seconds: 59)), 'just now');
+    });
+
+    test('counts minutes, hours and days', () {
+      expect(formatUpdatedAgo(const Duration(minutes: 1)), '1 min ago');
+      expect(formatUpdatedAgo(const Duration(minutes: 59)), '59 min ago');
+      expect(
+        formatUpdatedAgo(const Duration(hours: 1, minutes: 40)),
+        '1 hour ago',
+      );
+      expect(formatUpdatedAgo(const Duration(hours: 5)), '5 hours ago');
+      expect(formatUpdatedAgo(const Duration(hours: 24)), '1 day ago');
+      expect(formatUpdatedAgo(const Duration(days: 3, hours: 7)), '3 days ago');
+    });
+
+    test('clamps clock skew to just now', () {
+      expect(formatUpdatedAgo(const Duration(seconds: -30)), 'just now');
+    });
+  });
+
   test('formatShortDate shows the year only when it differs', () {
     final now = DateTime(2026, 10, 10);
     expect(formatShortDate(DateTime(2026, 10, 8, 23), now: now), '8 Oct');

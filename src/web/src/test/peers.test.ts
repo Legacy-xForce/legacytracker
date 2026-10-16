@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import PeerMarker from '../components/map/PeerMarker.vue';
 import { userColor, userInitial } from '../lib/avatars';
 import { applyMessage, hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
-import { escapeHtml, formatElapsed } from '../lib/format';
+import { escapeHtml, formatElapsed, formatUpdatedAgo } from '../lib/format';
 import { presence } from '../lib/presence';
 
 const NOW = Date.parse('2026-10-14T12:00:00Z');
@@ -117,6 +117,16 @@ describe('formatting', () => {
         expect(formatElapsed(3 * 3600_000 + 20 * 60_000)).toBe('3h 20m');
         expect(formatElapsed(42 * 86400_000 + 3600_000)).toBe('42d 1h');
         expect(formatElapsed(-5)).toBe('0s');
+    });
+
+    it('says how long ago a position was sent', () => {
+        expect(formatUpdatedAgo(59_000)).toBe('just now');
+        expect(formatUpdatedAgo(60_000)).toBe('1 min ago');
+        expect(formatUpdatedAgo(100 * 60_000)).toBe('1 hour ago');
+        expect(formatUpdatedAgo(5 * 3600_000)).toBe('5 hours ago');
+        expect(formatUpdatedAgo(24 * 3600_000)).toBe('1 day ago');
+        expect(formatUpdatedAgo(3 * 86400_000 + 7 * 3600_000)).toBe('3 days ago');
+        expect(formatUpdatedAgo(-30_000)).toBe('just now');
     });
 
     it('takes the first letter of a name for the avatar, like the app', () => {
