@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import UserAvatar from '../UserAvatar.vue';
-import { EVENT_FALLBACK_COLOR, timing, type CalendarEvent } from '../../lib/events';
+import Icon from '../ui/Icon.vue';
+import { EVENT_FALLBACK_COLOR, eventUrl, timing, type CalendarEvent } from '../../lib/events';
 
 defineProps<{ event: CalendarEvent; now: number }>();
 </script>
@@ -23,5 +24,14 @@ defineProps<{ event: CalendarEvent; now: number }>();
                 {{ person.name }}
             </li>
         </ul>
+        <a
+            :href="eventUrl(event)"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="text-primary type-label-lg mt-4 inline-flex items-center gap-1.5 hover:underline"
+        >
+            Open in Legacy Calendar
+            <Icon name="openInNew" :size="16" />
+        </a>
     </div>
 </template>

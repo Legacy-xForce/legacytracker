@@ -52,6 +52,13 @@ class CalendarEvent {
 
   bool isRunning(DateTime now) => !now.isBefore(startTime) && !isOver(now);
 
+  /// The event's page in the Legacy Calendar web app, under [baseUrl].
+  Uri webUri(String baseUrl) {
+    final base = Uri.parse(baseUrl);
+    final path = base.path.replaceFirst(RegExp(r'/+$'), '');
+    return base.replace(path: '$path/event/${Uri.encodeComponent(id)}');
+  }
+
   CalendarEvent withPoint(LatLng? point) => CalendarEvent(
     id: id,
     title: title,

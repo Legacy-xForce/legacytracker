@@ -343,6 +343,7 @@ void main() {
       expect(find.textContaining('Starts in 3h'), findsOneWidget);
       expect(find.text('2 going'), findsOneWidget);
       expect(find.text('user1'), findsOneWidget);
+      expect(find.text('Open in Legacy Calendar'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
 
@@ -357,6 +358,18 @@ void main() {
       expect(find.textContaining('Happening now'), findsOneWidget);
       await tester.pumpWidget(const SizedBox());
     });
+  });
+
+  test('webUri points at the event in Legacy Calendar', () {
+    final event = CalendarEvent.tryParse(eventJson())!;
+    expect(
+      event.webUri('https://legacy-calendar.pages.dev').toString(),
+      'https://legacy-calendar.pages.dev/event/${event.id}',
+    );
+    expect(
+      event.webUri('http://10.0.2.2:5173/').toString(),
+      'http://10.0.2.2:5173/event/${event.id}',
+    );
   });
 
   test('formatUntil truncates to whole minutes', () {
