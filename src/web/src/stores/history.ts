@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
-import { fetchSessions, NotSharingError, type HistorySession } from '../api/history';
+import { deleteHistory, fetchSessions, NotSharingError, type HistorySession } from '../api/history';
 import { ReplayTrack } from '../lib/replay';
 
 /** How far back the calendar goes, like the app. */
@@ -55,6 +55,10 @@ function describe(reason: unknown, fallback: string): string {
 export const useHistoryStore = defineStore('history', () => {
     const userId = ref<string | null>(null);
     const userName = ref('');
+    // Only your own trips can be deleted.
+    const canDelete = ref(false);
+    const deleting = ref(false);
+    const deleteError = ref<string | null>(null);
     const month = ref(startOfMonth(new Date()));
     const days = shallowRef(new Map<number, DaySummary>());
     const monthLoading = ref(false);
@@ -99,7 +103,7 @@ export const useHistoryStore = defineStore('history', () => {
         selectedDay.value = startOfDay(day);
         trips.value = [];
         tripsLoading.value = true;
-        tripsError.value = null;
+        tripsError.value = deleteError.value = null;
         try {
             const found = await fetchSessions(userId.value, selectedDay.value, addDays(selectedDay.value, 1), true);
             if (mine !== dayRequest) return;
@@ -112,10 +116,54 @@ export const useHistoryStore = defineStore('history', () => {
         }
     }
 
-    function open(id: string, name: string) {
+    /**
+     * Erases `from`..`to` of your own history, then `apply` drops what that removed from the screen
+     * and the calendar is reloaded. Returns whether it went through.
+     */
+    async function removeRange(from: Date, to: Date, apply: () => void): Promise<boolean> {
+        const who = userId.value;
+        if (!who || !canDelete.value || deleting.value) return false;
+        deleting.value = true;
+        deleteError.value = null;
+        try {
+            await deleteHistory(from, to);
+        } catch {
+            if (userId.value === who) deleteError.value = "Couldn't delete. Check your connection and try again.";
+            return false;
+        } finally {
+            deleting.value = false;
+        }
+        // Closed (or switched person) while the request was out: nothing on screen to update.
+        if (userId.value !== who) return true;
+        apply();
+        void showMonth(month.value);
+        return true;
+    }
+
+    /** Deletes one trip, all the points between its start and end. */
+    function deleteTrip(session: HistorySession): Promise<boolean> {
+        return removeRange(new Date(session.startAt), new Date(session.endAt), () => {
+            // By start, not identity: the session may arrive wrapped in a reactive proxy.
+            trips.value = trips.value.filter((trip) => trip.startAt !== session.startAt);
+            if (playing.value?.session.startAt === session.startAt) playing.value = null;
+        });
+    }
+
+    /** Deletes everything recorded on the picked day, up to its last millisecond. */
+    function deleteDay(): Promise<boolean> {
+        const day = selectedDay.value;
+        if (!day) return Promise.resolve(false);
+        return removeRange(day, new Date(addDays(day, 1).getTime() - 1), () => {
+            trips.value = [];
+            playing.value = null;
+        });
+    }
+
+    function open(id: string, name: string, own = false) {
         close();
         userId.value = id;
         userName.value = name;
+        canDelete.value = own;
         void showMonth(new Date());
     }
 
@@ -127,8 +175,9 @@ export const useHistoryStore = defineStore('history', () => {
         selectedDay.value = null;
         trips.value = [];
         playing.value = null;
+        canDelete.value = deleting.value = false;
         monthLoading.value = tripsLoading.value = false;
-        monthError.value = tripsError.value = null;
+        monthError.value = tripsError.value = deleteError.value = null;
     }
 
     function play(session: HistorySession) {
@@ -146,6 +195,9 @@ export const useHistoryStore = defineStore('history', () => {
     return {
         userId,
         userName,
+        canDelete,
+        deleting,
+        deleteError,
         month,
         days,
         monthLoading,
@@ -162,6 +214,8 @@ export const useHistoryStore = defineStore('history', () => {
         close,
         showMonth,
         selectDay,
+        deleteTrip,
+        deleteDay,
         play,
         stopReplay
     };

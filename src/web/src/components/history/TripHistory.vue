@@ -1,13 +1,43 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, shallowRef } from 'vue';
 import CalendarCard from './CalendarCard.vue';
 import TripCard from './TripCard.vue';
+import ConfirmDialog from '../ui/ConfirmDialog.vue';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
-import { formatDistance, formatLongDay, formatTripDuration } from '../../lib/format';
+import type { HistorySession } from '../../api/history';
+import { formatClock, formatDistance, formatLongDay, formatTripDuration } from '../../lib/format';
 import { addMonths, useHistoryStore } from '../../stores/history';
 
 const history = useHistoryStore();
+
+// What the open confirmation would erase: one trip, or the whole picked day.
+const pending = shallowRef<{ trip: HistorySession } | { day: Date } | null>(null);
+
+const confirmation = computed(() => {
+    const target = pending.value;
+    if (!target) return null;
+    if ('trip' in target) {
+        const { startAt, endAt } = target.trip;
+        return {
+            title: 'Delete this trip?',
+            message: `The trip from ${formatClock(startAt)} to ${formatClock(endAt)} will be erased for good. This can't be undone.`
+        };
+    }
+    const count = history.trips.length;
+    return {
+        title: 'Delete this day?',
+        message: `${count === 1 ? 'The trip' : `All ${count} trips`} on ${formatLongDay(target.day)} will be erased for good. This can't be undone.`
+    };
+});
+
+async function confirmDelete() {
+    const target = pending.value;
+    if (!target) return;
+    await ('trip' in target ? history.deleteTrip(target.trip) : history.deleteDay());
+    // On failure the dialog closes too: the reason is shown on the page, ready for a retry.
+    pending.value = null;
+}
 
 const selectedInMonth = computed(() => {
     const day = history.selectedDay;
@@ -60,8 +90,22 @@ const daySummary = computed(() => {
             </div>
             <template v-else-if="history.monthLoading" />
             <section v-else-if="selectedInMonth">
-                <h3 class="type-title-lg px-1 font-bold">{{ formatLongDay(selectedInMonth) }}</h3>
+                <div class="flex items-center">
+                    <h3 class="type-title-lg min-w-0 flex-1 px-1 font-bold">{{ formatLongDay(selectedInMonth) }}</h3>
+                    <button
+                        v-if="history.canDelete && history.trips.length > 0 && !history.tripsLoading"
+                        class="text-on-surface-variant -my-2 flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-white/8"
+                        aria-label="Delete this day's trips"
+                        data-delete-day
+                        @click="pending = { day: selectedInMonth }"
+                    >
+                        <Icon name="trash" />
+                    </button>
+                </div>
                 <p v-if="daySummary" class="type-body-md text-on-surface-variant mt-0.5 px-1">{{ daySummary }}</p>
+                <p v-if="history.deleteError" class="type-body-md text-error mt-2 px-1" role="alert">
+                    {{ history.deleteError }}
+                </p>
                 <div class="mt-3.5 space-y-2.5">
                     <div v-if="history.tripsLoading" class="text-primary flex justify-center p-6">
                         <Spinner :size="32" />
@@ -80,7 +124,9 @@ const daySummary = computed(() => {
                             :key="trip.startAt"
                             :session="trip"
                             :playing="history.playing?.session.startAt === trip.startAt"
+                            :deletable="history.canDelete"
                             @play="history.play(trip)"
+                            @delete="pending = { trip }"
                         />
                     </template>
                 </div>
@@ -110,5 +156,15 @@ const daySummary = computed(() => {
                 </p>
             </template>
         </div>
+
+        <ConfirmDialog
+            v-if="confirmation"
+            :title="confirmation.title"
+            :message="confirmation.message"
+            confirm-label="Delete"
+            :busy="history.deleting"
+            @confirm="confirmDelete"
+            @cancel="pending = null"
+        />
     </div>
 </template>

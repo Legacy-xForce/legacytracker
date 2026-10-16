@@ -15,11 +15,17 @@ class LocationHistoryScreen extends StatefulWidget {
     required this.user,
     required this.baseUrl,
     required this.accessToken,
+    this.canDelete = false,
+    @visibleForTesting this.historyService,
   });
 
   final UserProfile user;
   final String baseUrl;
   final String accessToken;
+
+  /// Only your own trips can be deleted.
+  final bool canDelete;
+  final HistoryService? historyService;
 
   @override
   State<LocationHistoryScreen> createState() => _LocationHistoryScreenState();
@@ -41,7 +47,8 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
   @override
   void initState() {
     super.initState();
-    _historyService = HistoryService(baseUrl: widget.baseUrl);
+    _historyService =
+        widget.historyService ?? HistoryService(baseUrl: widget.baseUrl);
     final now = DateTime.now();
     _currentMonth = DateTime(now.year, now.month);
     _month = _currentMonth;
@@ -92,6 +99,96 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
 
   void _retryMonth() {
     setState(() => _months.remove(_month));
+  }
+
+  bool _deleting = false;
+
+  Future<bool> _confirmDelete(String title, String message) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              minimumSize: const Size(0, 40),
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    return confirmed == true;
+  }
+
+  /// Erases [from]..[to] of your own history; on success the cached month and
+  /// day are dropped so the calendar and the list reload without it.
+  Future<bool> _erase(DateTime from, DateTime to, String done) async {
+    if (_deleting) return false;
+    final messenger = ScaffoldMessenger.of(context);
+    setState(() => _deleting = true);
+    try {
+      await _historyService.deleteHistory(
+        widget.accessToken,
+        from: from,
+        to: to,
+      );
+    } catch (_) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Couldn't delete. Check your connection and try again.",
+          ),
+        ),
+      );
+      if (mounted) setState(() => _deleting = false);
+      return false;
+    }
+    messenger.showSnackBar(SnackBar(content: Text(done)));
+    if (!mounted) return true;
+    setState(() {
+      _deleting = false;
+      _months.remove(_month);
+      _days.clear();
+    });
+    return true;
+  }
+
+  Future<void> _deleteTrip(LocationSession session) async {
+    final confirmed = await _confirmDelete(
+      'Delete this trip?',
+      'The trip from ${formatClock(session.startAt)} to '
+          '${formatClock(session.endAt)} will be erased for good. '
+          'This can\'t be undone.',
+    );
+    if (!confirmed || !mounted) return;
+    await _erase(session.startAt, session.endAt, 'Trip deleted');
+  }
+
+  Future<void> _deleteDay(DateTime day, int trips) async {
+    final confirmed = await _confirmDelete(
+      'Delete this day?',
+      '${trips == 1 ? 'The trip' : 'All $trips trips'} on '
+          '${formatLongDay(day)} will be erased for good. '
+          'This can\'t be undone.',
+    );
+    if (!confirmed || !mounted) return;
+    // Up to the day's last millisecond, as the server's range is inclusive.
+    final end = DateTime(day.year, day.month, day.day + 1);
+    final deleted = await _erase(
+      day,
+      end.subtract(const Duration(milliseconds: 1)),
+      'Day deleted',
+    );
+    if (deleted && mounted) setState(() => _selectedDay = null);
   }
 
   @override
@@ -154,6 +251,12 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
                   summary: days[selected.day],
                   sessions: _sessionsFor(selected),
                   user: widget.user,
+                  onDeleteDay: widget.canDelete && !_deleting
+                      ? () => _deleteDay(selected, days[selected.day]!.trips)
+                      : null,
+                  onDeleteTrip: widget.canDelete && !_deleting
+                      ? _deleteTrip
+                      : null,
                 )
               else
                 _MonthOverview(days: days),
@@ -545,6 +648,8 @@ class _DayTrips extends StatelessWidget {
     required this.summary,
     required this.sessions,
     required this.user,
+    this.onDeleteDay,
+    this.onDeleteTrip,
   });
 
   final DateTime day;
@@ -552,20 +657,39 @@ class _DayTrips extends StatelessWidget {
   final Future<List<LocationSession>> sessions;
   final UserProfile user;
 
+  /// Null when these aren't your trips (or a deletion is already running).
+  final VoidCallback? onDeleteDay;
+  final ValueChanged<LocationSession>? onDeleteTrip;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 4),
-          child: Text(
-            formatLongDay(day),
-            style: theme.textTheme.titleLarge?.copyWith(
-              fontWeight: FontWeight.w700,
+        Row(
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Text(
+                  formatLongDay(day),
+                  style: theme.textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             ),
-          ),
+            if (summary != null && onDeleteDay != null)
+              IconButton(
+                tooltip: 'Delete this day\'s trips',
+                onPressed: onDeleteDay,
+                icon: Icon(
+                  Icons.delete_outline_rounded,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
         ),
         if (summary != null)
           Padding(
@@ -607,6 +731,9 @@ class _DayTrips extends StatelessWidget {
                     padding: const EdgeInsets.only(bottom: 10),
                     child: _TripCard(
                       session: trip,
+                      onDelete: onDeleteTrip == null
+                          ? null
+                          : () => onDeleteTrip!(trip),
                       onTap: () => Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => SessionReplayScreen(
@@ -630,10 +757,11 @@ class _DayTrips extends StatelessWidget {
 /// One trip as a little timeline: departure and arrival with their streets,
 /// then its stats.
 class _TripCard extends StatelessWidget {
-  const _TripCard({required this.session, required this.onTap});
+  const _TripCard({required this.session, required this.onTap, this.onDelete});
 
   final LocationSession session;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
@@ -728,6 +856,16 @@ class _TripCard extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  if (onDelete != null)
+                    IconButton(
+                      tooltip: 'Delete this trip',
+                      onPressed: onDelete,
+                      visualDensity: VisualDensity.compact,
+                      icon: Icon(
+                        Icons.delete_outline_rounded,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ),
                   Container(
                     width: 36,
                     height: 36,

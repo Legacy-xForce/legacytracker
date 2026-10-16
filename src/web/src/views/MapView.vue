@@ -107,7 +107,7 @@ function showPeople() {
 
 function openHistory() {
     if (!selected.value) return;
-    history.open(selected.value.id, selected.value.name);
+    history.open(selected.value.id, selected.value.name, selected.value.id === selfId.value);
     view.value = 'history';
 }
 

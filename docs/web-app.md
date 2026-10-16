@@ -62,7 +62,9 @@ tile layer drop and reload its tiles.
 - **Trip history**: a month calendar marking the days with trips (a year
   back), the picked day's trips with where they started and ended, and a
   replay at constant on-screen speed (1x/2x/4x) with a scrubber. Someone who
-  hid from you shows "not sharing".
+  hid from you shows "not sharing". On your own history each trip has a
+  delete button, and so does the day; both ask first, and neither can be
+  undone. The same buttons are in the phone app.
 - **Events** from Legacy Calendar (yesterday to +60 days, refreshed every five
   minutes and when the tab returns). Locations are geocoded with Nominatim and
   every answer is cached in `localStorage`. An event shows until it ends (or

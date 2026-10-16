@@ -68,6 +68,19 @@ export function parseSessions(body: unknown): HistorySession[] {
 }
 
 /**
+ * Erases the signed-in user's own stored points from `from` to `to` (both inclusive) and says how
+ * many went. A trip is its start..end window; a day is the whole day. Nobody else's history can be
+ * deleted, so there is no user to name.
+ */
+export async function deleteHistory(from: Date, to: Date): Promise<number> {
+    const query = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
+    const response = await trackerFetch(`/api/v1/history?${query}`, { method: 'DELETE' });
+    if (!response.ok) throw new ApiError(`Tracker error (${response.status}).`, response.status);
+    const body = (await response.json().catch(() => null)) as { deleted?: unknown } | null;
+    return num(body?.deleted);
+}
+
+/**
  * A person's travel sessions between two instants. Without `withPoints` only the summaries come
  * back, which allows a much longer window.
  */
