@@ -3,9 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 
 import '../../../core/formatters.dart';
 import '../../../data/models/location_session.dart';
+import '../map_settings.dart';
 import 'map_layers.dart';
 import 'tracked_user_marker.dart';
 import 'tracking_map_layer.dart';
@@ -45,7 +47,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   late final AnimationController _segmentController;
   Animation<LatLng>? _segmentAnimation;
 
-  MapLayer _selectedLayer = MapLayer.standard;
+  late MapLayer _selectedLayer = context.read<MapSettings>().defaultLayer;
   double _playbackSpeed = 1.0;
   int _segmentStart = 0;
   LatLng? _displayedPoint;

@@ -12,7 +12,9 @@ import '../../debug/debug_log_screen.dart';
 import '../../updates/app_updater.dart';
 import '../../updates/app_updates_card.dart';
 import '../local_avatar_store.dart';
+import '../map_settings.dart';
 import '../tracking_controller.dart';
+import 'tracking_map_layer.dart';
 import 'tracking_status_card.dart';
 import 'user_avatar.dart';
 
@@ -64,6 +66,9 @@ class TrackingProfileTab extends StatelessWidget {
           const SizedBox(height: 28),
           const _SectionLabel('Location sharing'),
           TrackingStatusCard(controller: controller),
+          const SizedBox(height: 24),
+          const _SectionLabel('Map'),
+          const DefaultMapStyleCard(),
           const SizedBox(height: 24),
           const _SectionLabel('Places'),
           Card(
@@ -309,6 +314,58 @@ class _AvatarPicker extends StatelessWidget {
                   size: 18,
                   color: scheme.onPrimary,
                 ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Picks the map style the app opens with.
+class DefaultMapStyleCard extends StatelessWidget {
+  const DefaultMapStyleCard({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = context.watch<MapSettings>();
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Default map style'),
+            const SizedBox(height: 4),
+            Text(
+              'Used whenever the map opens',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            const SizedBox(height: 12),
+            SizedBox(
+              width: double.infinity,
+              child: SegmentedButton<MapLayer>(
+                showSelectedIcon: false,
+                segments: const [
+                  ButtonSegment(
+                    value: MapLayer.standard,
+                    icon: Icon(Icons.map_outlined),
+                    label: Text('Standard'),
+                  ),
+                  ButtonSegment(
+                    value: MapLayer.satellite,
+                    icon: Icon(Icons.satellite_alt_outlined),
+                    label: Text('Satellite'),
+                  ),
+                  ButtonSegment(
+                    value: MapLayer.terrain,
+                    icon: Icon(Icons.terrain_outlined),
+                    label: Text('Terrain'),
+                  ),
+                ],
+                selected: {settings.defaultLayer},
+                onSelectionChanged: (s) => settings.setDefaultLayer(s.first),
               ),
             ),
           ],

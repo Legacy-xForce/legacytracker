@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../features/tracking/tracking_controller.dart';
 import 'local_avatar_store.dart';
+import 'map_settings.dart';
 import 'widgets/tracking_map_layer.dart';
 import 'widgets/tracking_map_tab.dart';
 import 'widgets/tracking_profile_tab.dart';
@@ -20,10 +21,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
   static const _profileTab = 1;
 
   late final LocalAvatarStore _avatarStore;
+  late final MapSettings _mapSettings;
   bool _initialized = false;
   bool _trackingStarted = false;
   int _selectedIndex = _mapTab;
-  MapLayer _selectedLayer = MapLayer.standard;
+  // A style picked on the map itself; null follows the default setting.
+  MapLayer? _layerOverride;
   String? _selectedUserId;
 
   @override
@@ -33,6 +36,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
       final controller = context.read<TrackingController>();
       _avatarStore = LocalAvatarStore();
       _avatarStore.load(controller.selfProfile.id);
+      // Changing the default in the profile applies to the map right away.
+      _mapSettings = context.read<MapSettings>()..addListener(_followDefaultLayer);
       _initialized = true;
     }
 
@@ -47,8 +52,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   void dispose() {
+    _mapSettings.removeListener(_followDefaultLayer);
     _avatarStore.dispose();
     super.dispose();
+  }
+
+  void _followDefaultLayer() {
+    if (_layerOverride != null) setState(() => _layerOverride = null);
   }
 
   void _selectTab(int index) {
@@ -67,15 +77,15 @@ class _TrackingScreenState extends State<TrackingScreen> {
           statusBarColor: Colors.transparent,
         ),
         child: Scaffold(
-          body: Consumer<TrackingController>(
-            builder: (context, controller, child) {
+          body: Consumer2<TrackingController, MapSettings>(
+            builder: (context, controller, mapSettings, child) {
               return IndexedStack(
                 index: _selectedIndex,
                 children: [
                   TrackingMapTab(
                     isActive: _selectedIndex == _mapTab,
                     center: controller.mapCenter,
-                    selectedLayer: _selectedLayer,
+                    selectedLayer: _layerOverride ?? mapSettings.defaultLayer,
                     peers: controller.peers,
                     selfProfile: controller.selfProfile,
                     selfTrackingPaused: !controller.isTracking,
@@ -86,7 +96,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     viewers: controller.viewers,
                     selectedUserId: _selectedUserId,
                     onLayerSelected: (layer) =>
-                        setState(() => _selectedLayer = layer),
+                        setState(() => _layerOverride = layer),
                     onUserSelected: (user) {
                       setState(() => _selectedUserId = user.id);
                     },
