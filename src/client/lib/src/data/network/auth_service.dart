@@ -40,6 +40,17 @@ class AccountDisabledException extends AuthException
     : super('This account has been disabled.', statusCode: 403);
 }
 
+/// The passkey used to sign in is no longer on the account (deleted, maybe
+/// from another phone), though the phone still offers it.
+class PasskeyNotRegisteredException extends AuthException {
+  PasskeyNotRegisteredException(int statusCode)
+    : super(
+        'That passkey was removed from your account. Sign in with your '
+        'password instead.',
+        statusCode: statusCode,
+      );
+}
+
 class AuthService {
   AuthService({http.Client? httpClient, String? baseUrl})
       : _httpClient = httpClient ?? http.Client(),
@@ -101,23 +112,34 @@ class AuthService {
   /// WebAuthn request options for a passkey sign-in, as JSON.
   Future<Map<String, dynamic>> passkeyLoginOptions() async {
     final response = await _send(
-      () => _httpClient.post(_baseUri.replace(path: '/auth/passkeys/login/options')),
+      () => _httpClient.post(
+        _baseUri.replace(path: '/auth/passkey/login-options'),
+        headers: {'content-type': 'application/json'},
+        // No username: any passkey the phone holds for this server will do.
+        body: '{}',
+      ),
     );
     _ensurePasskeysAvailable(response);
     _ensureOk(response, 'Passkey sign-in is unavailable');
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final options = jsonDecode(response.body) as Map<String, dynamic>;
+    return {...options, 'rpId': options['rpId'] ?? _relyingPartyId};
   }
 
-  /// Exchanges the authenticator's assertion for a session. A 404 means the
-  /// passkey was deleted from the account.
+  /// Exchanges the authenticator's assertion for a session. Throws a
+  /// [PasskeyNotRegisteredException] if the passkey was deleted from the
+  /// account.
   Future<AuthTokens> passkeyLogin(Map<String, dynamic> assertion) async {
     final response = await _send(
       () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkeys/login'),
+        _baseUri.replace(path: '/auth/passkey/login-verify'),
         headers: {'content-type': 'application/json'},
-        body: jsonEncode({'response': assertion}),
+        body: jsonEncode(assertion),
       ),
     );
+    if (response.statusCode == 404 ||
+        _serverError(response) == 'Unknown passkey credential') {
+      throw PasskeyNotRegisteredException(response.statusCode);
+    }
     _ensureOk(response, 'Passkey sign-in failed');
     return _parseTokenResponse(response.body);
   }
@@ -126,44 +148,64 @@ class AuthService {
   Future<Map<String, dynamic>> passkeyRegistrationOptions(String accessToken) async {
     final response = await _send(
       () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkeys/register/options'),
+        _baseUri.replace(path: '/auth/passkey/register-options'),
         headers: _bearer(accessToken),
       ),
     );
     _ensurePasskeysAvailable(response);
     _ensureOk(response, 'Couldn\'t start creating a passkey');
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    final options = jsonDecode(response.body) as Map<String, dynamic>;
+    final rp = options['rp'] as Map<String, dynamic>? ?? const {};
+    return {
+      ...options,
+      'rp': {...rp, 'id': rp['id'] ?? _relyingPartyId},
+    };
   }
 
+  /// Stores a new passkey. [attestation] is the authenticator's registration
+  /// response; the server also needs the credential's [publicKey]
+  /// (SubjectPublicKeyInfo, base64url), which it doesn't read from it.
   Future<Passkey> registerPasskey(
     String accessToken,
-    Map<String, dynamic> attestation,
-  ) async {
+    Map<String, dynamic> attestation, {
+    required String publicKey,
+    String? name,
+  }) async {
     final response = await _send(
       () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkeys/register'),
+        _baseUri.replace(path: '/auth/passkey/register-verify'),
         headers: {'content-type': 'application/json', ..._bearer(accessToken)},
-        body: jsonEncode({'response': attestation}),
+        body: jsonEncode({
+          ...attestation,
+          'response': {
+            ...attestation['response'] as Map<String, dynamic>,
+            'publicKey': publicKey,
+          },
+          'deviceName': ?name,
+        }),
       ),
     );
     _ensureOk(response, 'Couldn\'t save the passkey');
-    return Passkey.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    final body = jsonDecode(response.body) as Map<String, dynamic>;
+    return Passkey(
+      id: body['credentialId'] as String,
+      name: body['deviceName'] as String? ?? name ?? 'Passkey',
+      createdAt: DateTime.now(),
+    );
   }
 
-  /// The account's passkeys, or null when the server has passkeys turned off.
+  /// The account's passkeys, or null when the server has no passkeys.
   Future<List<Passkey>?> listPasskeys(String accessToken) async {
     final response = await _send(
       () => _httpClient.get(
-        _baseUri.replace(path: '/auth/passkeys'),
+        _baseUri.replace(path: '/auth/passkey/credentials'),
         headers: _bearer(accessToken),
       ),
     );
     // Servers from before passkeys don't know the route.
     if (response.statusCode == 404) return null;
     _ensureOk(response, 'Couldn\'t load your passkeys');
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    if (body['enabled'] == false) return null;
-    return (body['items'] as List<dynamic>)
+    return (jsonDecode(response.body) as List<dynamic>)
         .map((item) => Passkey.fromJson(item as Map<String, dynamic>))
         .toList();
   }
@@ -171,7 +213,7 @@ class AuthService {
   Future<void> deletePasskey(String accessToken, String id) async {
     final response = await _send(
       () => _httpClient.delete(
-        _baseUri.replace(path: '/auth/passkeys/$id'),
+        _baseUri.replace(path: '/auth/passkey/credentials/$id'),
         headers: _bearer(accessToken),
       ),
     );
@@ -179,6 +221,11 @@ class AuthService {
     if (response.statusCode == 404) return;
     _ensureOk(response, 'Couldn\'t remove the passkey');
   }
+
+  /// Passkeys belong to the auth server's host. Its options leave the RP ID
+  /// out, as a browser on that host fills it in with the host itself, but
+  /// the platform authenticators need it spelled out.
+  String get _relyingPartyId => _baseUri.host;
 
   Future<http.Response> _send(Future<http.Response> Function() request) async {
     try {

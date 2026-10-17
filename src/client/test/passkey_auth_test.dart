@@ -12,6 +12,8 @@ import 'package:legacytracker/src/data/network/profile_service.dart';
 import 'package:legacytracker/src/features/auth/auth_provider.dart';
 import 'package:legacytracker/src/features/auth/passkey_client.dart';
 
+import 'passkey_fixtures.dart';
+
 const _tokenResponse = {
   'access_token': 'header.payload.signature',
   'refresh_token': 'refresh',
@@ -19,28 +21,29 @@ const _tokenResponse = {
   'refresh_expires_in': 2592000,
 };
 
+// As Legacy Auth sends them: no RP ID, which a browser takes from the page.
 const _requestOptions = {
   'challenge': 'Y2hhbGxlbmdl',
-  'rpId': 'auth.example',
   'timeout': 60000,
-  'userVerification': 'required',
+  'userVerification': 'preferred',
+  'allowCredentials': <Object>[],
 };
 
 const _creationOptions = {
   'challenge': 'Y2hhbGxlbmdl',
-  'rp': {'name': 'Legacy', 'id': 'auth.example'},
+  'rp': {'name': 'Legacy Auth'},
   'user': {'id': 'dXNlcg', 'name': 'alice', 'displayName': 'alice'},
   'pubKeyCredParams': [
     {'type': 'public-key', 'alg': -7},
+    {'type': 'public-key', 'alg': -257},
   ],
   'timeout': 60000,
-  'excludeCredentials': <Object>[],
-  'authenticatorSelection': {
-    'residentKey': 'required',
-    'requireResidentKey': true,
-    'userVerification': 'required',
-  },
   'attestation': 'none',
+  'authenticatorSelection': {
+    'residentKey': 'preferred',
+    'requireResidentKey': false,
+    'userVerification': 'preferred',
+  },
 };
 
 final _assertion = AuthenticateResponseType(
@@ -54,9 +57,10 @@ final _assertion = AuthenticateResponseType(
 
 /// Stands in for the platform authenticator (Credential Manager / iOS).
 class _FakeAuthenticator extends PasskeyAuthenticator {
-  _FakeAuthenticator({this.error});
+  _FakeAuthenticator({this.error, this.attestationObject = p256Attestation});
 
   final AuthenticatorException? error;
+  final String attestationObject;
   AuthenticateRequestType? authenticateRequest;
   RegisterRequestType? registerRequest;
   SignalUnknownCredentialRequestType? signalled;
@@ -74,12 +78,12 @@ class _FakeAuthenticator extends PasskeyAuthenticator {
   Future<RegisterResponseType> register(RegisterRequestType request) async {
     registerRequest = request;
     if (error != null) throw error!;
-    return const RegisterResponseType(
+    return RegisterResponseType(
       id: 'Y3JlZA',
       rawId: 'Y3JlZA',
       clientDataJSON: 'Y2xpZW50',
-      attestationObject: 'YXR0',
-      transports: ['internal', 'hybrid'],
+      attestationObject: attestationObject,
+      transports: const ['internal', 'hybrid'],
     );
   }
 
@@ -168,38 +172,73 @@ void main() {
         return _json(_tokenResponse);
       });
       final tokens = await auth.passkeyLogin({'id': 'Y3JlZA'});
-      expect(sent.url.path, '/auth/passkeys/login');
-      expect(jsonDecode(sent.body), {
-        'response': {'id': 'Y3JlZA'},
-      });
+      expect(sent.url.path, '/auth/passkey/login-verify');
+      expect(jsonDecode(sent.body), {'id': 'Y3JlZA'});
       expect(tokens.refreshToken, 'refresh');
     });
 
-    test('listPasskeys parses items and reports a disabled server as null', () async {
+    test('the options name the auth server as the relying party', () async {
       final auth = service((request) async {
+        return request.url.path.endsWith('/login-options')
+            ? _json(_requestOptions)
+            : _json(_creationOptions);
+      });
+      expect((await auth.passkeyLoginOptions())['rpId'], 'auth.example');
+      final creation = await auth.passkeyRegistrationOptions('jwt');
+      expect(creation['rp'], {'name': 'Legacy Auth', 'id': 'auth.example'});
+
+      // One the server names itself is kept.
+      final named = service((_) async => _json({..._requestOptions, 'rpId': 'example'}));
+      expect((await named.passkeyLoginOptions())['rpId'], 'example');
+    });
+
+    test('registerPasskey sends the public key and provider name', () async {
+      late http.Request sent;
+      final auth = service((request) async {
+        sent = request;
+        return _json({'success': true, 'credentialId': 'Y3JlZA', 'deviceName': 'Samsung Pass'});
+      });
+      final passkey = await auth.registerPasskey(
+        'jwt',
+        {
+          'id': 'Y3JlZA',
+          'response': {'clientDataJSON': 'Y2xpZW50', 'attestationObject': 'YXR0'},
+        },
+        publicKey: 'cGs',
+        name: 'Samsung Pass',
+      );
+      expect(sent.url.path, '/auth/passkey/register-verify');
+      expect(jsonDecode(sent.body), {
+        'id': 'Y3JlZA',
+        'response': {
+          'clientDataJSON': 'Y2xpZW50',
+          'attestationObject': 'YXR0',
+          'publicKey': 'cGs',
+        },
+        'deviceName': 'Samsung Pass',
+      });
+      expect(passkey.id, 'Y3JlZA');
+      expect(passkey.name, 'Samsung Pass');
+    });
+
+    test('listPasskeys parses credentials and reports an old server as null', () async {
+      final auth = service((request) async {
+        expect(request.url.path, '/auth/passkey/credentials');
         expect(request.headers['authorization'], 'Bearer jwt');
-        return _json({
-          'enabled': true,
-          'items': [
-            {
-              'id': 'p1',
-              'name': 'Google Password Manager',
-              'device_type': 'multiDevice',
-              'backed_up': true,
-              'created_at': '2026-10-08T10:00:00.000Z',
-              'last_used_at': null,
-            },
-          ],
-        });
+        return _json([
+          {
+            'id': 'Y3JlZA',
+            'deviceName': 'Google Password Manager',
+            'createdAt': '2026-10-08T10:00:00.000Z',
+          },
+        ]);
       });
       final passkeys = await auth.listPasskeys('jwt');
       expect(passkeys, hasLength(1));
-      expect(passkeys!.single.name, 'Google Password Manager');
-      expect(passkeys.single.synced, isTrue);
-      expect(passkeys.single.lastUsedAt, isNull);
+      expect(passkeys!.single.id, 'Y3JlZA');
+      expect(passkeys.single.name, 'Google Password Manager');
+      expect(passkeys.single.createdAt, DateTime.utc(2026, 10, 8, 10));
 
-      final disabled = service((_) async => _json({'enabled': false, 'items': []}));
-      expect(await disabled.listPasskeys('jwt'), isNull);
       final legacy = service((_) async => _json({'error': 'Not found'}, 404));
       expect(await legacy.listPasskeys('jwt'), isNull);
     });
@@ -224,9 +263,9 @@ void main() {
         sent = request;
         return _json({'error': 'Not found'}, 404);
       });
-      await auth.deletePasskey('jwt', 'p1');
+      await auth.deletePasskey('jwt', 'Y3JlZA');
       expect(sent.method, 'DELETE');
-      expect(sent.url.path, '/auth/passkeys/p1');
+      expect(sent.url.path, '/auth/passkey/credentials/Y3JlZA');
     });
   });
 
@@ -239,7 +278,7 @@ void main() {
           baseUrl: 'https://auth.example',
           httpClient: MockClient((request) async {
             requests.add(request);
-            return request.url.path.endsWith('/options')
+            return request.url.path.endsWith('-options')
                 ? _json(_requestOptions)
                 : _json(_tokenResponse);
           }),
@@ -251,12 +290,12 @@ void main() {
 
       expect(authenticator.authenticateRequest!.relyingPartyId, 'auth.example');
       expect(authenticator.authenticateRequest!.challenge, 'Y2hhbGxlbmdl');
-      expect(authenticator.authenticateRequest!.userVerification, 'required');
+      expect(authenticator.authenticateRequest!.userVerification, 'preferred');
       expect(requests.map((r) => r.url.path), [
-        '/auth/passkeys/login/options',
-        '/auth/passkeys/login',
+        '/auth/passkey/login-options',
+        '/auth/passkey/login-verify',
       ]);
-      expect(jsonDecode(requests.last.body)['response'], _assertion.toJson());
+      expect(jsonDecode(requests.last.body), _assertion.toJson());
       expect(tokens.accessToken, 'header.payload.signature');
     });
 
@@ -298,9 +337,9 @@ void main() {
         authService: AuthService(
           baseUrl: 'https://auth.example',
           httpClient: MockClient((request) async {
-            return request.url.path.endsWith('/options')
+            return request.url.path.endsWith('-options')
                 ? _json(_requestOptions)
-                : _json({'error': 'This passkey is no longer registered'}, 404);
+                : _json({'error': 'Unknown passkey credential'}, 401);
           }),
         ),
         authenticator: authenticator,
@@ -322,16 +361,13 @@ void main() {
           baseUrl: 'https://auth.example',
           httpClient: MockClient((request) async {
             requests.add(request);
-            return request.url.path.endsWith('/options')
-                ? _json(_creationOptions)
-                : _json({
-                    'id': 'p1',
-                    'name': 'Google Password Manager',
-                    'device_type': 'multiDevice',
-                    'backed_up': true,
-                    'created_at': '2026-10-10T10:00:00.000Z',
-                    'last_used_at': null,
-                  }, 201);
+            if (request.url.path.endsWith('-options')) return _json(_creationOptions);
+            final body = jsonDecode(request.body) as Map<String, dynamic>;
+            return _json({
+              'success': true,
+              'credentialId': body['id'],
+              'deviceName': body['deviceName'] ?? 'Biometric Passkey',
+            });
           }),
         ),
         authenticator: authenticator,
@@ -341,11 +377,38 @@ void main() {
 
       expect(authenticator.registerRequest!.relyingParty.id, 'auth.example');
       expect(authenticator.registerRequest!.user.name, 'alice');
+      expect(requests.map((r) => r.url.path), [
+        '/auth/passkey/register-options',
+        '/auth/passkey/register-verify',
+      ]);
       expect(requests.every((r) => r.headers['authorization'] == 'Bearer jwt'), isTrue);
-      final body = jsonDecode(requests.last.body)['response'] as Map<String, dynamic>;
-      expect(body['response']['attestationObject'], 'YXR0');
+      final body = jsonDecode(requests.last.body) as Map<String, dynamic>;
+      expect(body['response']['attestationObject'], p256Attestation);
+      expect(body['response']['publicKey'], p256PublicKey);
       expect(body['response']['transports'], ['internal', 'hybrid']);
-      expect(passkey.id, 'p1');
+      expect(body['deviceName'], 'Google Password Manager');
+      expect(passkey.id, 'Y3JlZA');
+      expect(passkey.name, 'Google Password Manager');
+    });
+
+    test('a key the server can\'t verify is refused before saving', () async {
+      final requests = <http.Request>[];
+      final client = PasskeyClient(
+        authService: AuthService(
+          baseUrl: 'https://auth.example',
+          httpClient: MockClient((request) async {
+            requests.add(request);
+            return _json(_creationOptions);
+          }),
+        ),
+        authenticator: _FakeAuthenticator(attestationObject: 'YXR0'),
+      );
+
+      await expectLater(
+        client.create('jwt'),
+        throwsA(isA<PasskeyException>().having((e) => e.message, 'message', contains('another provider'))),
+      );
+      expect(requests, hasLength(1));
     });
   });
 
@@ -356,7 +419,7 @@ void main() {
       final authService = AuthService(
         baseUrl: 'https://auth.example',
         httpClient: MockClient((request) async {
-          return request.url.path.endsWith('/options')
+          return request.url.path.endsWith('-options')
               ? _json(_requestOptions)
               : _json({..._tokenResponse, 'access_token': accessToken});
         }),

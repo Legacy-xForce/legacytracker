@@ -3,31 +3,22 @@ class Passkey {
   const Passkey({
     required this.id,
     required this.name,
-    required this.synced,
     required this.createdAt,
-    this.lastUsedAt,
   });
 
   factory Passkey.fromJson(Map<String, dynamic> json) {
     return Passkey(
       id: json['id'] as String,
-      name: json['name'] as String? ?? 'Passkey',
-      synced: json['backed_up'] as bool? ?? false,
-      createdAt: DateTime.parse(json['created_at'] as String),
-      lastUsedAt: json['last_used_at'] == null
-          ? null
-          : DateTime.parse(json['last_used_at'] as String),
+      name: json['deviceName'] as String? ?? 'Passkey',
+      createdAt: DateTime.parse(json['createdAt'] as String),
     );
   }
 
+  /// The credential ID (base64url).
   final String id;
 
-  /// The provider that holds it ("Google Password Manager", "iCloud
-  /// Keychain"), unless the server was given another name.
+  /// The provider that holds it ("Google Password Manager", "Samsung
+  /// Pass"), or the server's generic name when the app couldn't tell.
   final String name;
-
-  /// Backed up to the provider's cloud, so it follows the user to new phones.
-  final bool synced;
   final DateTime createdAt;
-  final DateTime? lastUsedAt;
 }
