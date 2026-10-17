@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:legacytracker/src/data/models/checkpoint.dart';
@@ -70,6 +71,31 @@ void main() {
       expect(list.single.name, 'Home');
       expect(list.single.radiusM, 80);
       expect(list.single.canEdit, isFalse);
+    });
+  });
+
+  group('CheckpointsProvider map visibility', () {
+    test('is shown by default and the choice is remembered', () async {
+      SharedPreferences.setMockInitialValues({});
+      final provider = CheckpointsProvider(
+        service: CheckpointService(baseUrl: 'https://example.test'),
+        prefs: SharedPreferences.getInstance(),
+      );
+      addTearDown(provider.dispose);
+      expect(provider.showOnMap, isTrue);
+
+      await provider.toggleShowOnMap();
+      expect(provider.showOnMap, isFalse);
+      expect((await SharedPreferences.getInstance()).getBool('checkpoints_on_map'),
+          isFalse);
+
+      final reopened = CheckpointsProvider(
+        service: CheckpointService(baseUrl: 'https://example.test'),
+        prefs: SharedPreferences.getInstance(),
+      );
+      addTearDown(reopened.dispose);
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      expect(reopened.showOnMap, isFalse);
     });
   });
 

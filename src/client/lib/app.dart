@@ -58,6 +58,7 @@ class App extends StatelessWidget {
         ChangeNotifierProxyProvider<AuthProvider, CheckpointsProvider>(
           create: (_) => CheckpointsProvider(
             service: CheckpointService(baseUrl: AppConstants.backendBaseUrl),
+            prefs: SharedPreferences.getInstance(),
           ),
           update: (_, auth, checkpoints) {
             final usable = auth.isAuthenticated && auth.accessDenial == null;

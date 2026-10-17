@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/constants.dart';
+import '../../../data/models/checkpoint.dart';
 import '../../../data/models/location_model.dart';
 import '../../../data/models/map_viewer.dart';
 import '../../../data/models/user_model.dart';
@@ -485,8 +486,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     final events = context.watch<CalendarEventsProvider?>();
-    final checkpoints =
-        context.watch<CheckpointsProvider?>()?.checkpoints ?? const [];
+    final checkpointsProvider = context.watch<CheckpointsProvider?>();
+    final checkpoints = (checkpointsProvider?.showOnMap ?? true)
+        ? checkpointsProvider?.checkpoints ?? const <Checkpoint>[]
+        : const <Checkpoint>[];
     return Stack(
       children: [
         Listener(
@@ -642,6 +645,19 @@ class _TrackingMapTabState extends State<TrackingMapTab>
                       ? Theme.of(context).colorScheme.primary
                       : null,
                   onPressed: events.toggle,
+                ),
+              if (checkpointsProvider != null)
+                MapControlButton(
+                  icon: checkpointsProvider.showOnMap
+                      ? Icons.place_rounded
+                      : Icons.location_off_outlined,
+                  tooltip: checkpointsProvider.showOnMap
+                      ? 'Hide checkpoints'
+                      : 'Show checkpoints',
+                  color: checkpointsProvider.showOnMap
+                      ? Theme.of(context).colorScheme.primary
+                      : null,
+                  onPressed: checkpointsProvider.toggleShowOnMap,
                 ),
             ],
           ),
