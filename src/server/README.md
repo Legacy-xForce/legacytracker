@@ -180,6 +180,13 @@ long-lived device token instead of the user JWT.
 | `POST`   | `/api/v1/devices`       | JWT  | Body `{ "platform": "android", "replaces": "<old device id>" }` (both optional). Returns `{ "device_id", "device_token" }`; `replaces` revokes the old token. OpenID Provider tokens must come from `AUTH_MOBILE_CLIENT` (the app), otherwise `403`. |
 | `DELETE` | `/api/v1/devices/:id`   | JWT, write API token, or that device's own token | Revokes the token (sign-out). |
 
+Device tokens rotate: an upload that sends `Authorization: Device <token>` and
+`X-Token-Rotation: 1` gets `device_token` (the replacement) in its response once
+the token is 24 hours old. The old token keeps working until the replacement is
+first used; presenting it after that (or any replaced token) revokes the device,
+since it means a second copy exists. Clients that don't send the header keep
+their token unchanged.
+
 Only `sha256(token)` is stored.
 
 ### Mapbox tokens
@@ -248,7 +255,8 @@ fix), `heartbeat` (parked liveness), `live` (realtime while watched — broadcas
 only, **never stored**). Inserts are idempotent on `(user_id, recorded_at)`.
 
 Response: `{ "received", "stored", "pacing", "live_ttl_s" }` — `live_ttl_s > 0`
-tells the device to stream realtime for that long. The `X-Pacing-Mode` header
+tells the device to stream realtime for that long. A rotated device token adds
+`"device_token"` (sent with `Cache-Control: no-store`). The `X-Pacing-Mode` header
 is kept for older builds.
 
 ### Tracking commands (FCM)

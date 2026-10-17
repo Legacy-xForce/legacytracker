@@ -27,6 +27,8 @@ CREATE TABLE IF NOT EXISTS user_fcm_tokens (
 -- Background uploads can't depend on the short-lived JWT: the app may stay
 -- closed for days, and refreshing a rotating refresh token from two places
 -- (native engine + Dart auth) races. Only sha256(token) is stored.
+-- The engine alone rotates the token: a day-old token gets a replacement in
+-- an upload response (see services/device-auth.ts).
 CREATE TABLE IF NOT EXISTS devices (
   id text PRIMARY KEY,
   user_id text NOT NULL REFERENCES users(id),
@@ -34,10 +36,25 @@ CREATE TABLE IF NOT EXISTS devices (
   platform text,
   created_at timestamptz NOT NULL DEFAULT now(),
   last_seen_at timestamptz,
-  revoked_at timestamptz
+  revoked_at timestamptz,
+  -- The token before the latest rotation; accepted until the replacement is
+  -- first used, in case the response carrying it was lost.
+  prev_token_hash text,
+  token_issued_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS devices_prev_token_hash_idx ON devices (prev_token_hash);
+
+-- Replaced tokens. One coming back means a second copy exists, and the
+-- device is revoked.
+CREATE TABLE IF NOT EXISTS device_token_history (
+  token_hash text PRIMARY KEY,
+  device_id text NOT NULL REFERENCES devices(id),
+  retired_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS device_token_history_device_idx ON device_token_history (device_id, retired_at);
 
 -- Personal API tokens for integrations, sent as `X-API-Token`. They never
 -- expire; the owner rotates or deletes them. `read` tokens may only read,

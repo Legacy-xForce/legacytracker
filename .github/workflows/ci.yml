@@ -133,6 +133,23 @@ jobs:
             type=raw,value=latest
             type=sha,prefix=sha-
 
+  server:
+    name: Test server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/server/package-lock.json
+      - run: npm ci
+        working-directory: src/server
+      - run: npm test
+        working-directory: src/server
+      - run: npm run build
+        working-directory: src/server
+
   server-docker:
     name: Build server Docker image (${{ matrix.arch }})
     runs-on: ${{ matrix.runner }}

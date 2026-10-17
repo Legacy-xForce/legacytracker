@@ -4,6 +4,7 @@ import Flutter
 import Network
 import SQLite3
 import UIKit
+import UserNotifications
 
 // Native location engine — the iOS counterpart of
 // android/app/src/main/kotlin/com/legacy/legacytracker/tracking/. Same model:
@@ -522,6 +523,31 @@ enum TrackingMode: String {
     case off, stationary, moving
 }
 
+/// Tells the user background sharing stopped because the server rejected the
+/// upload credentials (revoked, or a copied token was detected). Only the app
+/// can fix that — it re-registers with the user's login when opened — so
+/// without this the marker would go stale with no sign on the phone.
+enum SharingPausedNotice {
+    private static let identifier = "lt.sharing-paused"
+
+    static func show() {
+        let content = UNMutableNotificationContent()
+        content.title = "Location sharing paused"
+        content.body = "Open Legacy Tracker to resume sharing your location."
+        content.sound = .default
+        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
+        // Not delivered when notifications aren't allowed; the app still
+        // re-registers when opened.
+        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
+    }
+
+    static func cancel() {
+        let center = UNUserNotificationCenter.current()
+        center.removePendingNotificationRequests(withIdentifiers: [identifier])
+        center.removeDeliveredNotifications(withIdentifiers: [identifier])
+    }
+}
+
 final class EngineState {
     private let defaults = UserDefaults.standard
     private let prefix = "lt.engine."
@@ -529,21 +555,40 @@ final class EngineState {
     var baseUrl: String? { defaults.string(forKey: prefix + "baseUrl") }
     var authHeader: String? { defaults.string(forKey: prefix + "authHeader") }
     var userId: String? { defaults.string(forKey: prefix + "userId") }
+    var deviceId: String? { defaults.string(forKey: prefix + "deviceId") }
     var batterySaver: Bool { defaults.bool(forKey: prefix + "batterySaver") }
     var hasCredentials: Bool { baseUrl != nil && authHeader != nil }
 
-    func saveConfig(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool) {
+    /// `deviceId` identifies the registration `authHeader` came from (nil for
+    /// the session-token fallback). The server rotates the device token
+    /// through our uploads, so Dart's copy is only current right after it
+    /// registers; while the device stays the same, keep our own.
+    func saveConfig(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool, deviceId: String?) {
         var url = baseUrl
         while url.hasSuffix("/") { url.removeLast() }
+        let sameDevice = deviceId != nil && deviceId == self.deviceId
         defaults.set(url, forKey: prefix + "baseUrl")
-        defaults.set(authHeader, forKey: prefix + "authHeader")
+        if !(sameDevice && self.authHeader != nil) {
+            defaults.set(authHeader, forKey: prefix + "authHeader")
+        }
+        if let deviceId = deviceId {
+            defaults.set(deviceId, forKey: prefix + "deviceId")
+        } else {
+            defaults.removeObject(forKey: prefix + "deviceId")
+        }
         defaults.set(userId, forKey: prefix + "userId")
         defaults.set(batterySaver, forKey: prefix + "batterySaver")
         defaults.set(false, forKey: prefix + "authFailed")
     }
 
+    /// Replacement token from an upload response.
+    func saveRotatedAuth(_ authHeader: String) {
+        defaults.set(authHeader, forKey: prefix + "authHeader")
+    }
+
     func clearCredentials() {
         defaults.removeObject(forKey: prefix + "authHeader")
+        defaults.removeObject(forKey: prefix + "deviceId")
         defaults.removeObject(forKey: prefix + "userId")
         defaults.removeObject(forKey: prefix + "authFailed")
     }
@@ -664,7 +709,7 @@ final class Uploader {
             completion(.failed("upload already in progress"))
             return
         }
-        guard let baseUrl = state.baseUrl, let auth = state.authHeader,
+        guard let baseUrl = state.baseUrl, state.authHeader != nil,
               let url = URL(string: baseUrl + "/api/v1/location") else {
             completion(.notConfigured)
             return
@@ -672,14 +717,19 @@ final class Uploader {
         if state.authFailed { completion(.authRejected); return }
         if !online { completion(.offline); return }
         busy = true
-        sendBatch(url: url, auth: auth, live: live, sent: 0, liveTtl: nil) { [weak self] outcome in
+        sendBatch(url: url, live: live, sent: 0, liveTtl: nil) { [weak self] outcome in
             self?.busy = false
             completion(outcome)
         }
     }
 
-    private func sendBatch(url: URL, auth: String, live: Fix?, sent: Int, liveTtl: Int?,
+    private func sendBatch(url: URL, live: Fix?, sent: Int, liveTtl: Int?,
                            completion: @escaping (Outcome) -> Void) {
+        // Read per batch: the previous response may have rotated it.
+        guard let auth = state.authHeader else {
+            completion(.notConfigured)
+            return
+        }
         let batch = store.pending(limit: Tuning.uploadBatchSize)
         if batch.isEmpty && live == nil {
             completion(sent == 0 ? .nothingToSend : .sent(count: sent, liveTtl: liveTtl))
@@ -696,6 +746,8 @@ final class Uploader {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(auth, forHTTPHeaderField: "Authorization")
+        // We store the replacement token the response may carry.
+        if auth.hasPrefix("Device ") { request.setValue("1", forHTTPHeaderField: "X-Token-Rotation") }
         request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
         session.dataTask(with: request) { [weak self] data, response, error in
@@ -708,13 +760,16 @@ final class Uploader {
                 let code = (response as? HTTPURLResponse)?.statusCode ?? 0
                 switch code {
                 case 200..<300:
+                    // Saved before the next batch goes out: the server keeps
+                    // accepting the old token only until this one is used.
+                    if let token = Uploader.parseDeviceToken(data) { self.state.saveRotatedAuth("Device " + token) }
                     if let lastId = batch.last?.id { self.store.deleteUpTo(lastId) }
                     let ttl = Uploader.parseLiveTtl(data) ?? liveTtl
                     let total = sent + batch.count
                     if batch.count < Tuning.uploadBatchSize {
                         completion(.sent(count: total, liveTtl: ttl))
                     } else {
-                        self.sendBatch(url: url, auth: auth, live: nil, sent: total, liveTtl: ttl, completion: completion)
+                        self.sendBatch(url: url, live: nil, sent: total, liveTtl: ttl, completion: completion)
                     }
                 case 401, 403:
                     completion(.authRejected)
@@ -729,6 +784,13 @@ final class Uploader {
         guard let data = data,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return (json["live_ttl_s"] as? NSNumber)?.intValue
+    }
+
+    private static func parseDeviceToken(_ data: Data?) -> String? {
+        guard let data = data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["device_token"] as? String, !token.isEmpty else { return nil }
+        return token
     }
 
     static func json(_ fix: Fix, _ source: String, _ battery: Int?, _ charging: Bool?) -> [String: Any] {
@@ -881,15 +943,20 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
 
     // MARK: Commands from Dart
 
-    func configure(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool) {
+    /// Returns the header uploads will use: ours if the server rotated it since `deviceId` registered.
+    @discardableResult
+    func configure(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool, deviceId: String?) -> String? {
         if let previous = state.userId, previous != userId {
             log("config", "Account changed — discarding \(store.pendingCount()) unsent point(s)")
             store.clearPoints()
             state.clearRuntime()
         }
-        state.saveConfig(baseUrl: baseUrl, authHeader: authHeader, userId: userId, batterySaver: batterySaver)
+        state.saveConfig(baseUrl: baseUrl, authHeader: authHeader, userId: userId, batterySaver: batterySaver,
+                         deviceId: deviceId)
+        SharingPausedNotice.cancel()
         applyGpsProfile()
         maybeFlush(force: true)
+        return state.authHeader
     }
 
     func start() {
@@ -911,7 +978,8 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         emitState()
     }
 
-    func stop(clearData: Bool, completion: @escaping () -> Void) {
+    /// With `clearData`, hands the completion the upload header it discarded so sign-out can revoke it.
+    func stop(clearData: Bool, completion: @escaping (String?) -> Void) {
         let previous = state.mode
         state.mode = .off
         if let current = session {
@@ -927,7 +995,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         emitState()
         guard clearData else {
             maybeFlush(force: true)
-            completion()
+            completion(nil)
             return
         }
         // Last chance to deliver what was recorded under these credentials.
@@ -937,9 +1005,12 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             self.log("lifecycle", "Final upload before sign-out: \(self.describe(outcome))")
             self.store.clearPoints()
             self.state.clearRuntime()
+            // Read after the final upload, which may have rotated it.
+            let discarded = self.state.authHeader
             self.state.clearCredentials()
+            SharingPausedNotice.cancel()
             self.endBackgroundWork()
-            completion()
+            completion(discarded)
         }
     }
 
@@ -953,6 +1024,8 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         if !visible { foregroundPing = nil }
         updateGps()
         if visible { maybeFlush(force: true) }
+        // Opening the app didn't get new credentials (e.g. offline).
+        if !visible && state.authFailed && state.hasCredentials { SharingPausedNotice.show() }
     }
 
     func flush() {
@@ -1452,7 +1525,11 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             log("upload", "Upload deferred: \(reason)")
             emit(["type": "upload", "ok": false, "error": reason])
         case .authRejected:
-            if !state.authFailed { log("upload", "Server rejected the upload credentials") }
+            if !state.authFailed {
+                log("upload", "Server rejected the upload credentials")
+                // While visible the app re-registers right away instead.
+                if !appVisible { SharingPausedNotice.show() }
+            }
             state.authFailed = true
             emit(["type": "auth_required"])
         case .nothingToSend, .notConfigured:
@@ -1671,14 +1748,15 @@ final class TrackingChannel: NSObject, FlutterStreamHandler {
                 result(FlutterError(code: "bad_args", message: "baseUrl, authHeader and userId are required", details: nil))
                 return
             }
-            engine.configure(baseUrl: baseUrl, authHeader: authHeader, userId: userId,
-                             batterySaver: args["batterySaver"] as? Bool ?? false)
-            result(nil)
+            let effective = engine.configure(baseUrl: baseUrl, authHeader: authHeader, userId: userId,
+                                             batterySaver: args["batterySaver"] as? Bool ?? false,
+                                             deviceId: args["deviceId"] as? String)
+            result(effective)
         case "start":
             engine.start()
             result(nil)
         case "stop":
-            engine.stop(clearData: args["clearData"] as? Bool ?? false) { result(nil) }
+            engine.stop(clearData: args["clearData"] as? Bool ?? false) { discarded in result(discarded) }
         case "setAppVisible":
             engine.setAppVisible(args["visible"] as? Bool ?? false)
             result(nil)
