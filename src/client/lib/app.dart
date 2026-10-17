@@ -21,6 +21,7 @@ import 'src/features/calendar/calendar_events_provider.dart';
 import 'src/features/checkpoints/checkpoints_provider.dart';
 import 'src/features/connection/connection_banner.dart';
 import 'src/features/connection/connection_monitor.dart';
+import 'src/features/tracking/map_settings.dart';
 import 'src/features/tracking/sharing_provider.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
@@ -43,6 +44,8 @@ class App extends StatelessWidget {
           create: (_) =>
               ConnectionMonitor(baseUrl: AppConstants.backendBaseUrl)..start(),
         ),
+        // Above the MaterialApp so the replay screen sees the default too.
+        ChangeNotifierProvider<MapSettings>(create: (_) => MapSettings()),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             authService: authService,
