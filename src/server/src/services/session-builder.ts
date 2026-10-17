@@ -7,6 +7,11 @@ const MIN_SESSION_DISTANCE_METERS = 50;
 // while parked, not real movement, even when accumulated "distance" clears
 // MIN_SESSION_DISTANCE_METERS.
 const MIN_SESSION_TOP_SPEED = 2.0;
+// Summed point-to-point distance counts every GPS wobble, so a phone sitting
+// indoors can "travel" hundreds of metres in a zigzag. A real trip also gets
+// somewhere: it must reach at least this far from where it started (the same
+// radius the engine's geofence uses to begin a trip).
+const MIN_SESSION_EXTENT_METERS = 150;
 
 // Liveness/on-demand fixes taken while stationary — never part of a trip.
 const NON_TRIP_SOURCES = new Set(["heartbeat", "ping"]);
@@ -56,15 +61,21 @@ function summarize(points: HistoryPoint[]): LocationSession | null {
   let distanceMeters = 0;
   let topSpeed = 0;
   let speedSum = 0;
+  let extentMeters = 0;
   for (let i = 0; i < points.length; i += 1) {
     speedSum += points[i].speed;
     topSpeed = Math.max(topSpeed, points[i].speed);
+    extentMeters = Math.max(extentMeters, haversineMeters(points[0], points[i]));
     if (i > 0) {
       distanceMeters += haversineMeters(points[i - 1], points[i]);
     }
   }
 
-  if (distanceMeters < MIN_SESSION_DISTANCE_METERS || topSpeed < MIN_SESSION_TOP_SPEED) {
+  if (
+    distanceMeters < MIN_SESSION_DISTANCE_METERS ||
+    extentMeters < MIN_SESSION_EXTENT_METERS ||
+    topSpeed < MIN_SESSION_TOP_SPEED
+  ) {
     return null;
   }
 

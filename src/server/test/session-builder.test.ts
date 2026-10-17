@@ -84,3 +84,16 @@ test("parked GPS drift is not reported as a trip", () => {
   ]);
   assert.equal(sessions.length, 0);
 });
+
+test("a zigzag of GPS jitter that never leaves the spot is not a trip", () => {
+  // Plenty of path length and reported speed, but never more than ~100 m from the start.
+  const sessions = buildSessions([
+    point(0, 0, 0, "trip_start"),
+    point(0.5, 100, 3),
+    point(1, -60, 3),
+    point(1.5, 90, 3),
+    point(2, -50, 3),
+    point(3, 20, 0, "trip_end"),
+  ]);
+  assert.equal(sessions.length, 0);
+});
