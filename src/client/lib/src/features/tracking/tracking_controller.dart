@@ -214,18 +214,21 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<bool> _configureEngine() async {
-    final authHeader = await _uploadAuthHeader();
-    if (authHeader == null) {
+    final credential = await _uploadCredential();
+    if (credential == null) {
       unawaited(TrackingEngine.log('auth', 'Not configured: no session'));
       return false;
     }
-    await TrackingEngine.configure(
+    // The engine may hold a newer, rotated token than ours; use whichever
+    // it actually uploads with.
+    final effective = await TrackingEngine.configure(
       baseUrl: baseUrl,
-      authHeader: authHeader,
+      authHeader: credential.header,
       userId: selfProfile.id,
       batterySaver: selfProfile.batterySavingEnabled,
+      deviceId: credential.deviceId,
     );
-    unawaited(_migrateLegacyQueue(authHeader));
+    unawaited(_migrateLegacyQueue(effective ?? credential.header));
     return true;
   }
 
@@ -277,14 +280,20 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   /// The engine's upload credential: this install's device token, registered
   /// once per account. Falls back to the session JWT against servers without
   /// device registration — refreshed into the engine whenever the app opens.
-  Future<String?> _uploadAuthHeader({bool forceRegister = false}) async {
+  /// [deviceId] is null for that fallback.
+  Future<({String header, String? deviceId})?> _uploadCredential({
+    bool forceRegister = false,
+  }) async {
     final prefs = await SharedPreferences.getInstance();
     final cached = DeviceCredentialStore.load(prefs);
+    final ({String header, String? deviceId})? cachedCredential = cached == null
+        ? null
+        : (header: cached.authHeader, deviceId: cached.deviceId);
     if (!forceRegister && cached != null && cached.userId == selfProfile.id) {
-      return cached.authHeader;
+      return cachedCredential;
     }
     final accessToken = getAccessToken();
-    if (accessToken == null) return cached?.authHeader;
+    if (accessToken == null) return cachedCredential;
     try {
       final credentials = await deviceService.register(
         accessToken,
@@ -294,7 +303,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
       );
       await DeviceCredentialStore.save(prefs, credentials);
       unawaited(TrackingEngine.log('auth', 'Registered upload credentials'));
-      return credentials.authHeader;
+      return (header: credentials.authHeader, deviceId: credentials.deviceId);
     } catch (error) {
       unawaited(
         TrackingEngine.log(
@@ -302,7 +311,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
           'Device registration failed ($error); using the session token',
         ),
       );
-      return 'Bearer $accessToken';
+      return (header: 'Bearer $accessToken', deviceId: null);
     }
   }
 
@@ -344,13 +353,14 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
     if (_reregistering) return;
     _reregistering = true;
     try {
-      final authHeader = await _uploadAuthHeader(forceRegister: true);
-      if (authHeader == null) return;
+      final credential = await _uploadCredential(forceRegister: true);
+      if (credential == null) return;
       await TrackingEngine.configure(
         baseUrl: baseUrl,
-        authHeader: authHeader,
+        authHeader: credential.header,
         userId: selfProfile.id,
         batterySaver: selfProfile.batterySavingEnabled,
+        deviceId: credential.deviceId,
       );
     } finally {
       _reregistering = false;

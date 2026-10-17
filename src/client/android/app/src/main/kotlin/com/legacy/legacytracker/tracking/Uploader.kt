@@ -45,8 +45,7 @@ class Uploader(context: Context, private val state: EngineState, private val sto
      */
     fun uploadAll(livePoint: Fix? = null): Result = synchronized(lock) {
         val baseUrl = state.baseUrl
-        val auth = state.authHeader
-        if (baseUrl == null || auth == null) return Result.NotConfigured
+        if (baseUrl == null || state.authHeader == null) return Result.NotConfigured
         if (state.authFailed) return Result.AuthRejected
         if (!isOnline()) return Result.Offline
 
@@ -54,6 +53,8 @@ class Uploader(context: Context, private val state: EngineState, private val sto
         var sent = 0
         var liveTtl: Int? = null
         while (true) {
+            // Re-read per batch: the previous response may have rotated it.
+            val auth = state.authHeader ?: return Result.NotConfigured
             val batch = store.pending(Tuning.UPLOAD_BATCH_SIZE)
             if (batch.isEmpty() && live == null) break
 
@@ -77,6 +78,9 @@ class Uploader(context: Context, private val state: EngineState, private val sto
             }
             when (response.first) {
                 in 200..299 -> {
+                    // Saved before the next batch goes out: the server keeps
+                    // accepting the old token only until this one is used.
+                    parseDeviceToken(response.second)?.let { state.saveRotatedAuth("Device $it") }
                     if (batch.isNotEmpty()) store.deleteUpTo(batch.last().id)
                     sent += batch.size
                     live = null
@@ -135,6 +139,8 @@ class Uploader(context: Context, private val state: EngineState, private val sto
             connection.doOutput = true
             connection.setRequestProperty("Content-Type", "application/json")
             connection.setRequestProperty("Authorization", auth)
+            // We store the replacement token the response may carry.
+            if (auth.startsWith("Device ")) connection.setRequestProperty("X-Token-Rotation", "1")
             connection.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
             val code = connection.responseCode
             val stream = if (code in 200..299) connection.inputStream else connection.errorStream
@@ -148,6 +154,12 @@ class Uploader(context: Context, private val state: EngineState, private val sto
     private fun parseLiveTtl(body: String): Int? = try {
         val json = JSONObject(body)
         if (json.has("live_ttl_s")) json.getInt("live_ttl_s") else null
+    } catch (e: Exception) {
+        null
+    }
+
+    private fun parseDeviceToken(body: String): String? = try {
+        JSONObject(body).optString("device_token").takeIf { it.isNotEmpty() }
     } catch (e: Exception) {
         null
     }
