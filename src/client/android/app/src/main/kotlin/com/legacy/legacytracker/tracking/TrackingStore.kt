@@ -116,6 +116,19 @@ class TrackingStore private constructor(context: Context) :
         writableDatabase.delete("points", "id <= ?", arrayOf(id.toString()))
     }
 
+    fun hasPoint(id: Long): Boolean =
+        DatabaseUtils.queryNumEntries(readableDatabase, "points", "id = ?", arrayOf(id.toString())) > 0
+
+    /** Drops a trip's not-yet-uploaded points, keeping liveness rows of the given sources. */
+    fun deleteTripFrom(id: Long, vararg keepSources: String) {
+        val marks = keepSources.joinToString(",") { "?" }
+        writableDatabase.delete(
+            "points",
+            "id >= ? AND source NOT IN ($marks)",
+            arrayOf(id.toString(), *keepSources),
+        )
+    }
+
     fun pendingCount(): Long = DatabaseUtils.queryNumEntries(readableDatabase, "points")
 
     fun clearPoints() {

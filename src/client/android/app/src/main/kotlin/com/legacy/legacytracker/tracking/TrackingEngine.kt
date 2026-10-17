@@ -382,7 +382,14 @@ class TrackingEngine private constructor(context: Context) {
         if (trip !== session) return
         trip = null
         session.stop()
-        for (r in session.finish(stop)) record(r.fix, r.source)
+        for (r in session.finish(stop)) session.noteStored(record(r.fix, r.source))
+        if (session.wasJitter()) {
+            // Never got anywhere: GPS wander while parked, not a trip. Drop it
+            // unless part of it already reached the server (the server filters
+            // those the same way).
+            store.deleteTripFrom(session.firstRowId, SOURCE_PING, SOURCE_HEARTBEAT)
+            log("state", "Discarded a trip that never left ${Tuning.MIN_TRIP_EXTENT_M.roundToInt()} m")
+        }
         state.lastRecorded = null
         stop?.let { state.anchor = it }
         if (state.mode != TrackingMode.OFF) state.mode = TrackingMode.STATIONARY
@@ -730,11 +737,12 @@ class TrackingEngine private constructor(context: Context) {
 
     // ── Recording and uploading ─────────────────────────────────────────────
 
-    private fun record(fix: Fix, source: String) {
+    private fun record(fix: Fix, source: String): Long {
         val (battery, charging) = uploader.battery()
-        store.insert(fix, source, battery, charging)
+        val id = store.insert(fix, source, battery, charging)
         if (pendingSince == 0L) pendingSince = SystemClock.elapsedRealtime()
         if (source != SOURCE_PING && source != SOURCE_HEARTBEAT) state.lastRecorded = fix
+        return id
     }
 
     private fun heartbeatIfDue() {
@@ -965,7 +973,32 @@ class TrackingEngine private constructor(context: Context) {
         private var liveSoon = false
         private val tick = Runnable { safely { onTick() } }
 
-        fun prepareNewTrip(anchor: Fix?) = sampler.startTrip(anchor)
+        // Jitter filter: how far the trip got from its start, and the first
+        // stored row, so a trip that went nowhere can be dropped before upload.
+        // Resumed trips are never discarded (their start is not known).
+        private var discardable = false
+        private var origin: Fix? = null
+        private var extentM = 0.0
+        var firstRowId = 0L
+            private set
+
+        fun prepareNewTrip(anchor: Fix?) {
+            discardable = kind == SessionKind.TRIP
+            origin = anchor
+            sampler.startTrip(anchor)
+        }
+
+        fun noteStored(rowId: Long) {
+            if (firstRowId == 0L && rowId > 0) firstRowId = rowId
+        }
+
+        private fun noteExtent(fix: Fix) {
+            val o = origin ?: fix.also { origin = it }
+            extentM = max(extentM, GeoMath.distance(o, fix))
+        }
+
+        fun wasJitter() = discardable && kind == SessionKind.TRIP && firstRowId > 0 &&
+            extentM < Tuning.MIN_TRIP_EXTENT_M && store.hasPoint(firstRowId)
 
         fun prepareResume(lastRecorded: Fix?, anchor: Fix?) {
             if (lastRecorded != null &&
@@ -1027,7 +1060,7 @@ class TrackingEngine private constructor(context: Context) {
         fun convertToTrip(why: String) {
             if (kind == SessionKind.TRIP) return
             kind = SessionKind.TRIP
-            sampler.startTrip(state.anchor)
+            prepareNewTrip(state.anchor)
             state.mode = TrackingMode.MOVING
             removeGeofence()
             removeLowPowerUpdates()
@@ -1077,7 +1110,8 @@ class TrackingEngine private constructor(context: Context) {
             }
             if (fix.accuracy <= maxAccuracy) {
                 lastAccepted = fix
-                for (r in sampler.offer(fix)) record(r.fix, r.source)
+                noteExtent(fix)
+                for (r in sampler.offer(fix)) noteStored(record(r.fix, r.source))
             }
 
             if (isLive() || liveSoon) maybeSendLive(fix)
