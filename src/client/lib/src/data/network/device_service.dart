@@ -58,19 +58,25 @@ class DeviceService {
   }
 
   /// Revokes [credentials] using the device token itself, so sign-out works
-  /// even when the session JWT has already expired.
-  Future<void> unregister(DeviceCredentials credentials) async {
+  /// even when the session JWT has already expired. [authHeader] overrides
+  /// the stored token with the engine's current, rotated one.
+  Future<void> unregister(
+    DeviceCredentials credentials, {
+    String? authHeader,
+  }) async {
     await _httpClient
         .delete(
           _baseUri.replace(path: '/api/v1/devices/${credentials.deviceId}'),
-          headers: {'authorization': credentials.authHeader},
+          headers: {'authorization': authHeader ?? credentials.authHeader},
         )
         .timeout(const Duration(seconds: 10));
   }
 }
 
 /// Persists [DeviceCredentials] so registration happens once per install and
-/// account rather than on every launch.
+/// account rather than on every launch. The token stored here is the one
+/// issued at registration: the server rotates it through the native engine's
+/// uploads, so the engine holds the live copy (see `TrackingEngine.configure`).
 class DeviceCredentialStore {
   DeviceCredentialStore._();
 

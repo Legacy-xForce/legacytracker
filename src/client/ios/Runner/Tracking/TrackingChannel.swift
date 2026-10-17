@@ -30,14 +30,15 @@ final class TrackingChannel: NSObject, FlutterStreamHandler {
                 result(FlutterError(code: "bad_args", message: "baseUrl, authHeader and userId are required", details: nil))
                 return
             }
-            engine.configure(baseUrl: baseUrl, authHeader: authHeader, userId: userId,
-                             batterySaver: args["batterySaver"] as? Bool ?? false)
-            result(nil)
+            let effective = engine.configure(baseUrl: baseUrl, authHeader: authHeader, userId: userId,
+                                             batterySaver: args["batterySaver"] as? Bool ?? false,
+                                             deviceId: args["deviceId"] as? String)
+            result(effective)
         case "start":
             engine.start()
             result(nil)
         case "stop":
-            engine.stop(clearData: args["clearData"] as? Bool ?? false) { result(nil) }
+            engine.stop(clearData: args["clearData"] as? Bool ?? false) { discarded in result(discarded) }
         case "setAppVisible":
             engine.setAppVisible(args["visible"] as? Bool ?? false)
             result(nil)

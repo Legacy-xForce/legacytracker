@@ -49,7 +49,7 @@ final class Uploader {
             completion(.failed("upload already in progress"))
             return
         }
-        guard let baseUrl = state.baseUrl, let auth = state.authHeader,
+        guard let baseUrl = state.baseUrl, state.authHeader != nil,
               let url = URL(string: baseUrl + "/api/v1/location") else {
             completion(.notConfigured)
             return
@@ -57,15 +57,20 @@ final class Uploader {
         if state.authFailed { completion(.authRejected); return }
         if !online { completion(.offline); return }
         busy = true
-        sendBatch(url: url, auth: auth, live: live, sent: 0, liveTtl: nil) { [weak self] outcome in
+        sendBatch(url: url, live: live, sent: 0, liveTtl: nil) { [weak self] outcome in
             self?.busy = false
             completion(outcome)
         }
     }
 
     /// Runs on the main thread; the batch work hops to `work` and every result comes back to main.
-    private func sendBatch(url: URL, auth: String, live: Fix?, sent: Int, liveTtl: Int?,
+    private func sendBatch(url: URL, live: Fix?, sent: Int, liveTtl: Int?,
                            completion: @escaping (Outcome) -> Void) {
+        // Read per batch: the previous response may have rotated it.
+        guard let auth = state.authHeader else {
+            completion(.notConfigured)
+            return
+        }
         // Read on main: the location manager and the battery cache belong to it.
         let issues = trackingIssues()
         let liveBattery: (Int?, Bool?) = live != nil ? Battery.read() : (nil, nil)
@@ -97,6 +102,8 @@ final class Uploader {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(auth, forHTTPHeaderField: "Authorization")
+        // We store the replacement token the response may carry.
+        if auth.hasPrefix("Device ") { request.setValue("1", forHTTPHeaderField: "X-Token-Rotation") }
         request.httpBody = payload
 
         session.dataTask(with: request) { [weak self] data, response, error in
@@ -112,6 +119,9 @@ final class Uploader {
                 }
                 return
             }
+            // Saved before the next batch goes out: the server keeps
+            // accepting the old token only until this one is used.
+            if let token = Uploader.parseDeviceToken(data) { self.state.saveRotatedAuth("Device " + token) }
             let ttl = Uploader.parseLiveTtl(data) ?? liveTtl
             let store = self.store
             self.work.async { [weak self] in
@@ -122,7 +132,7 @@ final class Uploader {
                     if batch.count < Tuning.uploadBatchSize {
                         completion(.sent(count: total, liveTtl: ttl))
                     } else {
-                        self.sendBatch(url: url, auth: auth, live: nil, sent: total, liveTtl: ttl, completion: completion)
+                        self.sendBatch(url: url, live: nil, sent: total, liveTtl: ttl, completion: completion)
                     }
                 }
             }
@@ -133,6 +143,13 @@ final class Uploader {
         guard let data = data,
               let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
         return (json["live_ttl_s"] as? NSNumber)?.intValue
+    }
+
+    private static func parseDeviceToken(_ data: Data?) -> String? {
+        guard let data = data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let token = json["device_token"] as? String, !token.isEmpty else { return nil }
+        return token
     }
 
     static func json(_ fix: Fix, _ source: String, _ battery: Int?, _ charging: Bool?) -> [String: Any] {

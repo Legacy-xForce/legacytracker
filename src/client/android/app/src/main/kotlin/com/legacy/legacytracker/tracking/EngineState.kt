@@ -21,14 +21,32 @@ class EngineState(context: Context) {
     val userId: String? get() = prefs.getString(K_USER, null)
     val batterySaver: Boolean get() = prefs.getBoolean(K_SAVER, false)
 
-    fun saveConfig(baseUrl: String, authHeader: String, userId: String, batterySaver: Boolean) {
-        prefs.edit()
+    /**
+     * [deviceId] identifies the registration [authHeader] came from (null for
+     * the session-token fallback). The server rotates the device token
+     * through our uploads, so Dart's copy is only current right after it
+     * registers; while the device stays the same, keep our own. Synchronized
+     * with [saveRotatedAuth] so a rotation landing mid-configure isn't
+     * overwritten with the old token.
+     */
+    @Synchronized
+    fun saveConfig(baseUrl: String, authHeader: String, userId: String, batterySaver: Boolean, deviceId: String?) {
+        val current = prefs.getString(K_AUTH, null)
+        val sameDevice = deviceId != null && deviceId == prefs.getString(K_DEVICE, null)
+        val editor = prefs.edit()
             .putString(K_BASE_URL, baseUrl.trimEnd('/'))
-            .putString(K_AUTH, authHeader)
+            .putString(K_AUTH, if (sameDevice && current != null) current else authHeader)
             .putString(K_USER, userId)
             .putBoolean(K_SAVER, batterySaver)
             .putBoolean(K_AUTH_FAILED, false)
-            .commit()
+        if (deviceId != null) editor.putString(K_DEVICE, deviceId) else editor.remove(K_DEVICE)
+        editor.commit()
+    }
+
+    /** Replacement token from an upload response; must survive process death. */
+    @Synchronized
+    fun saveRotatedAuth(authHeader: String) {
+        prefs.edit().putString(K_AUTH, authHeader).commit()
     }
 
     val hasCredentials: Boolean get() = baseUrl != null && authHeader != null
@@ -103,7 +121,7 @@ class EngineState(context: Context) {
     }
 
     fun clearCredentials() {
-        prefs.edit().remove(K_AUTH).remove(K_USER).remove(K_AUTH_FAILED).commit()
+        prefs.edit().remove(K_AUTH).remove(K_DEVICE).remove(K_USER).remove(K_AUTH_FAILED).commit()
     }
 
     private fun readFix(key: String): Fix? {
@@ -132,6 +150,7 @@ class EngineState(context: Context) {
     private companion object {
         const val K_BASE_URL = "base_url"
         const val K_AUTH = "auth_header"
+        const val K_DEVICE = "device_id"
         const val K_USER = "user_id"
         const val K_SAVER = "battery_saver"
         const val K_AUTH_FAILED = "auth_failed"
