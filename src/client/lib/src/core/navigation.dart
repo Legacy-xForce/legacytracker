@@ -12,6 +12,17 @@ Uri directionsUri(double latitude, double longitude, {required bool apple}) {
   );
 }
 
+/// Like [directionsUri], for a free-text address.
+Uri directionsToUri(String destination, {required bool apple}) {
+  return Uri.https(
+    apple ? 'maps.apple.com' : 'www.google.com',
+    apple ? '/' : '/maps/dir/',
+    apple
+        ? {'daddr': destination, 'dirflg': 'd'}
+        : {'api': '1', 'destination': destination, 'travelmode': 'driving'},
+  );
+}
+
 /// Straight-line (great-circle) distance in metres.
 double metersBetween(LatLng a, LatLng b) =>
     const Distance().as(LengthUnit.Meter, a, b);

@@ -21,6 +21,16 @@ void main() {
     });
   });
 
+  group('directionsToUri', () {
+    test('encodes a free-text address', () {
+      expect(
+        directionsToUri('Piazza Duomo, Milano', apple: false).toString(),
+        'https://www.google.com/maps/dir/?api=1'
+        '&destination=Piazza+Duomo%2C+Milano&travelmode=driving',
+      );
+    });
+  });
+
   group('metersBetween', () {
     test(
       'is the straight-line distance, about 10 km per 0.09° of latitude',
