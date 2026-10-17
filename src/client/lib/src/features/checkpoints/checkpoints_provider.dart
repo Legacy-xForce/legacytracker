@@ -1,4 +1,5 @@
 import 'package:flutter/widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/checkpoint.dart';
 import '../../data/network/checkpoint_service.dart';
@@ -6,13 +7,29 @@ import '../../data/network/checkpoint_service.dart';
 /// The shared checkpoint list. Created above the [MaterialApp] so pushed
 /// routes (history, the checkpoints screen) see it too. It refetches on
 /// sign-in, app resume and after our own changes; other users' edits show up
-/// at the next refresh rather than live.
+/// at the next refresh rather than live. Whether they are drawn on the map is
+/// a per-phone choice that is remembered.
 class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
-  CheckpointsProvider({required this._service}) {
+  CheckpointsProvider({
+    required this._service,
+    Future<SharedPreferences>? prefs,
+  }) : _prefsFuture = prefs {
     WidgetsBinding.instance.addObserver(this);
+    prefs?.then((loaded) {
+      // A toggle made before the stored choice arrived wins.
+      if (!_showOnMapChanged) {
+        _showOnMap = loaded.getBool(_showOnMapKey) ?? true;
+        _notify();
+      }
+    }, onError: (_) {});
   }
 
+  static const _showOnMapKey = 'checkpoints_on_map';
+
   final CheckpointService _service;
+  final Future<SharedPreferences>? _prefsFuture;
+  bool _showOnMap = true;
+  bool _showOnMapChanged = false;
 
   List<Checkpoint> _checkpoints = const [];
   bool _loading = false;
@@ -22,6 +39,24 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
   bool _disposed = false;
 
   List<Checkpoint> get checkpoints => _checkpoints;
+
+  /// Whether the map draws the checkpoints. Street labels still resolve names
+  /// from the list either way.
+  bool get showOnMap => _showOnMap;
+
+  Future<void> setShowOnMap(bool value) async {
+    if (value == _showOnMap) return;
+    _showOnMap = value;
+    _showOnMapChanged = true;
+    _notify();
+    try {
+      await (await _prefsFuture)?.setBool(_showOnMapKey, value);
+    } catch (_) {
+      // Only the remembered choice is lost.
+    }
+  }
+
+  Future<void> toggleShowOnMap() => setShowOnMap(!_showOnMap);
   bool get isLoading => _loading;
   String? get error => _error;
 
