@@ -342,8 +342,9 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// attempt and wipes its queue, and the device's upload token is revoked.
   /// Best effort — signing out must work offline too.
   Future<void> _stopSharing() async {
+    String? engineHeader;
     try {
-      await TrackingEngine.stop(
+      engineHeader = await TrackingEngine.stop(
         clearData: true,
       ).timeout(const Duration(seconds: 15));
     } catch (_) {
@@ -353,7 +354,13 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
       final prefs = await SharedPreferences.getInstance();
       final credentials = DeviceCredentialStore.load(prefs);
       await DeviceCredentialStore.clear(prefs);
-      if (credentials != null) await deviceService?.unregister(credentials);
+      if (credentials != null) {
+        // The engine's token is newer than ours once the server rotated it.
+        final current = engineHeader?.startsWith('Device ') == true
+            ? engineHeader
+            : null;
+        await deviceService?.unregister(credentials, authHeader: current);
+      }
     } catch (_) {
       // Offline: the token stays valid server-side but is harmless — the
       // engine has already discarded its copy.

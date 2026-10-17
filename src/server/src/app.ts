@@ -11,7 +11,7 @@ import {
   validateCheckpointInput,
 } from "./services/checkpoints";
 import ConnectionManager from "./services/connection-manager";
-import { DeviceAuth } from "./services/device-auth";
+import { DEVICE_SCHEMA, DeviceAuth } from "./services/device-auth";
 import {
   advanceDwell,
   DWELL_MAX_SPEED,
@@ -65,7 +65,13 @@ const app = Fastify({
   },
 });
 const connectionManager = new ConnectionManager();
-const deviceAuth = new DeviceAuth(pool);
+const deviceAuth = new DeviceAuth(pool, {
+  onReuse: ({ deviceId, userId }) =>
+    app.log.warn(
+      { deviceId, userId },
+      "[devices] retired token reused; device revoked",
+    ),
+});
 const sharing = new SharingRegistry();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
@@ -447,6 +453,15 @@ type IngestIdentity =
   | { ok: true; userId: string; displayName: string; deviceId: string | null }
   | IdentityFailure;
 
+/** The device token in `Authorization: Device <token>`, if that's the scheme. */
+function deviceTokenOf(request: FastifyRequest): string | null {
+  const authHeader = request.headers["authorization"];
+  if (typeof authHeader !== "string" || !authHeader.startsWith("Device ")) {
+    return null;
+  }
+  return authHeader.slice(7).trim();
+}
+
 /**
  * Identity for location ingest: the native tracking engine authenticates
  * with its long-lived device token (`Authorization: Device <token>`); older
@@ -455,9 +470,8 @@ type IngestIdentity =
 async function getIngestIdentity(
   request: FastifyRequest,
 ): Promise<IngestIdentity> {
-  const authHeader = request.headers["authorization"];
-  if (typeof authHeader === "string" && authHeader.startsWith("Device ")) {
-    const token = authHeader.slice(7).trim();
+  const token = deviceTokenOf(request);
+  if (token !== null) {
     if (!token) {
       return { ok: false, reason: "empty device token" };
     }
@@ -500,20 +514,9 @@ async function ensureBackendSchema(): Promise<void> {
     await pool.query(
       "ALTER TABLE location_history ADD COLUMN IF NOT EXISTS accuracy double precision",
     );
-    await pool.query(
-      `CREATE TABLE IF NOT EXISTS devices (
-         id text PRIMARY KEY,
-         user_id text NOT NULL REFERENCES users(id),
-         token_hash text NOT NULL UNIQUE,
-         platform text,
-         created_at timestamptz NOT NULL DEFAULT now(),
-         last_seen_at timestamptz,
-         revoked_at timestamptz
-       )`,
-    );
-    await pool.query(
-      "CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id)",
-    );
+    for (const statement of DEVICE_SCHEMA) {
+      await pool.query(statement);
+    }
     await pool.query(
       `CREATE TABLE IF NOT EXISTS checkpoints (
          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1399,6 +1402,33 @@ app.post("/api/v1/location", async (request, reply) => {
     "[location] ingested location batch",
   );
 
+  // Token rotation rides on a successful upload, so it needs neither the
+  // user's login nor the app. Only engines that store the replacement opt
+  // in; any other client keeps its token unchanged.
+  let rotatedToken: string | null = null;
+  const deviceToken = deviceTokenOf(request);
+  if (
+    identity.deviceId !== null &&
+    deviceToken &&
+    request.headers["x-token-rotation"] === "1"
+  ) {
+    try {
+      rotatedToken = await deviceAuth.rotateIfDue(deviceToken);
+    } catch (error) {
+      app.log.warn(
+        { err: error, deviceId: identity.deviceId },
+        "[devices] token rotation failed",
+      );
+    }
+    if (rotatedToken !== null) {
+      app.log.info(
+        { userId: identity.userId, deviceId: identity.deviceId },
+        "[devices] rotated device token",
+      );
+      reply.header("Cache-Control", "no-store");
+    }
+  }
+
   const pacingMode = getPacingMode();
   reply.header("X-Pacing-Mode", pacingMode);
 
@@ -1409,6 +1439,7 @@ app.post("/api/v1/location", async (request, reply) => {
     stored,
     pacing: pacingMode,
     live_ttl_s: liveController.ttlSeconds,
+    ...(rotatedToken !== null ? { device_token: rotatedToken } : {}),
   });
 });
 
