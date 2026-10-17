@@ -39,6 +39,12 @@ object Tuning {
     /** Implied speed between consecutive fixes above this is a GPS jump. */
     const val MAX_PLAUSIBLE_SPEED_MS = 90.0
 
+    /**
+     * A trip must get at least this far from where it started (same as the
+     * geofence radius) or it is treated as GPS jitter and discarded.
+     */
+    const val MIN_TRIP_EXTENT_M = GEOFENCE_RADIUS_M.toDouble()
+
     const val STOP_TIMEOUT_MS = 5 * 60_000L
     /** Activity recognition says STILL: trust it and stop sooner. */
     const val STOP_TIMEOUT_STILL_MS = 2 * 60_000L
