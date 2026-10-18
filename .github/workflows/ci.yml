@@ -18,7 +18,7 @@ jobs:
           flutter-version: 3.44.0
           cache: true
       - name: Install Flutter dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
         working-directory: src/client
       - name: Build release APK
         run: flutter build apk --release
@@ -40,7 +40,7 @@ jobs:
           flutter-version: 3.44.0
           cache: true
       - name: Install Flutter dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
         working-directory: src/client
       - name: Build iOS release app without code signing
         run: flutter build ios --release --no-codesign

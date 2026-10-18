@@ -72,7 +72,7 @@ jobs:
             | sed -n -E '/Alias name:|Entry type:|SHA256:/p'
 
       - name: Install Flutter dependencies
-        run: flutter pub get
+        run: flutter pub get --enforce-lockfile
         working-directory: src/client
 
       - name: Publish release

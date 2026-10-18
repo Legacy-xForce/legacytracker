@@ -17,7 +17,6 @@
 src/**/.dart_tool/
 src/**/.pub/
 src/**/.packages
-src/**/pubspec.lock
 src/**/build/
 src/**/ios/Flutter/.last_build_id
 src/**/.flutter-plugins-dependencies
