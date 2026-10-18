@@ -7,6 +7,7 @@ import 'package:passkeys/types.dart';
 import '../../data/models/passkey.dart';
 import '../../data/network/auth_service.dart';
 import '../../data/storage/token_storage.dart';
+import 'attestation.dart';
 
 /// A passkey ceremony that didn't complete, with a [message] for the user.
 /// [cancelled] means the user dismissed the system sheet on purpose, which
@@ -45,8 +46,7 @@ class PasskeyClient {
     final assertion = await _platform(() => _authenticator.authenticate(request));
     try {
       return await authService.passkeyLogin(assertion.toJson());
-    } on AuthException catch (error) {
-      if (error.statusCode != 404) rethrow;
+    } on PasskeyNotRegisteredException catch (error) {
       // Deleted from the account (maybe on another phone): have the
       // platform stop offering it.
       unawaited(
@@ -59,10 +59,7 @@ class PasskeyClient {
             )
             .catchError((_) {}),
       );
-      throw const PasskeyException(
-        'That passkey was removed from your account. Sign in with your '
-        'password instead.',
-      );
+      throw PasskeyException(error.message);
     }
   }
 
@@ -70,7 +67,21 @@ class PasskeyClient {
     final options = await authService.passkeyRegistrationOptions(accessToken);
     final request = RegisterRequestType.fromJson(options);
     final attestation = await _platform(() => _authenticator.register(request));
-    return authService.registerPasskey(accessToken, attestation.toJson());
+    final AttestedCredential credential;
+    try {
+      credential = AttestedCredential.parse(attestation.attestationObject);
+    } on FormatException {
+      throw const PasskeyException(
+        'This passkey provider made a passkey the server can\'t use. Try '
+        'another provider.',
+      );
+    }
+    return authService.registerPasskey(
+      accessToken,
+      attestation.toJson(),
+      publicKey: credential.publicKey,
+      name: credential.providerName,
+    );
   }
 
   Future<T> _platform<T>(Future<T> Function() ceremony) async {

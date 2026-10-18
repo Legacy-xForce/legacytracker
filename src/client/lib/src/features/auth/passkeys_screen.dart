@@ -263,7 +263,7 @@ class _PasskeyTile extends StatelessWidget {
           child: Icon(Icons.key_rounded, size: 20, color: scheme.primary),
         ),
         title: Text(passkey.name),
-        subtitle: Text(_details(passkey)),
+        subtitle: Text('Added ${formatShortDate(passkey.createdAt)}'),
         trailing: IconButton(
           tooltip: 'Remove',
           icon: const Icon(Icons.delete_outline_rounded),
@@ -271,23 +271,6 @@ class _PasskeyTile extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  static String _details(Passkey passkey) {
-    final lastUsed = passkey.lastUsedAt;
-    return [
-      if (passkey.synced) 'Synced',
-      'Added ${formatShortDate(passkey.createdAt)}',
-      if (lastUsed != null) 'used ${_ago(lastUsed)}',
-    ].join(' · ');
-  }
-
-  static String _ago(DateTime time) {
-    final elapsed = DateTime.now().difference(time);
-    if (elapsed.inMinutes < 1) return 'just now';
-    if (elapsed.inHours < 1) return '${elapsed.inMinutes} min ago';
-    if (elapsed.inDays < 1) return '${elapsed.inHours} h ago';
-    return formatShortDate(time);
   }
 }
 
