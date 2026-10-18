@@ -12,3 +12,11 @@
   <init>();
 }
 -keep class androidx.work.impl.WorkDatabase_Impl { *; }
+
+# shared_preferences_android 2.5+ binds its Kotlin classes over JNI by name
+# and signature (Continuation, CoroutineSingletons, Result, Unit...). R8
+# otherwise renames or strips them, every SharedPreferences call throws, and
+# the app sits on its startup spinner. Keep the stdlib it reaches into.
+-keep class kotlin.** {
+  *;
+}
