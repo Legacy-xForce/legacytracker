@@ -17,12 +17,15 @@ import check from '@material-symbols/svg-400/rounded/check.svg?raw';
 import chevronLeft from '@material-symbols/svg-400/rounded/chevron_left.svg?raw';
 import chevronRight from '@material-symbols/svg-400/rounded/chevron_right.svg?raw';
 import close from '@material-symbols/svg-400/rounded/close.svg?raw';
+import dateRange from '@material-symbols/svg-400/rounded/date_range.svg?raw';
 import cloudOff from '@material-symbols/svg-400/rounded/cloud_off-fill.svg?raw';
 import directions from '@material-symbols/svg-400/rounded/directions-fill.svg?raw';
+import directionsCar from '@material-symbols/svg-400/rounded/directions_car-fill.svg?raw';
 import error from '@material-symbols/svg-400/rounded/error.svg?raw';
 import event from '@material-symbols/svg-400/rounded/event-fill.svg?raw';
 import eventBusy from '@material-symbols/svg-400/rounded/event_busy.svg?raw';
 import fitAll from '@material-symbols/svg-400/rounded/zoom_out_map.svg?raw';
+import group from '@material-symbols/svg-400/rounded/group-fill.svg?raw';
 import history from '@material-symbols/svg-400/rounded/history.svg?raw';
 import info from '@material-symbols/svg-400/rounded/info.svg?raw';
 import key from '@material-symbols/svg-400/rounded/key-fill.svg?raw';
@@ -54,6 +57,7 @@ import timelapse from '@material-symbols/svg-400/rounded/timelapse-fill.svg?raw'
 import trash from '@material-symbols/svg-400/rounded/delete.svg?raw';
 import timer from '@material-symbols/svg-400/rounded/timer.svg?raw';
 import touchApp from '@material-symbols/svg-400/rounded/touch_app.svg?raw';
+import trophy from '@material-symbols/svg-400/rounded/trophy-fill.svg?raw';
 import trendingUp from '@material-symbols/svg-400/rounded/trending_up.svg?raw';
 import visibility from '@material-symbols/svg-400/rounded/visibility.svg?raw';
 import visibilityOff from '@material-symbols/svg-400/rounded/visibility_off.svg?raw';
@@ -76,11 +80,14 @@ const raw = {
     chevronRight,
     close,
     cloudOff,
+    dateRange,
     directions,
+    directionsCar,
     error,
     event,
     eventBusy,
     fitAll,
+    group,
     history,
     info,
     key,
@@ -112,6 +119,7 @@ const raw = {
     timer,
     trash,
     touchApp,
+    trophy,
     trendingUp,
     visibility,
     visibilityOff

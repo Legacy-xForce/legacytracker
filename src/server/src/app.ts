@@ -32,6 +32,11 @@ import { LiveController, type TrackingCommand } from "./services/live-controller
 import { LocationRefreshCoordinator } from "./services/location-refresh";
 import { ViewerPresence } from "./services/viewer-presence";
 import { parseHistoryRange } from "./services/history-range";
+import {
+  rankLeaderboard,
+  summarizeTravel,
+  type TravelTotals,
+} from "./services/leaderboard";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
 import {
   messageFor,
@@ -79,6 +84,9 @@ const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 // Without points (calendar summaries) a request is cheap to answer, so a
 // whole calendar month — or a few — fits in one call.
 const MAX_SUMMARY_WINDOW_MS = 93 * 24 * 60 * 60 * 1000;
+// The travel leaderboard rebuilds everyone's trips for its window, so a
+// year is as far as one request goes.
+const MAX_LEADERBOARD_WINDOW_MS = 366 * 24 * 60 * 60 * 1000;
 
 // Live mode: devices stream in realtime only while someone has the map open.
 // `live` expires on the device after LIVE_TTL_SECONDS unless renewed, so a
@@ -1507,6 +1515,85 @@ app.get("/api/v1/history", async (request, reply) => {
             recorded_at: point.recordedAt,
           }))
         : undefined,
+    })),
+  });
+});
+
+// Who travelled furthest between `from` and `to`, with each person's moving
+// time and speeds. Built from the same trips as the history, so GPS drift
+// while parked doesn't count. People who hide their location from the caller
+// are left out entirely: distance alone says when they were on the move.
+app.get("/api/v1/leaderboard", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request);
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/leaderboard", identity);
+  }
+
+  const range = parseHistoryRange(
+    request.query as Record<string, string | undefined>,
+    MAX_LEADERBOARD_WINDOW_MS,
+  );
+  if (!range.ok) {
+    return reply.code(400).send({ error: range.error });
+  }
+
+  const users = await pool.query<{ id: string; name: string }>(
+    "SELECT id, name FROM users",
+  );
+  const totals: { userId: string; name: string; totals: TravelTotals }[] = [];
+  // One person at a time keeps a long window from holding everyone's points
+  // in memory at once.
+  for (const user of users.rows) {
+    if (sharing.isHidden(user.id, identity.userId)) continue;
+    const result = await pool.query(
+      `SELECT recorded_at,
+              ST_Y(location::geometry) AS latitude,
+              ST_X(location::geometry) AS longitude,
+              speed, source
+       FROM location_history
+       WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+         AND source IS DISTINCT FROM 'heartbeat' AND source IS DISTINCT FROM 'ping'
+       ORDER BY recorded_at ASC`,
+      [user.id, range.from.toISOString(), range.to.toISOString()],
+    );
+    const points: HistoryPoint[] = result.rows.map((row) => ({
+      recordedAt: new Date(row.recorded_at).toISOString(),
+      latitude: Number(row.latitude),
+      longitude: Number(row.longitude),
+      speed: Number(row.speed),
+      heading: null,
+      source: row.source ?? null,
+    }));
+    totals.push({
+      userId: user.id,
+      name: lastKnownName.get(user.id) ?? user.name,
+      totals: summarizeTravel(points),
+    });
+  }
+
+  const entries = rankLeaderboard(totals, identity.userId);
+  app.log.info(
+    {
+      requestedBy: identity.userId,
+      entries: entries.length,
+      from: range.from.toISOString(),
+      to: range.to.toISOString(),
+    },
+    "[leaderboard] served travel leaderboard",
+  );
+
+  return reply.send({
+    from: range.from.toISOString(),
+    to: range.to.toISOString(),
+    entries: entries.map((entry) => ({
+      user_id: entry.userId,
+      username: entry.name,
+      rank: entry.rank,
+      distance_meters: entry.distanceMeters,
+      duration_seconds: entry.durationSeconds,
+      avg_speed: entry.avgSpeed,
+      top_speed: entry.topSpeed,
+      trip_count: entry.tripCount,
     })),
   });
 });

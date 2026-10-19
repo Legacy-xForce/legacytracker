@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../features/tracking/tracking_controller.dart';
+import '../auth/auth_provider.dart';
+import '../travel/travel_tab.dart';
 import 'local_avatar_store.dart';
 import 'map_settings.dart';
 import 'widgets/tracking_map_layer.dart';
@@ -18,7 +20,8 @@ class TrackingScreen extends StatefulWidget {
 
 class _TrackingScreenState extends State<TrackingScreen> {
   static const _mapTab = 0;
-  static const _profileTab = 1;
+  static const _travelTab = 1;
+  static const _profileTab = 2;
 
   late final LocalAvatarStore _avatarStore;
   late final MapSettings _mapSettings;
@@ -37,7 +40,8 @@ class _TrackingScreenState extends State<TrackingScreen> {
       _avatarStore = LocalAvatarStore();
       _avatarStore.load(controller.selfProfile.id);
       // Changing the default in the profile applies to the map right away.
-      _mapSettings = context.read<MapSettings>()..addListener(_followDefaultLayer);
+      _mapSettings = context.read<MapSettings>()
+        ..addListener(_followDefaultLayer);
       _initialized = true;
     }
 
@@ -102,6 +106,13 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     },
                     onStatusTap: () => _selectTab(_profileTab),
                   ),
+                  TravelTab(
+                    isActive: _selectedIndex == _travelTab,
+                    selfId: controller.selfProfile.id,
+                    baseUrl: controller.baseUrl,
+                    getAccessToken: () =>
+                        context.read<AuthProvider>().tokens?.accessToken,
+                  ),
                   TrackingProfileTab(controller: controller),
                 ],
               );
@@ -115,6 +126,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
                 icon: Icon(Icons.map_outlined),
                 selectedIcon: Icon(Icons.map),
                 label: 'Map',
+              ),
+              NavigationDestination(
+                icon: Icon(Icons.directions_car_outlined),
+                selectedIcon: Icon(Icons.directions_car),
+                label: 'Travel',
               ),
               NavigationDestination(
                 icon: Icon(Icons.person_outline),

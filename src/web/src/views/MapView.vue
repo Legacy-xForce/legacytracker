@@ -7,6 +7,7 @@ import PeersMap from '../components/PeersMap.vue';
 import ReplayLayer from '../components/ReplayLayer.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import TripHistory from '../components/history/TripHistory.vue';
+import TravelLeaderboard from '../components/travel/TravelLeaderboard.vue';
 import MapControlButton from '../components/map/MapControlButton.vue';
 import MapControlGroup from '../components/map/MapControlGroup.vue';
 import StatusPill from '../components/map/StatusPill.vue';
@@ -22,12 +23,13 @@ import { useMediaQuery } from '../composables/useMediaQuery';
 import { useNow } from '../composables/useNow';
 import type { Insets } from '../lib/camera';
 import { decodeJwt } from '../lib/jwt';
-import { hasPosition, isStale } from '../lib/peers';
+import { hasPosition } from '../lib/peers';
 import { storage } from '../lib/storage';
 import { MAP_STYLES, type MapStyle } from '../lib/tiles';
 import { useCheckpointsStore } from '../stores/checkpoints';
 import { useEventsStore } from '../stores/events';
 import { useHistoryStore } from '../stores/history';
+import { useLeaderboardStore } from '../stores/leaderboard';
 import { usePeersStore } from '../stores/peers';
 import { useSessionStore } from '../stores/session';
 import { useSharingStore } from '../stores/sharing';
@@ -38,6 +40,7 @@ const checkpoints = useCheckpointsStore();
 const events = useEventsStore();
 const history = useHistoryStore();
 const sharing = useSharingStore();
+const leaderboard = useLeaderboardStore();
 const router = useRouter();
 
 const CHECKPOINTS_KEY = 'legacytracker.showCheckpoints';
@@ -59,7 +62,7 @@ const styleMenu = ref(false);
 const accountMenu = ref(false);
 const sheetExpanded = ref(false);
 const selectedId = ref<string | null>(null);
-const view = ref<'people' | 'person' | 'history'>('people');
+const view = ref<'people' | 'person' | 'history' | 'travel'>('people');
 
 function readStyle(): MapStyle {
     const stored = storage.get(STYLE_KEY);
@@ -103,6 +106,13 @@ async function select(id: string) {
 
 function showPeople() {
     view.value = 'people';
+}
+
+function showTravel() {
+    view.value = 'travel';
+    // On phones the leaderboard needs the room; the people list is fine peeking.
+    sheetExpanded.value = true;
+    leaderboard.open();
 }
 
 function openHistory() {
@@ -179,6 +189,7 @@ onBeforeUnmount(() => {
     history.close();
     events.reset();
     sharing.reset();
+    leaderboard.reset();
 });
 
 // The server refusing us flips the session into its denied state; follow it.
@@ -300,28 +311,40 @@ watch(replaying, (isReplaying) => {
             :expanded-height="expandedHeight"
         >
             <template #header>
-                <template v-if="view === 'people' || (view === 'person' && !selected)">
-                    <h2 class="type-title-md font-bold">People</h2>
-                    <span
-                        class="bg-secondary-container text-on-secondary-container type-label-md ml-2 rounded-full px-2 py-0.5 font-bold"
-                        >{{ people.length }}</span
-                    >
-                    <span class="ml-auto flex">
+                <template v-if="view === 'people' || view === 'travel' || (view === 'person' && !selected)">
+                    <template v-if="view === 'travel'">
+                        <h2 class="type-title-md font-bold">Travel</h2>
+                    </template>
+                    <template v-else>
+                        <h2 class="type-title-md font-bold">People</h2>
                         <span
-                            v-for="(peer, i) in people.slice(0, 4)"
-                            :key="peer.id"
-                            class="relative"
-                            :style="{ marginLeft: i ? '-8px' : '0', zIndex: 4 - i }"
+                            class="bg-secondary-container text-on-secondary-container type-label-md ml-2 rounded-full px-2 py-0.5 font-bold"
+                            >{{ people.length }}</span
                         >
-                            <UserAvatar
-                                :user-id="peer.id"
-                                :name="peer.name"
-                                :size="28"
-                                ring-color="var(--color-surface-container-low)"
-                                :ring-width="2"
-                                :dimmed="isStale(peer, mapNow)"
-                            />
-                        </span>
+                    </template>
+                    <!-- Switches the panel between the people list and the travel leaderboard. -->
+                    <span class="bg-surface-container-high ml-auto flex rounded-full p-1" role="tablist">
+                        <button
+                            v-for="option in [
+                                { id: 'people', icon: 'group', label: 'People' },
+                                { id: 'travel', icon: 'directionsCar', label: 'Travel' }
+                            ] as const"
+                            :key="option.id"
+                            class="flex h-8 w-11 items-center justify-center rounded-full transition-colors"
+                            :class="
+                                (view === 'travel') === (option.id === 'travel')
+                                    ? 'bg-secondary-container text-on-secondary-container'
+                                    : 'text-on-surface-variant hover:bg-white/6'
+                            "
+                            role="tab"
+                            :aria-selected="(view === 'travel') === (option.id === 'travel')"
+                            :aria-label="option.label"
+                            :title="option.label"
+                            :data-view="option.id"
+                            @click="option.id === 'travel' ? showTravel() : showPeople()"
+                        >
+                            <Icon :name="option.icon" :size="20" />
+                        </button>
                     </span>
                 </template>
                 <template v-else>
@@ -341,6 +364,7 @@ watch(replaying, (isReplaying) => {
             </template>
 
             <TripHistory v-if="view === 'history'" />
+            <TravelLeaderboard v-else-if="view === 'travel'" :self-id="selfId" />
             <PersonDetail
                 v-else-if="view === 'person' && selected"
                 :key="selected.id"

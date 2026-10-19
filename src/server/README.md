@@ -167,6 +167,12 @@ Tokens FCM reports as unregistered are pruned.
 | `GET`  | `/api/v1/history` | Query `user_id` (default: caller), `from`, `to` (ISO 8601). Returns `{ "sessions": [...] }`: trips with `start_at`, `end_at`, `duration_seconds`, `distance_meters`, `avg_speed`, `top_speed`, `point_count` and `points`. With `points=false` the points are left out — the app's trip calendar fetches a month of summaries that way. Windows are capped at 30 days (93 without points). |
 | `DELETE` | `/api/v1/history` | Query `from`, `to` (ISO 8601, both required, both inclusive). Erases the **caller's own** stored points in that window and returns `{ "deleted": n }`. A trip is deleted with its `start_at`..`end_at`, a day with its whole local day; trips aren't stored, they are derived from the points. There is no `user_id`: nobody can delete someone else's history. Needs a signed-in user (not a device token); windows are capped at 30 days. |
 
+### Travel leaderboard
+
+| Method | Path | Description |
+|---|---|---|
+| `GET`  | `/api/v1/leaderboard` | Query `from`, `to` (ISO 8601, both required; windows are capped at 366 days). Returns `{ "from", "to", "entries": [...] }`, furthest first: `user_id`, `username`, `rank` (equal distances share one), `distance_meters`, `duration_seconds` (time on trips), `avg_speed` (distance over that time), `top_speed` (m/s) and `trip_count`. Built from the same trips as `/api/v1/history`, so drift while parked doesn't count. Only people with a trip in the window are listed, plus the caller; people who hide their location from the caller are left out. |
+
 ### WebSocket stream
 
 | Method | Path               | Description                                       |
@@ -226,5 +232,6 @@ src/
     live-controller.ts    # live-mode state (debounce, renewal, TTL)
     session-builder.ts    # trips for history/replay
     history-range.ts      # from/to validation for deleting history
+    leaderboard.ts        # travel totals and ranking for the leaderboard
 test/                     # node:test unit tests (npm test)
 ```
