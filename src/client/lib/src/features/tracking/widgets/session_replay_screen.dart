@@ -6,6 +6,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../../core/formatters.dart';
+import '../../../core/speed_color.dart';
 import '../../../data/models/location_session.dart';
 import '../map_settings.dart';
 import 'map_layers.dart';
@@ -61,6 +62,31 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     for (var i = 1; i < _route.length; i++)
       const Distance().as(LengthUnit.Meter, _route[i - 1], _route[i]),
   ];
+
+  /// The route as runs of one speed colour, red when slow and green when fast.
+  late final List<Polyline> _speedPolylines = _buildSpeedPolylines();
+
+  List<Polyline> _buildSpeedPolylines() {
+    final points = widget.session.points;
+    final polylines = <Polyline>[];
+    for (var i = 1; i < points.length; i++) {
+      final color = speedColor((points[i - 1].speed + points[i].speed) / 2);
+      if (polylines.isNotEmpty && polylines.last.color == color) {
+        polylines.last.points.add(_route[i]);
+      } else {
+        polylines.add(
+          Polyline(
+            points: [_route[i - 1], _route[i]],
+            strokeWidth: 5,
+            color: color,
+            strokeCap: StrokeCap.round,
+            strokeJoin: StrokeJoin.round,
+          ),
+        );
+      }
+    }
+    return polylines;
+  }
 
   late final double _paceMetersPerSecond = math.max(
     _segmentMeters.fold<double>(0, (sum, m) => sum + m) /
@@ -218,13 +244,13 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                     ...buildMapTileLayers(_selectedLayer),
                     PolylineLayer(
                       polylines: [
+                        // A dark edge keeps the route readable on any tiles, as on the web.
                         Polyline(
                           points: _route,
-                          strokeWidth: 5,
-                          color: theme.colorScheme.primary,
-                          borderStrokeWidth: 1.5,
-                          borderColor: Colors.black.withValues(alpha: 0.35),
+                          strokeWidth: 8,
+                          color: Colors.black.withValues(alpha: 0.35),
                         ),
+                        ..._speedPolylines,
                       ],
                     ),
                     MarkerLayer(
@@ -255,6 +281,8 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                             beamColor: const Color(0xFF0985FB),
                             ringColor: Colors.white,
                             badgeColor: Colors.grey.shade900,
+                            // Smaller than a live peer so the route stays in view.
+                            compact: true,
                           ),
                         ),
                       ],

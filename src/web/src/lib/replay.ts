@@ -21,6 +21,63 @@ export const MIN_SEGMENT_MS = 16;
 export const MAX_SEGMENT_MS = 3_000;
 export const PLAYBACK_SPEEDS = [1, 2, 4] as const;
 
+/** Speed (km/h) at which the replay line is fully green. Slower speeds fade through amber. */
+export const SPEED_COLOR_MAX_KMH = 70;
+
+/** Red at a standstill, orange and yellow through the middle, green at full speed. */
+const SPEED_COLOR_STOPS: readonly (readonly [number, readonly [number, number, number]])[] = [
+    [0, [244, 67, 54]],
+    [0.35, [255, 152, 0]],
+    [0.65, [255, 235, 59]],
+    [1, [76, 175, 80]]
+];
+
+/** Nearby speeds share a colour, so consecutive segments merge into one polyline. */
+const SPEED_COLOR_STEPS = 16;
+
+export interface ReplaySegment {
+    /** `[latitude, longitude]` pairs for this run of the route. */
+    points: [number, number][];
+    color: string;
+}
+
+/**
+ * Colour for a recorded speed (m/s): red when slow, green when fast. Quantised so
+ * a route made of tiny speed changes still draws as a handful of polylines.
+ */
+export function speedColor(speedMps: number): string {
+    const kmh = Number.isFinite(speedMps) ? Math.max(0, speedMps) * 3.6 : 0;
+    const step = Math.round(Math.min(1, kmh / SPEED_COLOR_MAX_KMH) * SPEED_COLOR_STEPS) / SPEED_COLOR_STEPS;
+    let index = 0;
+    while (index < SPEED_COLOR_STOPS.length - 2 && step > SPEED_COLOR_STOPS[index + 1][0]) index++;
+    const [start, from] = SPEED_COLOR_STOPS[index];
+    const [end, to] = SPEED_COLOR_STOPS[index + 1];
+    const t = end === start ? 0 : (step - start) / (end - start);
+    const channels = from.map((value, channel) => Math.round(value + (to[channel] - value) * t));
+    return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
+}
+
+/** The route split into runs with the same speed colour, ready for Leaflet polylines. */
+export function speedSegments(points: ReplayPoint[]): ReplaySegment[] {
+    const segments: ReplaySegment[] = [];
+    for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1];
+        const b = points[i];
+        const color = speedColor((a.speed + b.speed) / 2);
+        const last = segments[segments.length - 1];
+        if (last?.color === color) last.points.push([b.latitude, b.longitude]);
+        else
+            segments.push({
+                points: [
+                    [a.latitude, a.longitude],
+                    [b.latitude, b.longitude]
+                ],
+                color
+            });
+    }
+    return segments;
+}
+
 const EARTH_RADIUS_M = 6_371_000;
 
 /** Great-circle distance in metres. */

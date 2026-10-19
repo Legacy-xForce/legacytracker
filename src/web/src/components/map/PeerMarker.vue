@@ -16,7 +16,12 @@ const props = defineProps<{
     speedKmh: number;
     battery: number | null;
     charging: boolean;
+    /** Draw the whole marker smaller, e.g. over the replay route. */
+    compact?: boolean;
 }>();
+
+/** Replay uses a smaller rider so the route and its colours stay in view. */
+const COMPACT_SCALE = 0.7;
 
 // The beam turns the short way round (350° → 10° is +20°, not -340°).
 const rotation = ref(props.heading ?? 0);
@@ -29,7 +34,7 @@ watch(
     }
 );
 
-const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1));
+const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) * (props.compact ? COMPACT_SCALE : 1));
 </script>
 
 <template>

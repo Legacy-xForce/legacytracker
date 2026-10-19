@@ -10,7 +10,7 @@ import { PEER_MARKER_SIZE } from '../lib/clusters';
 import { formatClock, formatLongDay } from '../lib/format';
 import { useInsets, useMap } from '../lib/mapContext';
 import { MOVING_SPEED } from '../lib/peers';
-import { BASE_SPEED, PLAYBACK_SPEEDS, type ReplayTrack } from '../lib/replay';
+import { BASE_SPEED, PLAYBACK_SPEEDS, speedSegments, type ReplayTrack } from '../lib/replay';
 import { VueMarker } from '../lib/vueMarker';
 
 const props = defineProps<{ userId: string; userName: string; session: HistorySession; track: ReplayTrack }>();
@@ -49,7 +49,9 @@ function riderProps() {
         heading: point.heading,
         speedKmh: point.speed * 3.6,
         battery: null,
-        charging: false
+        charging: false,
+        // The replay marker sits over the route, so it can afford to be smaller than a live peer.
+        compact: true
     };
 }
 
@@ -84,7 +86,17 @@ function draw() {
     group = L.layerGroup([
         // A dark edge keeps the route readable on any tiles, as on the phone.
         L.polyline(route, { color: '#000', opacity: 0.35, weight: 8, interactive: false }),
-        L.polyline(route, { color: '#82d5c8', weight: 5, opacity: 1, interactive: false }),
+        // One polyline per run of similar speed: red when slow, green when fast.
+        ...speedSegments(props.track.points).map((segment) =>
+            L.polyline(segment.points, {
+                color: segment.color,
+                weight: 5,
+                opacity: 1,
+                interactive: false,
+                lineCap: 'round',
+                lineJoin: 'round'
+            })
+        ),
         endpoint(route[0], 'var(--color-online)'),
         endpoint(route[route.length - 1], 'var(--color-arrival)'),
         rider.marker

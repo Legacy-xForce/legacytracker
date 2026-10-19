@@ -1,8 +1,17 @@
 import { describe, expect, it } from 'vitest';
-import { haversine, MAX_SEGMENT_MS, ReplayTrack, TARGET_PLAYBACK_MS, type ReplayPoint } from '../lib/replay';
+import {
+    haversine,
+    MAX_SEGMENT_MS,
+    ReplayTrack,
+    speedColor,
+    speedSegments,
+    SPEED_COLOR_MAX_KMH,
+    TARGET_PLAYBACK_MS,
+    type ReplayPoint
+} from '../lib/replay';
 
-function point(latitude: number, longitude: number): ReplayPoint {
-    return { latitude, longitude, speed: 0, heading: null, recordedAt: 0 };
+function point(latitude: number, longitude: number, speed = 0): ReplayPoint {
+    return { latitude, longitude, speed, heading: null, recordedAt: 0 };
 }
 
 describe('haversine', () => {
@@ -10,6 +19,35 @@ describe('haversine', () => {
         expect(haversine(0, 0, 1, 0)).toBeGreaterThan(110_000);
         expect(haversine(0, 0, 1, 0)).toBeLessThan(112_000);
         expect(haversine(10, 10, 10, 10)).toBe(0);
+    });
+});
+
+describe('speed colouring', () => {
+    it('runs from red when stopped to green at full speed', () => {
+        expect(speedColor(0)).toBe('#f44336');
+        expect(speedColor(SPEED_COLOR_MAX_KMH / 3.6)).toBe('#4caf50');
+        expect(speedColor(100)).toBe('#4caf50');
+    });
+
+    it('passes through amber and yellow on the way', () => {
+        expect(speedColor(24 / 3.6)).not.toBe(speedColor(0));
+        expect(speedColor(45 / 3.6)).not.toBe(speedColor(24 / 3.6));
+        expect(speedColor(45 / 3.6)).not.toBe(speedColor(100));
+    });
+
+    it('draws consecutive fixes with similar speeds as one segment', () => {
+        const steady = speedSegments([point(0, 0, 0), point(0, 0.001, 0), point(0, 0.002, 0)]);
+        expect(steady).toHaveLength(1);
+        expect(steady[0].color).toBe('#f44336');
+        expect(steady[0].points).toHaveLength(3);
+    });
+
+    it('splits the route when the speed colour changes', () => {
+        const segments = speedSegments([point(0, 0, 0), point(0, 0.001, 0), point(0, 0.002, 40)]);
+        expect(segments).toHaveLength(2);
+        expect(segments[0].color).toBe('#f44336');
+        expect(segments[1].color).toBe('#4caf50');
+        expect(segments[1].points[0]).toEqual([0, 0.001]);
     });
 });
 

@@ -34,6 +34,7 @@ class TrackedUserMarker extends StatefulWidget {
     required this.beamColor,
     required this.ringColor,
     required this.badgeColor,
+    this.compact = false,
   });
 
   final String userId;
@@ -54,6 +55,9 @@ class TrackedUserMarker extends StatefulWidget {
   final Color beamColor;
   final Color ringColor;
   final Color badgeColor;
+
+  /// Draws the whole marker smaller, e.g. over a replay route.
+  final bool compact;
 
   /// The footprint this widget needs when placed in a flutter_map `Marker`.
   static const double width = 152;
@@ -137,7 +141,9 @@ class _TrackedUserMarkerState extends State<TrackedUserMarker>
         message: widget.tooltipMessage,
         child: TweenAnimationBuilder<double>(
           tween: Tween<double>(
-            end: widget.isSelected ? 1.18 : (widget.isMoving ? 1.08 : 1.0),
+            end:
+                (widget.isSelected ? 1.18 : (widget.isMoving ? 1.08 : 1.0)) *
+                (widget.compact ? 0.7 : 1.0),
           ),
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOut,
