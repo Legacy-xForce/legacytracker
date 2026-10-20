@@ -63,7 +63,7 @@ function kmh(metersPerSecond: number): string {
                 :class="
                     board.period.kind === option.kind
                         ? 'bg-secondary-container text-on-secondary-container'
-                        : 'text-on-surface-variant hover:bg-white/5'
+                        : 'text-on-surface-variant hover:bg-on-surface/5'
                 "
                 role="tab"
                 :aria-selected="board.period.kind === option.kind"
@@ -84,7 +84,7 @@ function kmh(metersPerSecond: number): string {
             </div>
             <div class="flex items-center px-2 pt-1 pb-1.5">
                 <button
-                    class="text-on-surface-variant flex size-10 items-center justify-center rounded-full hover:bg-white/6"
+                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
                     :aria-label="`Previous ${board.period.kind === 'custom' ? 'range' : board.period.kind}`"
                     data-previous
                     @click="board.shift(-1)"
@@ -93,7 +93,7 @@ function kmh(metersPerSecond: number): string {
                 </button>
                 <h3 class="type-title-md flex-1 text-center font-bold" data-period>{{ label }}</h3>
                 <button
-                    class="text-on-surface-variant flex size-10 items-center justify-center rounded-full hover:bg-white/6 disabled:opacity-30"
+                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full disabled:opacity-30"
                     :aria-label="`Next ${board.period.kind === 'custom' ? 'range' : board.period.kind}`"
                     :disabled="!board.canGoForward"
                     data-next
@@ -108,7 +108,7 @@ function kmh(metersPerSecond: number): string {
                     <input
                         v-model="firstDay"
                         type="date"
-                        class="type-body-md text-on-surface w-full bg-transparent [color-scheme:dark] outline-none"
+                        class="type-body-md text-on-surface w-full bg-transparent outline-none"
                         :max="today"
                         data-from
                         @change="applyCustom"
@@ -119,7 +119,7 @@ function kmh(metersPerSecond: number): string {
                     <input
                         v-model="lastDay"
                         type="date"
-                        class="type-body-md text-on-surface w-full bg-transparent [color-scheme:dark] outline-none"
+                        class="type-body-md text-on-surface w-full bg-transparent outline-none"
                         :max="today"
                         data-to
                         @change="applyCustom"
@@ -134,7 +134,7 @@ function kmh(metersPerSecond: number): string {
                 <Icon name="cloudOff" :size="32" class="mx-auto" />
                 <p class="type-body-md mt-2.5">{{ board.error }}</p>
                 <button
-                    class="text-primary type-label-lg mt-2 rounded-full px-3 py-2 hover:bg-white/5"
+                    class="text-primary type-label-lg hover:bg-on-surface/5 mt-2 rounded-full px-3 py-2"
                     @click="board.open()"
                 >
                     Retry

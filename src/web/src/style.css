@@ -35,6 +35,161 @@
     --color-hidden: #607d8b;
 }
 
+/*
+ * Theme palettes. The tokens above are Teal, the default, so an existing
+ * install looks unchanged. Each block overrides the same semantic tokens;
+ * components never need to know which theme is active.
+ */
+html[data-theme='teal'] {
+    color-scheme: dark;
+}
+
+html[data-theme='oled'] {
+    --color-surface: #000000;
+    --color-surface-container-lowest: #000000;
+    --color-surface-container-low: #070b0a;
+    --color-surface-container: #0d1312;
+    --color-surface-container-high: #151c1a;
+    --color-surface-container-highest: #1e2624;
+    --color-on-surface: #dde4e1;
+    --color-on-surface-variant: #a8b4b1;
+    --color-outline: #5c6764;
+    --color-outline-variant: #26302e;
+    --color-primary: #82d5c8;
+    --color-on-primary: #003731;
+    --color-primary-container: #005048;
+    --color-on-primary-container: #9ef2e4;
+    --color-secondary-container: #334b47;
+    --color-on-secondary-container: #cce8e2;
+    --color-error: #ffb4ab;
+    --color-error-container: #93000a;
+    --color-on-error-container: #ffdad6;
+    color-scheme: dark;
+}
+
+html[data-theme='catppuccin-mocha'] {
+    --color-surface: #1e1e2e;
+    --color-surface-container-lowest: #11111b;
+    --color-surface-container-low: #181825;
+    --color-surface-container: #313244;
+    --color-surface-container-high: #45475a;
+    --color-surface-container-highest: #585b70;
+    --color-on-surface: #cdd6f4;
+    --color-on-surface-variant: #a6adc8;
+    --color-outline: #9399b2;
+    --color-outline-variant: #585b70;
+    --color-primary: #cba6f7;
+    --color-on-primary: #11111b;
+    --color-primary-container: #483f5e;
+    --color-on-primary-container: #cdd6f4;
+    --color-secondary-container: #384953;
+    --color-on-secondary-container: #cdd6f4;
+    --color-error: #f38ba8;
+    --color-error-container: #51384b;
+    --color-on-error-container: #cdd6f4;
+    color-scheme: dark;
+}
+
+html[data-theme='catppuccin-macchiato'] {
+    --color-surface: #24273a;
+    --color-surface-container-lowest: #181926;
+    --color-surface-container-low: #1e2030;
+    --color-surface-container: #363a4f;
+    --color-surface-container-high: #494d64;
+    --color-surface-container-highest: #5b6078;
+    --color-on-surface: #cad3f5;
+    --color-on-surface-variant: #a5adcb;
+    --color-outline: #939ab7;
+    --color-outline-variant: #5b6078;
+    --color-primary: #c6a0f6;
+    --color-on-primary: #181926;
+    --color-primary-container: #4b4467;
+    --color-on-primary-container: #cad3f5;
+    --color-secondary-container: #3b4d5a;
+    --color-on-secondary-container: #cad3f5;
+    --color-error: #ed8796;
+    --color-error-container: #543e50;
+    --color-on-error-container: #cad3f5;
+    color-scheme: dark;
+}
+
+html[data-theme='catppuccin-frappe'] {
+    --color-surface: #303446;
+    --color-surface-container-lowest: #232634;
+    --color-surface-container-low: #292c3c;
+    --color-surface-container: #414559;
+    --color-surface-container-high: #51576d;
+    --color-surface-container-highest: #626880;
+    --color-on-surface: #c6d0f5;
+    --color-on-surface-variant: #a5adce;
+    --color-outline: #949cbb;
+    --color-outline-variant: #626880;
+    --color-primary: #ca9ee6;
+    --color-on-primary: #232634;
+    --color-primary-container: #554d6c;
+    --color-on-primary-container: #c6d0f5;
+    --color-secondary-container: #425560;
+    --color-on-secondary-container: #c6d0f5;
+    --color-error: #e78284;
+    --color-error-container: #5c4755;
+    --color-on-error-container: #c6d0f5;
+    color-scheme: dark;
+}
+
+html[data-theme='catppuccin-latte'] {
+    --color-surface: #eff1f5;
+    --color-surface-container-lowest: #f8f9fb;
+    --color-surface-container-low: #e6e9ef;
+    --color-surface-container: #e6e9ef;
+    --color-surface-container-high: #dce0e8;
+    --color-surface-container-highest: #ccd0da;
+    --color-on-surface: #4c4f69;
+    --color-on-surface-variant: #6c6f85;
+    --color-outline: #7c7f93;
+    --color-outline-variant: #acb0be;
+    --color-primary: #8839ef;
+    --color-on-primary: #eff1f5;
+    --color-primary-container: #dfd4f4;
+    --color-on-primary-container: #4c4f69;
+    --color-secondary-container: #c8e0e4;
+    --color-on-secondary-container: #4c4f69;
+    --color-error: #d20f39;
+    --color-error-container: #eacdd7;
+    --color-on-error-container: #4c4f69;
+    color-scheme: light;
+}
+
+/* Adaptive follows the system brightness; the light teal fallback is used on
+   the web, which has no Material You wallpaper palette. */
+html[data-theme='adaptive'] {
+    color-scheme: dark;
+}
+
+@media (prefers-color-scheme: light) {
+    html[data-theme='adaptive'] {
+        --color-surface: #f4fbf8;
+        --color-surface-container-lowest: #ffffff;
+        --color-surface-container-low: #eff5f2;
+        --color-surface-container: #e9efed;
+        --color-surface-container-high: #e3eae7;
+        --color-surface-container-highest: #dde4e1;
+        --color-on-surface: #161d1c;
+        --color-on-surface-variant: #3f4947;
+        --color-outline: #6f7977;
+        --color-outline-variant: #bec9c6;
+        --color-primary: #006a60;
+        --color-on-primary: #ffffff;
+        --color-primary-container: #9ef2e4;
+        --color-on-primary-container: #005048;
+        --color-secondary-container: #cce8e2;
+        --color-on-secondary-container: #334b47;
+        --color-error: #ba1a1a;
+        --color-error-container: #ffdad6;
+        --color-on-error-container: #93000a;
+        color-scheme: light;
+    }
+}
+
 /* Material 3 type scale, as Flutter applies it. */
 @utility type-headline-sm {
     font-size: 24px;
@@ -130,7 +285,7 @@
 }
 
 .leaflet-control-attribution {
-    background: rgb(14 21 19 / 0.7) !important;
+    background: color-mix(in srgb, var(--color-surface) 70%, transparent) !important;
     color: var(--color-on-surface-variant) !important;
     border-radius: 8px 0 0 0;
     font-size: 10px;

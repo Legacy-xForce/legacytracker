@@ -207,7 +207,7 @@ onBeforeUnmount(() => {
                     </p>
                 </div>
                 <button
-                    class="text-on-surface-variant flex size-10 items-center justify-center rounded-full hover:bg-white/6"
+                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
                     aria-label="Close replay"
                     title="Close (Esc)"
                     @click="emit('close')"
@@ -243,7 +243,7 @@ onBeforeUnmount(() => {
                         :class="[
                             speed === option
                                 ? 'bg-secondary-container text-on-secondary-container'
-                                : 'text-on-surface hover:bg-white/5',
+                                : 'text-on-surface hover:bg-on-surface/5',
                             i > 0 ? 'border-outline border-l' : ''
                         ]"
                         :aria-pressed="speed === option"

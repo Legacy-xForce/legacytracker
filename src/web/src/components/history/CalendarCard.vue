@@ -60,7 +60,7 @@ const cells = computed(() => {
         <div class="px-2 pt-1.5 pb-3">
             <div class="flex items-center">
                 <button
-                    class="text-on-surface-variant flex size-10 items-center justify-center rounded-full hover:bg-white/6 disabled:opacity-30"
+                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full disabled:opacity-30"
                     aria-label="Previous month"
                     :disabled="!canGoBack"
                     @click="emit('month', -1)"
@@ -69,7 +69,7 @@ const cells = computed(() => {
                 </button>
                 <h3 class="type-title-md flex-1 text-center font-bold">{{ formatMonth(month) }}</h3>
                 <button
-                    class="text-on-surface-variant flex size-10 items-center justify-center rounded-full hover:bg-white/6 disabled:opacity-30"
+                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full disabled:opacity-30"
                     aria-label="Next month"
                     :disabled="!canGoForward"
                     @click="emit('month', 1)"
