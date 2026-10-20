@@ -72,14 +72,22 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final dark = theme.brightness == Brightness.dark;
+
     return ChangeNotifierProvider<LocalAvatarStore>.value(
       value: _avatarStore,
       // The map runs edge to edge under the status bar, so its icons have to
-      // stay light over the dark scrim there.
+      // stay light over the dark scrim there (and dark on a light theme).
       child: AnnotatedRegion<SystemUiOverlayStyle>(
-        value: SystemUiOverlayStyle.light.copyWith(
-          statusBarColor: Colors.transparent,
-        ),
+        value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+            .copyWith(
+              statusBarColor: Colors.transparent,
+              systemNavigationBarColor: theme.colorScheme.surface,
+              systemNavigationBarIconBrightness: dark
+                  ? Brightness.light
+                  : Brightness.dark,
+            ),
         child: Scaffold(
           body: Consumer2<TrackingController, MapSettings>(
             builder: (context, controller, mapSettings, child) {

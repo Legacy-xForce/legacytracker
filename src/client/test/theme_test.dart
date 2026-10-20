@@ -1,0 +1,71 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:legacytracker/src/core/theme.dart';
+import 'package:legacytracker/src/core/theme_settings.dart';
+import 'package:legacytracker/src/features/tracking/widgets/appearance_card.dart';
+
+void main() {
+  test('every shipped theme builds with its own brightness', () {
+    for (final option in appThemes) {
+      final data = buildThemeFor(option.id);
+      expect(
+        data.colorScheme.brightness,
+        option.brightness,
+        reason: '${option.label} should be ${option.brightness}',
+      );
+      expect(data.scaffoldBackgroundColor, data.colorScheme.surface);
+    }
+  });
+
+  test('teal is the default', () {
+    SharedPreferences.setMockInitialValues({});
+    expect(ThemeSettings().themeId, AppThemeId.teal);
+  });
+
+  test('the chosen theme survives a restart', () async {
+    SharedPreferences.setMockInitialValues({});
+    await ThemeSettings().setTheme(AppThemeId.catppuccinLatte);
+
+    final reopened = ThemeSettings();
+    await Future<void>.delayed(Duration.zero);
+    expect(reopened.themeId, AppThemeId.catppuccinLatte);
+  });
+
+  test('ignores an unknown stored value', () async {
+    SharedPreferences.setMockInitialValues({
+      ThemeSettings.storageKey: 'solarized',
+    });
+    final settings = ThemeSettings();
+    await Future<void>.delayed(Duration.zero);
+    expect(settings.themeId, AppThemeId.teal);
+  });
+
+  testWidgets('the appearance pills switch themes', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final settings = ThemeSettings();
+
+    await tester.pumpWidget(
+      ChangeNotifierProvider<ThemeSettings>.value(
+        value: settings,
+        child: MaterialApp(
+          theme: buildThemeFor(AppThemeId.teal),
+          home: const Scaffold(
+            body: SingleChildScrollView(child: AppearanceCard()),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Teal'), findsOneWidget);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+
+    await tester.tap(find.text('Mocha'));
+    await tester.pump();
+
+    expect(settings.themeId, AppThemeId.catppuccinMocha);
+    expect(find.byIcon(Icons.check_rounded), findsOneWidget);
+  });
+}

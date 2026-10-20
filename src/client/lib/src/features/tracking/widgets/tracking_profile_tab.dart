@@ -14,6 +14,7 @@ import '../../updates/app_updates_card.dart';
 import '../local_avatar_store.dart';
 import '../map_settings.dart';
 import '../tracking_controller.dart';
+import 'appearance_card.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_status_card.dart';
 import 'user_avatar.dart';
@@ -66,6 +67,9 @@ class TrackingProfileTab extends StatelessWidget {
           const SizedBox(height: 28),
           const _SectionLabel('Location sharing'),
           TrackingStatusCard(controller: controller),
+          const SizedBox(height: 24),
+          const _SectionLabel('Appearance'),
+          const AppearanceCard(),
           const SizedBox(height: 24),
           const _SectionLabel('Map'),
           const DefaultMapStyleCard(),

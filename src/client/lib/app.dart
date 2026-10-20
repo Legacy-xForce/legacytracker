@@ -1,3 +1,4 @@
+import 'package:dynamic_color/dynamic_color.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -5,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'src/core/constants.dart';
 import 'src/core/theme.dart';
+import 'src/core/theme_settings.dart';
 import 'src/data/network/auth_service.dart';
 import 'src/data/network/calendar_service.dart';
 import 'src/data/network/checkpoint_service.dart';
@@ -46,6 +48,9 @@ class App extends StatelessWidget {
         ),
         // Above the MaterialApp so the replay screen sees the default too.
         ChangeNotifierProvider<MapSettings>(create: (_) => MapSettings()),
+        // Above the MaterialApp so a theme picked in the profile repaints
+        // every screen right away.
+        ChangeNotifierProvider<ThemeSettings>(create: (_) => ThemeSettings()),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             authService: authService,
@@ -104,19 +109,59 @@ class App extends StatelessWidget {
           },
         ),
       ],
-      child: Consumer<AuthProvider>(
-        builder: (context, auth, child) {
-          return MaterialApp(
-            title: 'Legacy Tracker',
-            themeMode: ThemeMode.dark,
-            theme: buildAppTheme(),
-            darkTheme: buildAppTheme(),
-            builder: (context, child) =>
-                ConnectionBannerOverlay(child: child ?? const SizedBox.shrink()),
-            home: _home(auth),
+      child: Consumer2<AuthProvider, ThemeSettings>(
+        builder: (context, auth, themeSettings, child) {
+          // Kept in the tree for fixed themes too: swapping it in only for
+          // Adaptive would remount the MaterialApp and send the user back to
+          // the map when they pick a theme from the profile tab.
+          return DynamicColorBuilder(
+            builder: (lightDynamic, darkDynamic) {
+              if (themeSettings.themeId == AppThemeId.adaptive) {
+                // Android hands us the wallpaper's palette (Material You);
+                // other platforms fall back to the teal palette in the
+                // system brightness.
+                return _materialApp(
+                  auth,
+                  themeMode: ThemeMode.system,
+                  theme: buildAppTheme(
+                    lightDynamic ?? adaptiveScheme(Brightness.light),
+                  ),
+                  darkTheme: buildAppTheme(
+                    darkDynamic ?? adaptiveScheme(Brightness.dark),
+                  ),
+                );
+              }
+
+              final selected = buildThemeFor(themeSettings.themeId);
+              return _materialApp(
+                auth,
+                themeMode: themeSettings.theme.brightness == Brightness.dark
+                    ? ThemeMode.dark
+                    : ThemeMode.light,
+                theme: selected,
+                darkTheme: selected,
+              );
+            },
           );
         },
       ),
+    );
+  }
+
+  Widget _materialApp(
+    AuthProvider auth, {
+    required ThemeMode themeMode,
+    required ThemeData theme,
+    required ThemeData darkTheme,
+  }) {
+    return MaterialApp(
+      title: 'Legacy Tracker',
+      themeMode: themeMode,
+      theme: theme,
+      darkTheme: darkTheme,
+      builder: (context, child) =>
+          ConnectionBannerOverlay(child: child ?? const SizedBox.shrink()),
+      home: _home(auth),
     );
   }
 

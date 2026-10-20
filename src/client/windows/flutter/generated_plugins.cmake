@@ -4,6 +4,7 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   battery_plus
+  dynamic_color
   file_selector_windows
   firebase_core
   passkeys_windows

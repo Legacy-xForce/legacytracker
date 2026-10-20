@@ -45,6 +45,7 @@ dependencies:
   battery_plus: ^7.1.0
   image_picker: ^1.1.2
   passkeys: ^2.23.1
+  dynamic_color: ^1.9.0
 
 dev_dependencies:
   flutter_test:
