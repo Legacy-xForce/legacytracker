@@ -72,7 +72,7 @@ const chips = computed(() => [
             </div>
             <button
                 v-if="deletable"
-                class="text-on-surface-variant pointer-events-auto flex size-9 shrink-0 items-center justify-center rounded-full hover:bg-white/8"
+                class="text-on-surface-variant hover:bg-on-surface/8 pointer-events-auto flex size-9 shrink-0 items-center justify-center rounded-full"
                 aria-label="Delete this trip"
                 data-delete
                 @click="emit('delete')"

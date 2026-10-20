@@ -82,7 +82,7 @@ const daySummary = computed(() => {
                 <Icon name="cloudOff" :size="32" class="mx-auto" />
                 <p class="type-body-md mt-2.5">{{ history.monthError }}</p>
                 <button
-                    class="text-primary type-label-lg mt-2 rounded-full px-3 py-2 hover:bg-white/5"
+                    class="text-primary type-label-lg hover:bg-on-surface/5 mt-2 rounded-full px-3 py-2"
                     @click="history.showMonth(history.month)"
                 >
                     Retry
@@ -94,7 +94,7 @@ const daySummary = computed(() => {
                     <h3 class="type-title-lg min-w-0 flex-1 px-1 font-bold">{{ formatLongDay(selectedInMonth) }}</h3>
                     <button
                         v-if="history.canDelete && history.trips.length > 0 && !history.tripsLoading"
-                        class="text-on-surface-variant -my-2 flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-white/8"
+                        class="text-on-surface-variant hover:bg-on-surface/8 -my-2 flex size-10 shrink-0 items-center justify-center rounded-full"
                         aria-label="Delete this day's trips"
                         data-delete-day
                         @click="pending = { day: selectedInMonth }"

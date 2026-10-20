@@ -18,7 +18,7 @@ const sentence = computed(() => presence(props.peer, props.now).sentence);
 <template>
     <button
         class="flex w-full items-center gap-3.5 rounded-[18px] px-2 py-2.5 text-left transition-colors disabled:cursor-default"
-        :class="selected ? 'bg-primary/12' : 'hover:bg-white/4'"
+        :class="selected ? 'bg-primary/12' : 'hover:bg-on-surface/4'"
         :disabled="!hasPosition(peer) && peer.sharing"
         :aria-label="self ? `${peer.name} (you)` : peer.name"
         @click="emit('select')"

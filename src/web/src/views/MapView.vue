@@ -15,6 +15,7 @@ import ViewersStack from '../components/map/ViewersStack.vue';
 import PeopleSheet from '../components/people/PeopleSheet.vue';
 import PersonDetail from '../components/people/PersonDetail.vue';
 import PersonRow from '../components/people/PersonRow.vue';
+import AppearanceDialog from '../components/ui/AppearanceDialog.vue';
 import Icon from '../components/ui/Icon.vue';
 import MenuItem from '../components/ui/MenuItem.vue';
 import PopoverMenu from '../components/ui/PopoverMenu.vue';
@@ -60,6 +61,7 @@ const showCheckpoints = ref(storage.get(CHECKPOINTS_KEY) !== 'false');
 const mapStyle = ref<MapStyle>(readStyle());
 const styleMenu = ref(false);
 const accountMenu = ref(false);
+const appearanceOpen = ref(false);
 const sheetExpanded = ref(false);
 const selectedId = ref<string | null>(null);
 const view = ref<'people' | 'person' | 'history' | 'travel'>('people');
@@ -160,6 +162,11 @@ function onResize() {
     viewportHeight.value = window.innerHeight;
 }
 
+function openAppearance() {
+    accountMenu.value = false;
+    appearanceOpen.value = true;
+}
+
 async function signOut() {
     await session.logout();
     await router.replace({ name: 'login' });
@@ -257,6 +264,7 @@ watch(replaying, (isReplaying) => {
                     </div>
                 </div>
                 <div class="bg-outline-variant mx-3 mb-2 h-px" />
+                <MenuItem icon="palette" label="Appearance" @click="openAppearance" />
                 <MenuItem icon="logout" label="Sign out" @click="signOut" />
             </PopoverMenu>
 
@@ -334,7 +342,7 @@ watch(replaying, (isReplaying) => {
                             :class="
                                 (view === 'travel') === (option.id === 'travel')
                                     ? 'bg-secondary-container text-on-secondary-container'
-                                    : 'text-on-surface-variant hover:bg-white/6'
+                                    : 'text-on-surface-variant hover:bg-on-surface/6'
                             "
                             role="tab"
                             :aria-selected="(view === 'travel') === (option.id === 'travel')"
@@ -349,7 +357,7 @@ watch(replaying, (isReplaying) => {
                 </template>
                 <template v-else>
                     <button
-                        class="-ml-2 flex size-10 items-center justify-center rounded-full hover:bg-white/6"
+                        class="hover:bg-on-surface/6 -ml-2 flex size-10 items-center justify-center rounded-full"
                         :aria-label="view === 'history' ? 'Back' : 'All people'"
                         @click="view === 'history' ? closeHistory() : showPeople()"
                     >
@@ -392,5 +400,7 @@ watch(replaying, (isReplaying) => {
                 </div>
             </div>
         </PeopleSheet>
+
+        <AppearanceDialog v-model="appearanceOpen" />
     </div>
 </template>
