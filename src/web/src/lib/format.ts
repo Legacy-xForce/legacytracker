@@ -76,3 +76,10 @@ export function formatTripDuration(seconds: number): string {
     if (hours === 0) return `${minutes}m`;
     return minutes % 60 > 0 ? `${hours}h ${minutes % 60}m` : `${hours}h`;
 }
+
+/** "3 Oct", or "3 Oct 2025" outside the current year. */
+export function formatShortDate(time: number | Date, now: Date = new Date()): string {
+    const date = new Date(time);
+    const day = `${date.getDate()} ${MONTH_NAMES[date.getMonth()].slice(0, 3)}`;
+    return date.getFullYear() === now.getFullYear() ? day : `${day} ${date.getFullYear()}`;
+}

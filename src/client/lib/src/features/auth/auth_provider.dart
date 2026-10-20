@@ -156,14 +156,14 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// The account's passkeys, or null when the auth server has them disabled.
   Future<List<Passkey>?> loadPasskeys() async {
-    return authService.listPasskeys(await _freshAccessToken());
+    return authService.listPasskeys(await freshAccessToken());
   }
 
   /// Creates a passkey on this device for the signed-in account. Returns
   /// null if the user dismissed the system prompt.
   Future<Passkey?> createPasskey() async {
     try {
-      return await passkeyClient.create(await _freshAccessToken());
+      return await passkeyClient.create(await freshAccessToken());
     } on PasskeyException catch (error) {
       if (error.cancelled) return null;
       rethrow;
@@ -171,10 +171,12 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> deletePasskey(String id) async {
-    await authService.deletePasskey(await _freshAccessToken(), id);
+    await authService.deletePasskey(await freshAccessToken(), id);
   }
 
-  Future<String> _freshAccessToken() async {
+  /// A valid access token, refreshed first if it has expired. Throws when the
+  /// session can't be renewed.
+  Future<String> freshAccessToken() async {
     if (!await _refreshTokensIfNeeded()) {
       throw AuthException('You\'re signed out. Sign in again to continue.');
     }

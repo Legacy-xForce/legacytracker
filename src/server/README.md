@@ -8,6 +8,7 @@ Node.js/TypeScript backend for the Legacy Tracker real-time location sharing app
 - Batched, idempotent location ingestion from the app's native tracking engine, with WebSocket broadcast to connected viewers
 - Live mode: while someone has the map open, devices are pushed (FCM) to stream in realtime; otherwise they batch
 - Long-lived device tokens for background uploads, one-time tickets for WebSocket upgrades
+- Personal API tokens (`X-API-Token`, read or write) for integrations
 - Trip/session history for replay
 
 See [`docs/location-tracking.md`](../../docs/location-tracking.md) for the end-to-end design.
@@ -76,7 +77,35 @@ docker run -p 3000:3000 -e DATABASE_URL=<url> legacytracker-server
 
 ## API reference
 
-All REST endpoints require an `Authorization: Bearer <access_token>` header. The token is verified against the JWKS endpoint at `https://auth.legacy-group.tech/.well-known/jwks.json` and the user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
+All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against the JWKS endpoint at `https://auth.legacy-group.tech/.well-known/jwks.json` and the user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
+
+The web app serves a readable version of this reference, with examples, at `/docs`.
+
+### API tokens
+
+Personal tokens for integrations: they act as the user who created them, never
+expire and don't rotate by themselves. Send one as
+`X-API-Token: legacy-tracker-01a15968-64aa-707d-8904-a6a408611289`; it takes
+precedence over `Authorization`.
+
+- `read` tokens may make every `GET` request plus `POST /api/v1/streams/ticket`
+  (their WebSocket stream ignores uploads). Anything else is `403 { "error": "This API token is read-only" }`.
+- `write` tokens may do anything the user's session can, except the
+  session-only routes below (`403`).
+- Token management, `POST /api/v1/devices` and `POST /api/v1/fcm-token` need a
+  signed-in session, so a leaked token can't mint replacements.
+- Only `sha256(token)` is stored: the value is shown once, at creation or
+  rotation. Up to 25 tokens per user.
+- A request whose JWT lacks `scopes.tracker` deletes that user's tokens, so
+  removing someone's tracker access also ends their integrations (once they
+  next reach the tracker).
+
+| Method   | Path                              | Auth | Description |
+|----------|-----------------------------------|------|-------------|
+| `GET`    | `/api/v1/api-tokens`              | JWT  | `{ "tokens": [{ "id", "name", "scope", "token_hint", "created_at", "last_used_at", "rotated_at" }] }`, newest first. |
+| `POST`   | `/api/v1/api-tokens`              | JWT  | Body `{ "name"?: "Home Assistant", "scope": "read" \| "write" }`. `201` with the summary plus `token`. `400` on a bad scope or at the limit. |
+| `POST`   | `/api/v1/api-tokens/:id/rotate`   | JWT  | Replaces the value (the old one stops working at once); returns the summary plus the new `token`. `404` if not yours. |
+| `DELETE` | `/api/v1/api-tokens/:id`          | JWT  | `{ "deleted": true }`, or `404`. |
 
 ### Profile
 
@@ -93,7 +122,7 @@ long-lived device token instead of the user JWT.
 | Method   | Path                    | Auth | Description |
 |----------|-------------------------|------|-------------|
 | `POST`   | `/api/v1/devices`       | JWT  | Body `{ "platform": "android", "replaces": "<old device id>" }` (both optional). Returns `{ "device_id", "device_token" }`; `replaces` revokes the old token. |
-| `DELETE` | `/api/v1/devices/:id`   | JWT, or that device's own token | Revokes the token (sign-out). |
+| `DELETE` | `/api/v1/devices/:id`   | JWT, write API token, or that device's own token | Revokes the token (sign-out). |
 
 Only `sha256(token)` is stored.
 
@@ -111,8 +140,8 @@ push. See [`docs/app-updates.md`](../../docs/app-updates.md).
 
 | Method | Path                    | Description                                                                  |
 |--------|-------------------------|------------------------------------------------------------------------------|
-| `POST` | `/api/v1/location`      | Ingest one or more points. Auth: `Bearer <JWT>` or `Device <token>`. |
-| `POST` | `/api/v1/users/:userId/location-refresh` | Wakes that user's phone for a fresh fix and waits (up to 25 s) for it to report in. `200` with their roster entry, `504 device_unreachable`, `403 not_sharing`, `409 no_device`, `404`. Auth: `Bearer <JWT>`. |
+| `POST` | `/api/v1/location`      | Ingest one or more points. Auth: `Bearer <JWT>`, `Device <token>` or a write API token. |
+| `POST` | `/api/v1/users/:userId/location-refresh` | Wakes that user's phone for a fresh fix and waits (up to 25 s) for it to report in. `200` with their roster entry, `504 device_unreachable`, `403 not_sharing`, `409 no_device`, `404`. Auth: `Bearer <JWT>` or a write API token. |
 
 Request body (single object or array, any order):
 
@@ -225,6 +254,7 @@ src/
   config/db.ts            # PostgreSQL connection pool
   db/schema.sql           # Database schema (apply once)
   services/
+    api-tokens.ts         # personal API tokens (X-API-Token) and their scopes
     connection-manager.ts # WebSocket client registry & broadcast
     device-auth.ts        # device tokens for background uploads
     dwell-tracker.ts      # "here since" for each user's current stay

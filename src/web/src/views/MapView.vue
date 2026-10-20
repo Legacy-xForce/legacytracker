@@ -6,6 +6,7 @@ import EventsLayer from '../components/EventsLayer.vue';
 import PeersMap from '../components/PeersMap.vue';
 import ReplayLayer from '../components/ReplayLayer.vue';
 import UserAvatar from '../components/UserAvatar.vue';
+import ApiTokensDialog from '../components/account/ApiTokensDialog.vue';
 import TripHistory from '../components/history/TripHistory.vue';
 import TravelLeaderboard from '../components/travel/TravelLeaderboard.vue';
 import MapControlButton from '../components/map/MapControlButton.vue';
@@ -62,6 +63,7 @@ const mapStyle = ref<MapStyle>(readStyle());
 const styleMenu = ref(false);
 const accountMenu = ref(false);
 const appearanceOpen = ref(false);
+const apiTokensOpen = ref(false);
 const sheetExpanded = ref(false);
 const selectedId = ref<string | null>(null);
 const view = ref<'people' | 'person' | 'history' | 'travel'>('people');
@@ -167,6 +169,16 @@ function openAppearance() {
     appearanceOpen.value = true;
 }
 
+function openApiTokens() {
+    accountMenu.value = false;
+    apiTokensOpen.value = true;
+}
+
+function openDocs() {
+    accountMenu.value = false;
+    window.open(router.resolve({ name: 'docs' }).href, '_blank', 'noopener');
+}
+
 async function signOut() {
     await session.logout();
     await router.replace({ name: 'login' });
@@ -265,6 +277,9 @@ watch(replaying, (isReplaying) => {
                 </div>
                 <div class="bg-outline-variant mx-3 mb-2 h-px" />
                 <MenuItem icon="palette" label="Appearance" @click="openAppearance" />
+                <MenuItem icon="api" label="API tokens" @click="openApiTokens" />
+                <MenuItem icon="menuBook" label="API documentation" @click="openDocs" />
+                <div class="bg-outline-variant mx-3 my-2 h-px" />
                 <MenuItem icon="logout" label="Sign out" @click="signOut" />
             </PopoverMenu>
 
@@ -402,5 +417,6 @@ watch(replaying, (isReplaying) => {
         </PeopleSheet>
 
         <AppearanceDialog v-model="appearanceOpen" />
+        <ApiTokensDialog v-if="apiTokensOpen" @close="apiTokensOpen = false" />
     </div>
 </template>
