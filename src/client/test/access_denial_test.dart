@@ -264,7 +264,7 @@ void main() {
     Widget host(AuthProvider auth, Widget screen) =>
         ChangeNotifierProvider<AuthProvider>.value(
           value: auth,
-          child: MaterialApp(theme: buildAppTheme(), home: screen),
+          child: MaterialApp(theme: buildThemeFor(AppThemeId.teal), home: screen),
         );
 
     testWidgets('the scope screen names the account and the scope, and reports a failed re-check', (tester) async {
