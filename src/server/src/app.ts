@@ -51,18 +51,29 @@ import {
   redactedEntry,
   SharingRegistry,
 } from "./services/sharing";
-import { hasTrackerScope } from "./services/tracker-scope";
+import { hasTrackerScope, isForTracker } from "./services/tracker-scope";
 import {
   parseTrackingIssues,
   type TrackingIssue,
 } from "./services/tracking-issues";
 
-const JWKS = createRemoteJWKSet(
-  new URL("https://auth.legacy-group.tech/.well-known/jwks.json"),
-  {
-    timeoutDuration: 5000,
-  },
-);
+// Legacy Auth, which signs the access tokens this server accepts. Point both
+// at a staging auth service to run against it.
+const AUTH_JWKS_URI =
+  process.env.AUTH_JWKS_URI ??
+  "https://auth.legacy-group.tech/.well-known/jwks.json";
+const AUTH_ISSUER = process.env.AUTH_ISSUER ?? "https://auth.legacy-group.tech";
+
+const JWKS = createRemoteJWKSet(new URL(AUTH_JWKS_URI), {
+  timeoutDuration: 5000,
+});
+
+// Browser origins allowed to call the API. Unset, any origin is reflected,
+// which is only safe while credentials travel in headers rather than cookies.
+const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS ?? "")
+  .split(",")
+  .map((origin) => origin.trim())
+  .filter((origin) => origin.length > 0);
 
 const app = Fastify({
   logger: {
@@ -172,9 +183,12 @@ interface LocationPayload {
 // The web client calls from its own origin: every method a route uses must be
 // listed, or the browser blocks the request (PUT /api/v1/sharing/:viewerId).
 app.register(cors, {
-  origin: true,
+  origin: CORS_ALLOWED_ORIGINS.length > 0 ? CORS_ALLOWED_ORIGINS : true,
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
 });
+if (CORS_ALLOWED_ORIGINS.length === 0) {
+  app.log.warn("[cors] CORS_ALLOWED_ORIGINS not set — any web origin may call this API");
+}
 app.register(websocket);
 
 /** Sends one push to every registered device, pruning dead tokens. */
@@ -497,13 +511,19 @@ async function getCurrentUserIdentity(
   }
 
   try {
-    const { payload } = await jwtVerify(token, JWKS, { algorithms: ["ES256"] });
+    const { payload } = await jwtVerify(token, JWKS, {
+      algorithms: ["ES256"],
+      issuer: AUTH_ISSUER,
+    });
     const sub =
       typeof payload.sub === "string" && payload.sub.length > 0
         ? payload.sub
         : null;
     if (!sub) {
       return { ok: false, reason: "token is missing a subject claim" };
+    }
+    if (payload.type !== "access") {
+      return { ok: false, reason: "not an access token" };
     }
     if (!hasTrackerScope(payload)) {
       // The account lost access: its API tokens go with it.
@@ -527,6 +547,15 @@ async function getCurrentUserIdentity(
         forbidden: true,
       };
     }
+    // Checked after the scope: a token without the scope has no tracker
+    // `aud` either, and should keep getting the 403 above.
+    if (!isForTracker(payload)) {
+      return {
+        ok: false,
+        reason: "token was not issued for the tracker",
+        detail: `aud ${JSON.stringify(payload.aud ?? null)}`,
+      };
+    }
 
     return {
       ok: true,
@@ -539,7 +568,9 @@ async function getCurrentUserIdentity(
         ? "token expired"
         : error instanceof joseErrors.JWSSignatureVerificationFailed
           ? "token signature invalid"
-          : "token verification failed";
+          : error instanceof joseErrors.JWTClaimValidationFailed
+            ? `token ${error.claim} claim invalid`
+            : "token verification failed";
     return {
       ok: false,
       reason,
