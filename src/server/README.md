@@ -37,6 +37,9 @@ Create a `.env` file (or export variables):
 | `FIREBASE_SERVICE_ACCOUNT_JSON` | — | Service-account JSON for FCM tracking commands (live mode). Without it devices only batch. |
 | `ANDROID_RELEASES_REPO` | `Legacy-xForce/legacytracker` | GitHub repository whose `android-v*` releases the app updates itself from. Empty disables update checks. |
 | `GITHUB_TOKEN` | — | Optional; raises GitHub's API rate limit for the release lookups. |
+| `AUTH_JWKS_URI` | `https://auth.legacy-group.tech/.well-known/jwks.json` | Legacy Auth's JWKS, used to verify access tokens. |
+| `AUTH_ISSUER` | `https://auth.legacy-group.tech` | `iss` required in access tokens; must match Legacy Auth's `JWT_ISSUER`. |
+| `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
 
 ### 3. Run
 
@@ -77,7 +80,7 @@ docker run -p 3000:3000 -e DATABASE_URL=<url> legacytracker-server
 
 ## API reference
 
-All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against the JWKS endpoint at `https://auth.legacy-group.tech/.well-known/jwks.json` and the user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
+All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against Legacy Auth's JWKS (`AUTH_JWKS_URI`) and must have `iss` = `AUTH_ISSUER`, `type: "access"`, `scopes.tracker: true` (otherwise `403`) and `tracker` in `aud` (otherwise `401`, e.g. for a token issued for the calendar). The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
 
 The web app serves a readable version of this reference, with examples, at `/docs`.
 
