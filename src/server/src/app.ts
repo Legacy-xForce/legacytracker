@@ -5,6 +5,14 @@ import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
 import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
 import pool from "./config/db";
+import {
+  ApiTokenLimitError,
+  ApiTokens,
+  isAllowedForScope,
+  isApiTokenId,
+  validateApiTokenInput,
+  type ApiTokenScope,
+} from "./services/api-tokens";
 import { AndroidReleaseSource } from "./services/app-releases";
 import {
   canModifyCheckpoint,
@@ -71,6 +79,7 @@ const app = Fastify({
 });
 const connectionManager = new ConnectionManager();
 const deviceAuth = new DeviceAuth(pool);
+const apiTokens = new ApiTokens(pool);
 const sharing = new SharingRegistry();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
@@ -127,6 +136,8 @@ interface TicketEntry {
   displayName: string;
   expiresAt: number;
   used: boolean;
+  // Issued to a read-only API token: the stream may watch, not upload.
+  readOnly: boolean;
 }
 
 interface KnownLocation {
@@ -351,17 +362,32 @@ function getDisplayNameFromToken(
   );
 }
 
-// `forbidden`: a valid session whose account lacks the tracker scope.
+// `forbidden`: a valid credential that may not do this — an account without
+// the tracker scope, or an API token outside its scope. `error` replaces the
+// default 403 message.
 type IdentityFailure = {
   ok: false;
   reason: string;
   detail?: string;
   forbidden?: boolean;
+  error?: string;
 };
 
+// `apiTokenScope` is set when the caller authenticated with an API token.
 type IdentityResult =
-  | { ok: true; userId: string; displayName: string }
+  | {
+      ok: true;
+      userId: string;
+      displayName: string;
+      apiTokenScope?: ApiTokenScope;
+    }
   | IdentityFailure;
+
+type IdentityOptions = {
+  // Routes that mint credentials or manage tokens: a leaked API token must
+  // not be able to issue itself replacements.
+  sessionOnly?: boolean;
+};
 
 function logUnauthorizedRequest(
   request: FastifyRequest,
@@ -394,13 +420,70 @@ function rejectRequest(
 ) {
   logUnauthorizedRequest(request, route, failure);
   return failure.forbidden
-    ? reply.code(403).send({ error: "Missing tracker scope" })
+    ? reply.code(403).send({ error: failure.error ?? "Missing tracker scope" })
     : reply.code(401).send({ error: "Unauthorized" });
+}
+
+function readApiTokenHeader(request: FastifyRequest): string | null {
+  const header = request.headers["x-api-token"];
+  const value = Array.isArray(header) ? header[0] : header;
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+/**
+ * Identity from a personal API token (`X-API-Token`). It acts as its owner,
+ * so every route behaves as it would for their session, but a read token is
+ * turned away from anything that changes data.
+ */
+async function getApiTokenIdentity(
+  request: FastifyRequest,
+  token: string,
+  options: IdentityOptions,
+): Promise<IdentityResult> {
+  if (options.sessionOnly) {
+    return {
+      ok: false,
+      reason: "API token used on a session-only route",
+      forbidden: true,
+      error: "API tokens can't be used here; sign in instead",
+    };
+  }
+  const identity = await apiTokens.authenticate(token);
+  if (!identity) {
+    return { ok: false, reason: "unknown or revoked API token" };
+  }
+  if (
+    !isAllowedForScope(
+      identity.scope,
+      request.method,
+      request.routeOptions.url ?? "",
+    )
+  ) {
+    return {
+      ok: false,
+      reason: "read-only API token used for a write",
+      detail: `token ${identity.tokenId}`,
+      forbidden: true,
+      error: "This API token is read-only",
+    };
+  }
+  return {
+    ok: true,
+    userId: identity.userId,
+    displayName: lastKnownName.get(identity.userId) ?? identity.userName,
+    apiTokenScope: identity.scope,
+  };
 }
 
 async function getCurrentUserIdentity(
   request: FastifyRequest,
+  options: IdentityOptions = {},
 ): Promise<IdentityResult> {
+  const apiToken = readApiTokenHeader(request);
+  if (apiToken) {
+    return getApiTokenIdentity(request, apiToken, options);
+  }
+
   const authHeader = request.headers["authorization"];
   if (!authHeader) {
     return { ok: false, reason: "missing authorization header" };
@@ -423,6 +506,20 @@ async function getCurrentUserIdentity(
       return { ok: false, reason: "token is missing a subject claim" };
     }
     if (!hasTrackerScope(payload)) {
+      // The account lost access: its API tokens go with it.
+      void apiTokens
+        .removeAllForUser(sub)
+        .then((removed) => {
+          if (removed > 0) {
+            app.log.info(
+              { userId: sub, removed },
+              "[api-tokens] removed tokens of a user without the tracker scope",
+            );
+          }
+        })
+        .catch((error) => {
+          app.log.warn({ error }, "[api-tokens] unable to remove tokens");
+        });
       return {
         ok: false,
         reason: "account lacks the tracker scope",
@@ -552,6 +649,22 @@ async function ensureBackendSchema(): Promise<void> {
     await pool.query(
       `CREATE INDEX IF NOT EXISTS location_share_blocks_viewer_idx
        ON location_share_blocks (viewer_id)`,
+    );
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS api_tokens (
+         id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+         user_id text NOT NULL REFERENCES users(id),
+         name text NOT NULL,
+         scope text NOT NULL CHECK (scope IN ('read', 'write')),
+         token_hash text NOT NULL UNIQUE,
+         token_hint text NOT NULL,
+         created_at timestamptz NOT NULL DEFAULT now(),
+         last_used_at timestamptz,
+         rotated_at timestamptz
+       )`,
+    );
+    await pool.query(
+      "CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens (user_id)",
     );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert
@@ -1085,7 +1198,7 @@ app.patch("/api/v1/profile", async (request, reply) => {
 });
 
 app.post("/api/v1/fcm-token", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
   if (!identity.ok) {
     return rejectRequest(request, reply, "/api/v1/fcm-token", identity);
   }
@@ -1112,7 +1225,7 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
 // tracking engine uploads with. `replaces` revokes the device's previous
 // token (re-registration after reinstall / token loss).
 app.post("/api/v1/devices", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
   if (!identity.ok) {
     return rejectRequest(request, reply, "/api/v1/devices", identity);
   }
@@ -1317,6 +1430,88 @@ app.delete("/api/v1/checkpoints/:id", async (request, reply) => {
     : reply.code(404).send({ error: "Checkpoint not found" });
 });
 
+// Personal API tokens. Managed only from a signed-in session; see
+// services/api-tokens.ts for how they authenticate.
+app.get("/api/v1/api-tokens", async (request, reply) => {
+  const route = "/api/v1/api-tokens";
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  return reply.send({ tokens: await apiTokens.list(identity.userId) });
+});
+
+app.post("/api/v1/api-tokens", async (request, reply) => {
+  const route = "/api/v1/api-tokens";
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  const input = validateApiTokenInput(request.body);
+  if (!input.ok) {
+    return reply.code(400).send({ error: input.error });
+  }
+
+  await ensureUserExists(identity.userId, identity.displayName);
+  try {
+    const issued = await apiTokens.create(
+      identity.userId,
+      input.value.name,
+      input.value.scope,
+    );
+    app.log.info(
+      { userId: identity.userId, tokenId: issued.id, scope: issued.scope },
+      "[api-tokens] created token",
+    );
+    return reply.code(201).send(issued);
+  } catch (error) {
+    if (error instanceof ApiTokenLimitError) {
+      return reply.code(400).send({ error: error.message });
+    }
+    throw error;
+  }
+});
+
+app.post("/api/v1/api-tokens/:id/rotate", async (request, reply) => {
+  const route = "/api/v1/api-tokens/:id/rotate";
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  const { id } = request.params as { id: string };
+  const issued = isApiTokenId(id)
+    ? await apiTokens.rotate(identity.userId, id)
+    : null;
+  if (!issued) {
+    return reply.code(404).send({ error: "API token not found" });
+  }
+  app.log.info(
+    { userId: identity.userId, tokenId: id },
+    "[api-tokens] rotated token",
+  );
+  return reply.send(issued);
+});
+
+app.delete("/api/v1/api-tokens/:id", async (request, reply) => {
+  const route = "/api/v1/api-tokens/:id";
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  const { id } = request.params as { id: string };
+  const removed = isApiTokenId(id)
+    ? await apiTokens.remove(identity.userId, id)
+    : false;
+  if (!removed) {
+    return reply.code(404).send({ error: "API token not found" });
+  }
+  app.log.info(
+    { userId: identity.userId, tokenId: id },
+    "[api-tokens] deleted token",
+  );
+  return reply.send({ deleted: true });
+});
+
 // Public, like the GitHub releases behind it: the app also checks for
 // updates before anyone has signed in.
 app.get("/api/v1/app/android/latest", async (_request, reply) => {
@@ -1356,6 +1551,7 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
     displayName: identity.displayName,
     expiresAt: Date.now() + 60_000,
     used: false,
+    readOnly: identity.apiTokenScope === "read",
   });
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -1675,6 +1871,7 @@ app.register(async () => {
     tickets.delete(ticket);
     const userId = entry.userId;
     const displayName = entry.displayName;
+    const readOnly = entry.readOnly;
     lastKnownName.set(userId, displayName);
     connectionManager.add(userId, connection.socket);
     app.log.info(
@@ -1717,7 +1914,7 @@ app.register(async () => {
         return;
       }
 
-      if (msgType !== "location") {
+      if (msgType !== "location" || readOnly) {
         return;
       }
 

@@ -2,6 +2,7 @@
 // "-fill" files are the filled style Flutter's `Icons.*_rounded` draws; the plain files are the
 // outlined style of its `*_outlined` icons.
 import add from '@material-symbols/svg-400/rounded/add.svg?raw';
+import api from '@material-symbols/svg-400/rounded/api.svg?raw';
 import arrowBack from '@material-symbols/svg-400/rounded/arrow_back.svg?raw';
 import battery1 from '@material-symbols/svg-400/rounded/battery_1_bar-fill.svg?raw';
 import battery2 from '@material-symbols/svg-400/rounded/battery_2_bar-fill.svg?raw';
@@ -17,6 +18,7 @@ import check from '@material-symbols/svg-400/rounded/check.svg?raw';
 import chevronLeft from '@material-symbols/svg-400/rounded/chevron_left.svg?raw';
 import chevronRight from '@material-symbols/svg-400/rounded/chevron_right.svg?raw';
 import close from '@material-symbols/svg-400/rounded/close.svg?raw';
+import contentCopy from '@material-symbols/svg-400/rounded/content_copy.svg?raw';
 import dateRange from '@material-symbols/svg-400/rounded/date_range.svg?raw';
 import cloudOff from '@material-symbols/svg-400/rounded/cloud_off-fill.svg?raw';
 import directions from '@material-symbols/svg-400/rounded/directions-fill.svg?raw';
@@ -37,6 +39,7 @@ import lock from '@material-symbols/svg-400/rounded/lock.svg?raw';
 import logout from '@material-symbols/svg-400/rounded/logout.svg?raw';
 import locationSearching from '@material-symbols/svg-400/rounded/location_searching.svg?raw';
 import map from '@material-symbols/svg-400/rounded/map.svg?raw';
+import menuBook from '@material-symbols/svg-400/rounded/menu_book.svg?raw';
 import myLocation from '@material-symbols/svg-400/rounded/my_location-fill.svg?raw';
 import nearMe from '@material-symbols/svg-400/rounded/near_me-fill.svg?raw';
 import openInNew from '@material-symbols/svg-400/rounded/open_in_new.svg?raw';
@@ -65,6 +68,7 @@ import visibilityOff from '@material-symbols/svg-400/rounded/visibility_off.svg?
 
 const raw = {
     add,
+    api,
     arrowBack,
     battery1,
     battery2,
@@ -81,6 +85,7 @@ const raw = {
     chevronRight,
     close,
     cloudOff,
+    contentCopy,
     dateRange,
     directions,
     directionsCar,
@@ -100,6 +105,7 @@ const raw = {
     lock,
     logout,
     map,
+    menuBook,
     myLocation,
     nearMe,
     openInNew,

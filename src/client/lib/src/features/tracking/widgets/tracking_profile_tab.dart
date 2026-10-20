@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
+import '../../auth/api_tokens_screen.dart';
 import '../../auth/auth_provider.dart';
 import '../../auth/passkeys_screen.dart';
 import '../../checkpoints/checkpoints_screen.dart';
@@ -108,6 +109,22 @@ class TrackingProfileTab extends StatelessWidget {
               onTap: () => Navigator.of(
                 context,
               ).push(MaterialPageRoute(builder: (_) => const PasskeysScreen())),
+            ),
+          ),
+          const SizedBox(height: 24),
+          const _SectionLabel('Integrations'),
+          Card(
+            clipBehavior: Clip.antiAlias,
+            child: ListTile(
+              leading: const Icon(Icons.api_rounded),
+              title: const Text('API tokens'),
+              subtitle: const Text(
+                'Let scripts and other apps use the tracker',
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const ApiTokensScreen()),
+              ),
             ),
           ),
           if (AppUpdater.isSupported) ...[

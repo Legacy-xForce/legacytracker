@@ -39,6 +39,25 @@ CREATE TABLE IF NOT EXISTS devices (
 
 CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id);
 
+-- Personal API tokens for integrations, sent as `X-API-Token`. They never
+-- expire; the owner rotates or deletes them. `read` tokens may only read,
+-- `write` tokens may do anything the owner's session can except manage
+-- tokens and devices. Only sha256(token) is stored; `token_hint` is a short,
+-- non-secret label for lists.
+CREATE TABLE IF NOT EXISTS api_tokens (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id text NOT NULL REFERENCES users(id),
+  name text NOT NULL,
+  scope text NOT NULL CHECK (scope IN ('read', 'write')),
+  token_hash text NOT NULL UNIQUE,
+  token_hint text NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  last_used_at timestamptz,
+  rotated_at timestamptz
+);
+
+CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens (user_id);
+
 CREATE TABLE IF NOT EXISTS viewer_state (
   id text PRIMARY KEY,
   active_viewers integer NOT NULL DEFAULT 0,
