@@ -67,7 +67,7 @@ async function submit() {
                     <template #suffix>
                         <button
                             type="button"
-                            class="text-on-surface-variant mr-1 flex size-10 items-center justify-center rounded-full hover:bg-white/8"
+                            class="text-on-surface-variant hover:bg-on-surface/8 mr-1 flex size-10 items-center justify-center rounded-full"
                             :aria-label="showPassword ? 'Hide password' : 'Show password'"
                             :title="showPassword ? 'Hide password' : 'Show password'"
                             @click="showPassword = !showPassword"

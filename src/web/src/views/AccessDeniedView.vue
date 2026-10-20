@@ -145,7 +145,7 @@ async function signOut() {
                     Check Again
                 </button>
                 <button
-                    class="flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border text-[15px] font-semibold transition hover:bg-white/5 disabled:opacity-60"
+                    class="hover:bg-on-surface/5 flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl border text-[15px] font-semibold transition disabled:opacity-60"
                     :class="disabled ? '' : 'text-on-surface-variant border-outline-variant'"
                     :style="disabled ? { color: RED, borderColor: `${RED}99` } : undefined"
                     :disabled="checking"

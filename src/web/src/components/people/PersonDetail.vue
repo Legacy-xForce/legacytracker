@@ -138,7 +138,7 @@ async function changeSharing(enabled: boolean) {
             </div>
             <button
                 v-if="peer.sharing"
-                class="text-on-surface-variant flex size-10 shrink-0 items-center justify-center rounded-full hover:bg-white/6 disabled:hover:bg-transparent"
+                class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 shrink-0 items-center justify-center rounded-full disabled:hover:bg-transparent"
                 :class="{ 'text-primary': refreshing }"
                 :disabled="refreshing"
                 :aria-busy="refreshing"

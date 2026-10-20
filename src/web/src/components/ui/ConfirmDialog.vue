@@ -31,7 +31,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 <p id="confirm-message" class="type-body-md text-on-surface-variant mt-3">{{ message }}</p>
                 <div class="mt-6 flex justify-end gap-2">
                     <button
-                        class="text-primary type-label-lg rounded-full px-4 py-2.5 hover:bg-white/5 disabled:opacity-50"
+                        class="text-primary type-label-lg hover:bg-on-surface/5 rounded-full px-4 py-2.5 disabled:opacity-50"
                         :disabled="busy"
                         @click="emit('cancel')"
                     >
