@@ -10,7 +10,7 @@ Legacy Tracker is a real-time location-sharing app, a monorepo with three indepe
 |---|---|---|
 | `src/client` | Flutter (Dart) + native Kotlin/Swift | Phone app. A **native** tracking engine records and uploads positions; Flutter is only the UI. |
 | `src/server` | Fastify + TypeScript, PostgreSQL/PostGIS | REST + WebSocket API, live-mode controller, FCM pushes, Android release feed. |
-| `src/web` | Vue 3, Vite, Tailwind 4, Pinia, Leaflet | Read-only browser map; never shares the viewer's own location. |
+| `src/web` | Vue 3, Vite, Tailwind 4, Pinia, Leaflet | Read-only browser map (never shares the viewer's own location), API token management and the public API reference at `/docs`. |
 
 Design docs live in `docs/` (`location-tracking.md` is the key one; also `app-updates.md`, `calendar-events.md`, `web-app.md`) and `src/server/README.md` holds the full API reference. Read them before changing the matching area.
 
@@ -56,12 +56,13 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 - **Live mode**: devices stream in realtime only while some viewer has a map open. Clients send `{type:"map_active"}` over the WebSocket; `live-controller.ts` debounces/renews that state and `fcm-service.ts` pushes `lt_cmd: live|idle` data messages to all registered devices. `POST /api/v1/location` replies with `live_ttl_s`. `source: "live"` points are broadcast but **never stored**; inserts are idempotent on `(user_id, recorded_at)`.
 - Server keeps per-user state in memory (last location, "here since" via `dwell-tracker.ts`, viewer presence) but WebSocket snapshots fall back to stored rows so a restart is safe. `session-builder.ts` turns stored points into trips for history/replay.
 - Auth is Legacy Auth (separate service, `auth.legacy-group.tech`): the server verifies JWTs against its JWKS and takes identity from `sub`. WebSocket access uses single-use tickets (`POST /api/v1/streams/ticket`), not the JWT.
+- **API tokens** (`services/api-tokens.ts`): personal, non-expiring `legacy-tracker-<uuid>` tokens sent as `X-API-Token`, resolved in `getCurrentUserIdentity()` so every route accepts them. `read` = any `GET` plus the stream ticket; `write` = anything the session can. Routes that mint credentials (token management, `/devices`, `/fcm-token`) pass `{ sessionOnly: true }`; keep doing that for any new one. A JWT without `scopes.tracker` deletes the user's tokens. A new endpoint also needs an entry in `src/web/src/lib/apiDocs.ts` (the `/docs` page) and the server README.
 - Android self-update: the server polls GitHub releases tagged `android-v<name>+<code>` every 5 min, serves `/api/v1/app/android/latest`, and pushes `lt_cmd: update`; the app installs via `PackageInstaller` (`android/.../updates/`).
 
 ### Client structure (`src/client/lib`)
 `provider`-based. `data/network/` has one service per API area plus the `Backend` interface (realtime peers/viewers) with `RemoteBackend` (used by `app.dart`) and `MockBackend`; `data/models/` are plain models; `features/<area>/` hold screens, providers and widgets. Native code is in `android/app/src/main/kotlin/com/legacy/legacytracker/` (`tracking/`, `updates/`).
 ### Web structure (`src/web/src`)
-`api/` (REST + WebSocket clients), `stores/` (Pinia: session, peers, history, checkpoints, events, sharing), `lib/` (pure logic: clustering, replay, geocoding throttle, presence), `components/`. Markers are Vue components mounted into Leaflet markers and patched in place; pan followed points with `panBy`, not `setView`/`panTo` (an unanimated view reset drops all tiles).
+`api/` (REST + WebSocket clients), `stores/` (Pinia: session, peers, history, checkpoints, events, sharing, appearance), `lib/` (pure logic: clustering, replay, geocoding throttle, presence, `apiDocs.ts`), `components/`, `views/` (map, login, access denied, public `DocsView`). Themes are `data-theme` blocks in `style.css` (listed in `theme/themes.ts`): use the colour tokens (`bg-surface-container`, `hover:bg-on-surface/6`, …), never hard-coded colours or `white/…`, so light themes work. Markers are Vue components mounted into Leaflet markers and patched in place; pan followed points with `panBy`, not `setView`/`panTo` (an unanimated view reset drops all tiles).
 
 ### Cross-cutting rules worth knowing
 - **Access scopes**: the server returns 403 for JWTs without `scopes.tracker`; disabled accounts are detected from Legacy Auth's 403 `Account disabled` on login/refresh. Both clients have "Scope required" / "Access restricted" screens. Device-token uploads are **not** scope-checked. Calendar features need `scopes.calendar` and are hidden without it.
@@ -73,3 +74,19 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 - `src/server/.env` points at the **shared cloud database and a live Firebase key**. Running the server with it writes to shared history, and opening any map sends "go live" pushes to every registered phone. For local work use a throwaway PostGIS (e.g. PGlite) via `DATABASE_URL` and set `FIREBASE_SERVICE_ACCOUNT_JSON=''`. The same applies when pointing the web app or emulator at a local server.
 - Pushing to `main` makes CI publish the server image as ghcr `:latest`, so server changes (especially auth) can go live on push.
 - The Android emulator reaches the host at `10.0.2.2`; debug builds allow cleartext HTTP, release builds do not.
+- Fastify answers 400 to a body-less request that sends `Content-Type: application/json`; only set that header when there is a body (the Flutter services build headers per request for this reason).
+
+## Database (production)
+
+Production data lives in a self-hosted Postgres container (`legacy-tracker-db`, image `postgis/postgis:18-3.6`) on the VPS `ubuntu@caccabot.duckdns.org`, in the compose project `~/legacy` (volume `legacy_tracker_pgdata`). It replaced Neon; any Neon URL still in a local `.env` is stale.
+
+- **No published port.** The DB is reachable only inside the Docker network (host `tracker-db`, port 5432, database `legacy_tracker`, user `legacy_tracker`). Reach it by exec'ing into the container over SSH; do not open the port or add a `ports:` entry.
+- **Credentials are never in this repo.** The password is in `~/legacy/.env` on the VPS (`TRACKER_DB_PASSWORD`) and in `~/legacy/tracker/.env` (`DATABASE_URL`). Do not print, log or commit them. SSH access is the user's to grant; ask for it rather than guessing credentials.
+- **Interactive query** (the login shell is fish, so wrap in `bash -c`):
+  `ssh ubuntu@caccabot.duckdns.org 'docker exec legacy-tracker-db psql -U legacy_tracker -d legacy_tracker -c "select count(*) from ..."'`
+- **Read first.** Prefer `select` and `\dt` / `\d <table>`. This is the live production database, so for any `insert/update/delete`, DDL or restore, state the exact statement and get the user's confirmation first, and run it in a transaction you can roll back.
+- **Backup before risky changes:**
+  `ssh ubuntu@caccabot.duckdns.org 'docker exec legacy-tracker-db pg_dump -U legacy_tracker -Fc legacy_tracker' > tracker-$(date +%F).dump`
+  There are no automated backups yet. Never run `docker compose down -v` or `docker volume rm` in `~/legacy`; that deletes the data.
+- **Schema:** defined in `src/server/src/db/schema.sql` plus idempotent changes applied at startup by `ensureBackendSchema()` in `src/server/src/app.ts`. The DB needs the PostGIS extension, so use a PostGIS image, not plain Postgres.
+- **Local development must not use the production DB.** Use a throwaway Postgres (e.g. PGlite or a local container) via `DATABASE_URL`.
