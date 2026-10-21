@@ -34,7 +34,7 @@ describe('session store', () => {
 
         await session.login(' ada ', 'pw');
 
-        expect(bodyOf(0)).toEqual({ username: 'ada', password: 'pw' });
+        expect(bodyOf(0)).toEqual({ username: 'ada', password: 'pw', audience: 'tracker' });
         expect(session.isAuthenticated).toBe(true);
         expect(session.username).toBe('ada');
         expect(session.accessDenial).toBeNull();
