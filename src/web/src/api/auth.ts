@@ -73,7 +73,8 @@ async function readTokens(response: Response): Promise<AuthTokens> {
 }
 
 export async function login(username: string, password: string): Promise<AuthTokens> {
-    const response = await post('/auth/login', { username, password });
+    // Naming the app keeps the token's `aud` to the tracker, so it cannot be replayed elsewhere.
+    const response = await post('/auth/login', { username, password, audience: 'tracker' });
     if (response.status === 401) throw new AuthError('Wrong username or password.', 401);
     if (response.status === 403 && (await serverError(response)) === 'Account disabled') {
         throw new AccountDisabledError();

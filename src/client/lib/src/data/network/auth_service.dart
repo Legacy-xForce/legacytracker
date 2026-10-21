@@ -58,6 +58,10 @@ class AuthService {
 
   static const String _defaultBaseUrl = 'https://auth.legacy-group.tech';
   static const _timeout = Duration(seconds: 15);
+
+  /// The app these sign-ins are for. Naming it keeps the access token's `aud`
+  /// to the tracker, so the token cannot be replayed against another app.
+  static const _audience = 'tracker';
   final Uri _baseUri;
   final http.Client _httpClient;
 
@@ -66,7 +70,7 @@ class AuthService {
       () => _httpClient.post(
         _baseUri.replace(path: '/auth/login'),
         headers: {'content-type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
+        body: jsonEncode({'username': username, 'password': password, 'audience': _audience}),
       ),
     );
 
@@ -133,7 +137,7 @@ class AuthService {
       () => _httpClient.post(
         _baseUri.replace(path: '/auth/passkey/login-verify'),
         headers: {'content-type': 'application/json'},
-        body: jsonEncode(assertion),
+        body: jsonEncode({...assertion, 'audience': _audience}),
       ),
     );
     if (response.statusCode == 404 ||

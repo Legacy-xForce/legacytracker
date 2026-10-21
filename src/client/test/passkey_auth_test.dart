@@ -173,8 +173,23 @@ void main() {
       });
       final tokens = await auth.passkeyLogin({'id': 'Y3JlZA'});
       expect(sent.url.path, '/auth/passkey/login-verify');
-      expect(jsonDecode(sent.body), {'id': 'Y3JlZA'});
+      expect(jsonDecode(sent.body), {'id': 'Y3JlZA', 'audience': 'tracker'});
       expect(tokens.refreshToken, 'refresh');
+    });
+
+    test('password sign-in names the tracker as the audience', () async {
+      late http.Request sent;
+      final auth = service((request) async {
+        sent = request;
+        return _json(_tokenResponse);
+      });
+      await auth.login('alice', 'secret');
+      expect(sent.url.path, '/auth/login');
+      expect(jsonDecode(sent.body), {
+        'username': 'alice',
+        'password': 'secret',
+        'audience': 'tracker',
+      });
     });
 
     test('the options name the auth server as the relying party', () async {
@@ -295,7 +310,7 @@ void main() {
         '/auth/passkey/login-options',
         '/auth/passkey/login-verify',
       ]);
-      expect(jsonDecode(requests.last.body), _assertion.toJson());
+      expect(jsonDecode(requests.last.body), {..._assertion.toJson(), 'audience': 'tracker'});
       expect(tokens.accessToken, 'header.payload.signature');
     });
 
