@@ -211,11 +211,11 @@ onBeforeUnmount(() => {
     leaderboard.reset();
 });
 
-// The server refusing us flips the session into its denied state; follow it.
+// The session can end under us: refused refresh, lost access, sign-out in another tab or app.
 watch(
-    () => session.accessDenial,
-    (denial) => {
-        if (denial) void router.replace({ name: 'access-denied' });
+    () => session.isAuthenticated,
+    (signedIn) => {
+        if (!signedIn) void router.replace({ name: 'login' });
     }
 );
 

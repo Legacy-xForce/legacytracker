@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fetchSessions, NotSharingError, parseSessions } from '../api/history';
 import { useSessionStore } from '../stores/session';
-import { fakeJwt, jsonResponse, tokenResponse } from './helpers';
+import { fakeJwt, jsonResponse, tokenResponse, startSession } from './helpers';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -14,7 +14,7 @@ beforeEach(async () => {
     fetchMock.mockResolvedValueOnce(
         jsonResponse(tokenResponse(fakeJwt({ sub: 'u', username: 'ada', scopes: { tracker: true } })))
     );
-    await useSessionStore().login('ada', 'pw');
+    await startSession();
 });
 
 afterEach(() => vi.unstubAllGlobals());
@@ -66,12 +66,14 @@ describe('fetchSessions', () => {
     it('reports a hidden person without locking the user out', async () => {
         fetchMock.mockResolvedValue(jsonResponse({ error: 'not_sharing' }, 403));
         await expect(fetchSessions('u2', new Date(0), new Date(1000), false)).rejects.toBeInstanceOf(NotSharingError);
-        expect(useSessionStore().accessDenial).toBeNull();
+        expect(useSessionStore().isAuthenticated).toBe(true);
     });
 
-    it('still treats any other 403 as lost access', async () => {
-        fetchMock.mockResolvedValue(jsonResponse({ error: 'Forbidden' }, 403));
+    it('signs out when the account lost tracker access', async () => {
+        fetchMock.mockResolvedValue(jsonResponse({ error: 'Missing tracker scope' }, 403));
         await expect(fetchSessions('u2', new Date(0), new Date(1000), false)).rejects.toThrow('Access denied.');
-        expect(useSessionStore().accessDenial).toBe('missingScope');
+        const session = useSessionStore();
+        expect(session.isAuthenticated).toBe(false);
+        expect(session.signInError).toBe("This account can't use Legacy Tracker.");
     });
 });

@@ -5,8 +5,7 @@ import { reactive } from 'vue';
 import { deleteHistory, type HistorySession } from '../api/history';
 import TripCard from '../components/history/TripCard.vue';
 import { useHistoryStore } from '../stores/history';
-import { useSessionStore } from '../stores/session';
-import { fakeJwt, jsonResponse, tokenResponse } from './helpers';
+import { fakeJwt, jsonResponse, tokenResponse, startSession } from './helpers';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -37,7 +36,7 @@ beforeEach(async () => {
     fetchMock.mockResolvedValueOnce(
         jsonResponse(tokenResponse(fakeJwt({ sub: 'u', username: 'ada', scopes: { tracker: true } })))
     );
-    await useSessionStore().login('ada', 'pw');
+    await startSession();
     fetchMock.mockImplementation(async (_url: string, init?: RequestInit) =>
         init?.method === 'DELETE' ? jsonResponse({ deleted: 3 }) : jsonResponse({ sessions: [] })
     );
