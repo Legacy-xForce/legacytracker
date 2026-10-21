@@ -3,7 +3,7 @@ import crypto from "crypto";
 import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
-import { createRemoteJWKSet, jwtVerify, errors as joseErrors, type JWTPayload } from "jose";
+import { createRemoteJWKSet, type JWTPayload } from "jose";
 import pool from "./config/db";
 import {
   ApiTokenLimitError,
@@ -11,7 +11,6 @@ import {
   isAllowedForScope,
   isApiTokenId,
   validateApiTokenInput,
-  type ApiTokenScope,
 } from "./services/api-tokens";
 import { AndroidReleaseSource } from "./services/app-releases";
 import {
@@ -51,7 +50,11 @@ import {
   redactedEntry,
   SharingRegistry,
 } from "./services/sharing";
-import { hasTrackerScope, isForTracker } from "./services/tracker-scope";
+import {
+  verifyAccessToken,
+  verifyLogoutToken,
+  type LogoutTokenResult,
+} from "./services/access-token";
 import {
   parseTrackingIssues,
   type TrackingIssue,
@@ -67,6 +70,22 @@ const AUTH_ISSUER = process.env.AUTH_ISSUER ?? "https://auth.legacy-group.tech";
 const JWKS = createRemoteJWKSet(new URL(AUTH_JWKS_URI), {
   timeoutDuration: 5000,
 });
+
+// OIDC clients whose tokens are accepted: the web app and the phone app.
+const AUTH_ALLOWED_CLIENTS = (
+  process.env.AUTH_ALLOWED_CLIENTS ?? "tracker-spa,tracker-mobile"
+)
+  .split(",")
+  .map((client) => client.trim())
+  .filter((client) => client.length > 0);
+// The only client that may register devices (mint device tokens).
+const AUTH_MOBILE_CLIENT = process.env.AUTH_MOBILE_CLIENT ?? "tracker-mobile";
+
+const authVerifier = {
+  jwks: JWKS,
+  issuer: AUTH_ISSUER,
+  allowedClients: AUTH_ALLOWED_CLIENTS,
+};
 
 // Browser origins allowed to call the API. Unset, any origin is reflected,
 // which is only safe while credentials travel in headers rather than cookies.
@@ -147,8 +166,11 @@ interface TicketEntry {
   displayName: string;
   expiresAt: number;
   used: boolean;
-  // Issued to a read-only API token: the stream may watch, not upload.
+  // Issued to a read-only caller: the stream may watch, not upload.
   readOnly: boolean;
+  // OP session of the token the ticket was issued for: a back-channel logout
+  // for it closes the stream.
+  sid: string | null;
 }
 
 interface KnownLocation {
@@ -387,13 +409,17 @@ type IdentityFailure = {
   error?: string;
 };
 
-// `apiTokenScope` is set when the caller authenticated with an API token.
+// `readOnly` callers (read API tokens, `tracker.read` sessions) can't write.
+// `clientId` is the OIDC client of a session token (null for API tokens and
+// legacy password-login tokens) and `sid` its OP session.
 type IdentityResult =
   | {
       ok: true;
       userId: string;
       displayName: string;
-      apiTokenScope?: ApiTokenScope;
+      readOnly: boolean;
+      clientId: string | null;
+      sid: string | null;
     }
   | IdentityFailure;
 
@@ -485,7 +511,9 @@ async function getApiTokenIdentity(
     ok: true,
     userId: identity.userId,
     displayName: lastKnownName.get(identity.userId) ?? identity.userName,
-    apiTokenScope: identity.scope,
+    readOnly: identity.scope === "read",
+    clientId: null,
+    sid: null,
   };
 }
 
@@ -510,73 +538,53 @@ async function getCurrentUserIdentity(
     return { ok: false, reason: "empty bearer token" };
   }
 
-  try {
-    const { payload } = await jwtVerify(token, JWKS, {
-      algorithms: ["ES256"],
-      issuer: AUTH_ISSUER,
-    });
-    const sub =
-      typeof payload.sub === "string" && payload.sub.length > 0
-        ? payload.sub
-        : null;
-    if (!sub) {
-      return { ok: false, reason: "token is missing a subject claim" };
-    }
-    if (payload.type !== "access") {
-      return { ok: false, reason: "not an access token" };
-    }
-    if (!hasTrackerScope(payload)) {
+  const verified = await verifyAccessToken(token, authVerifier);
+  if (!verified.ok) {
+    if (verified.lostTrackerScope && verified.sub) {
       // The account lost access: its API tokens go with it.
-      void apiTokens
-        .removeAllForUser(sub)
-        .then((removed) => {
-          if (removed > 0) {
-            app.log.info(
-              { userId: sub, removed },
-              "[api-tokens] removed tokens of a user without the tracker scope",
-            );
-          }
-        })
-        .catch((error) => {
-          app.log.warn({ error }, "[api-tokens] unable to remove tokens");
-        });
-      return {
-        ok: false,
-        reason: "account lacks the tracker scope",
-        detail: `user ${sub}`,
-        forbidden: true,
-      };
+      purgeApiTokens(verified.sub, "a token without the tracker scope");
     }
-    // Checked after the scope: a token without the scope has no tracker
-    // `aud` either, and should keep getting the 403 above.
-    if (!isForTracker(payload)) {
-      return {
-        ok: false,
-        reason: "token was not issued for the tracker",
-        detail: `aud ${JSON.stringify(payload.aud ?? null)}`,
-      };
-    }
-
-    return {
-      ok: true,
-      userId: sub,
-      displayName: getDisplayNameFromToken(payload, sub),
-    };
-  } catch (error) {
-    const reason =
-      error instanceof joseErrors.JWTExpired
-        ? "token expired"
-        : error instanceof joseErrors.JWSSignatureVerificationFailed
-          ? "token signature invalid"
-          : error instanceof joseErrors.JWTClaimValidationFailed
-            ? `token ${error.claim} claim invalid`
-            : "token verification failed";
+    return verified;
+  }
+  if (
+    !isAllowedForScope(
+      verified.scope,
+      request.method,
+      request.routeOptions.url ?? "",
+    )
+  ) {
     return {
       ok: false,
-      reason,
-      detail: error instanceof Error ? error.message : String(error),
+      reason: "read-only token used for a write",
+      detail: `user ${verified.sub}`,
+      forbidden: true,
+      error: "This session is read-only",
     };
   }
+  return {
+    ok: true,
+    userId: verified.sub,
+    displayName: getDisplayNameFromToken(verified.payload, verified.sub),
+    readOnly: verified.scope === "read",
+    clientId: verified.clientId,
+    sid: verified.sid,
+  };
+}
+
+function purgeApiTokens(userId: string, cause: string): void {
+  void apiTokens
+    .removeAllForUser(userId)
+    .then((removed) => {
+      if (removed > 0) {
+        app.log.info(
+          { userId, removed },
+          `[api-tokens] removed tokens after ${cause}`,
+        );
+      }
+    })
+    .catch((error) => {
+      app.log.warn({ error }, "[api-tokens] unable to remove tokens");
+    });
 }
 
 type IngestIdentity =
@@ -1254,11 +1262,21 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
 
 // Exchanges a valid user JWT for a long-lived device token the native
 // tracking engine uploads with. `replaces` revokes the device's previous
-// token (re-registration after reinstall / token loss).
+// token (re-registration after reinstall / token loss). Only the phone app's
+// sessions may do this: a token taken from the web app can't mint devices.
 app.post("/api/v1/devices", async (request, reply) => {
   const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
   if (!identity.ok) {
     return rejectRequest(request, reply, "/api/v1/devices", identity);
+  }
+  if (identity.clientId !== null && identity.clientId !== AUTH_MOBILE_CLIENT) {
+    return rejectRequest(request, reply, "/api/v1/devices", {
+      ok: false,
+      reason: "device registration from a client other than the app",
+      detail: `client_id ${identity.clientId}`,
+      forbidden: true,
+      error: "Devices can only be registered from the app",
+    });
   }
 
   const body = (request.body ?? {}) as Record<string, unknown>;
@@ -1582,7 +1600,8 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
     displayName: identity.displayName,
     expiresAt: Date.now() + 60_000,
     used: false,
-    readOnly: identity.apiTokenScope === "read",
+    readOnly: identity.readOnly,
+    sid: identity.sid,
   });
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -1863,6 +1882,58 @@ app.delete("/api/v1/history", async (request, reply) => {
   return reply.send({ deleted: result.rowCount ?? 0 });
 });
 
+// OpenID Connect back-channel logout: Legacy Auth posts a logout token here
+// when a session of the web or phone app ends at the OP (sign-out elsewhere,
+// lost access, disabled account). Open streams of that session are told to
+// sign out; lost access also deletes the user's API tokens.
+app.addContentTypeParser(
+  "application/x-www-form-urlencoded",
+  { parseAs: "string" },
+  (_request, body, done) => {
+    done(null, Object.fromEntries(new URLSearchParams(body as string)));
+  },
+);
+
+app.post("/auth/backchannel-logout", async (request, reply) => {
+  const body = (request.body ?? {}) as Record<string, unknown>;
+  const logoutToken =
+    typeof body.logout_token === "string" ? body.logout_token : "";
+  const verified: LogoutTokenResult = logoutToken
+    ? await verifyLogoutToken(logoutToken, authVerifier)
+    : { ok: false, reason: "missing logout_token" };
+  reply.header("Cache-Control", "no-store");
+  if (!verified.ok) {
+    app.log.warn(
+      { reason: verified.reason, detail: verified.detail, ip: request.ip },
+      "[auth] rejected back-channel logout",
+    );
+    return reply.code(400).send({ error: "invalid_request" });
+  }
+
+  const message = { type: "signed_out" };
+  let closed = 0;
+  if (verified.accessRevoked && verified.sub) {
+    purgeApiTokens(verified.sub, "the account lost access");
+    closed = connectionManager.closeUser(verified.sub, message);
+  } else if (verified.sid) {
+    closed = connectionManager.closeSession(verified.sid, message);
+  } else if (verified.sub) {
+    closed = connectionManager.closeUser(verified.sub, message, {
+      sessionsOnly: true,
+    });
+  }
+  app.log.info(
+    {
+      userId: verified.sub,
+      sid: verified.sid,
+      accessRevoked: verified.accessRevoked,
+      closed,
+    },
+    "[auth] back-channel logout",
+  );
+  return reply.code(200).send();
+});
+
 // @fastify/websocket adds its `onRoute` hook only once the plugin finishes
 // loading during boot. Routes declared at the top level are registered *before*
 // that hook exists, so `{ websocket: true }` is silently ignored and the handler
@@ -1904,7 +1975,7 @@ app.register(async () => {
     const displayName = entry.displayName;
     const readOnly = entry.readOnly;
     lastKnownName.set(userId, displayName);
-    connectionManager.add(userId, connection.socket);
+    connectionManager.add(userId, connection.socket, entry.sid);
     app.log.info(
       { userId, totalConnections: connectionManager.count },
       "[ws] client connected",

@@ -7,6 +7,9 @@ interface ClientEntry {
   mapActive: boolean;
   // Whether the socket answered the last heartbeat ping.
   alive: boolean;
+  // The OP session (`sid`) of the sign-in that opened the socket; null for
+  // API tokens and legacy password-login sessions.
+  sid: string | null;
 }
 
 // One account can be connected from several places at once (the phone and a
@@ -17,7 +20,7 @@ const MAX_SOCKETS_PER_USER = 5;
 class ConnectionManager {
   private readonly clients = new Map<string, ClientEntry[]>();
 
-  add(userId: string, socket: any) {
+  add(userId: string, socket: any, sid: string | null = null) {
     const entries = this.clients.get(userId) ?? [];
     while (entries.length >= MAX_SOCKETS_PER_USER) {
       try {
@@ -26,7 +29,7 @@ class ConnectionManager {
         // ignore existing close failures
       }
     }
-    entries.push({ socket, mapActive: true, alive: true });
+    entries.push({ socket, mapActive: true, alive: true, sid });
     this.clients.set(userId, entries);
   }
 
@@ -109,6 +112,37 @@ class ConnectionManager {
     return this.deliver(viewerId, entries, JSON.stringify(message));
   }
 
+  /**
+   * Sends `message` to every socket opened by the OP session `sid`, then
+   * closes them. Returns how many were closed.
+   */
+  closeSession(sid: string, message: unknown): number {
+    let closed = 0;
+    for (const [userId, entries] of [...this.clients.entries()]) {
+      closed += this.close(
+        userId,
+        entries.filter((entry) => entry.sid === sid),
+        message,
+      );
+    }
+    return closed;
+  }
+
+  /**
+   * Same for all of a user's sockets, or with `sessionsOnly` only those
+   * opened by an OP session (API-token streams stay up).
+   */
+  closeUser(
+    userId: string,
+    message: unknown,
+    { sessionsOnly = false }: { sessionsOnly?: boolean } = {},
+  ): number {
+    const entries = (this.clients.get(userId) ?? []).filter(
+      (entry) => !sessionsOnly || entry.sid !== null,
+    );
+    return this.close(userId, entries, message);
+  }
+
   /** Number of open connections (a user on two devices counts twice). */
   get count(): number {
     let count = 0;
@@ -140,6 +174,20 @@ class ConnectionManager {
       }
     }
     return users;
+  }
+
+  private close(userId: string, entries: ClientEntry[], message: unknown): number {
+    const text = JSON.stringify(message);
+    for (const entry of entries) {
+      try {
+        entry.socket.send(text);
+        entry.socket.close(1000, "Signed out");
+      } catch (_) {
+        // already gone
+      }
+    }
+    this.drop(userId, (candidate) => entries.includes(candidate));
+    return entries.length;
   }
 
   /** True when at least one of the user's connections took the message. */
