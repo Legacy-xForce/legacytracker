@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../tracking/widgets/user_avatar.dart';
+import '../updates/app_update_banner.dart';
 import 'auth_provider.dart';
 
 enum _Method { password, passkey }
@@ -97,6 +98,20 @@ class _LoginScreenState extends State<LoginScreen> {
                 : Brightness.dark,
           ),
       child: Scaffold(
+        // Lets a fix reach users even when signing in is what broke. Out of
+        // the way while typing: the keyboard covers it.
+        bottomNavigationBar: SafeArea(
+          child: Align(
+            heightFactor: 1,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: const AppUpdateBanner(),
+              ),
+            ),
+          ),
+        ),
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(

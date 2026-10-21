@@ -20,6 +20,11 @@ app (android/.../updates/AppUpdater.kt)
       3 minutes and no trip is being recorded
 ```
 
+None of this needs a signed-in user. The login screen also checks every
+time it opens and shows a small banner with an *Install* button when a newer
+version exists. So if a release breaks signing in, a fixed release still
+reaches users without a reinstall.
+
 The app closes while it installs. Tracking resumes by itself
 (`BootReceiver` handles `MY_PACKAGE_REPLACED`), so a parked phone carries on
 sharing without anyone opening the app.
