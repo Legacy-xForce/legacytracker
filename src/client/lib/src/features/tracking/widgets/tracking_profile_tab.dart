@@ -104,8 +104,8 @@ class TrackingProfileTab extends StatelessWidget {
             clipBehavior: Clip.antiAlias,
             child: ListTile(
               leading: const Icon(Icons.manage_accounts_rounded),
-              title: const Text('Manage account'),
-              subtitle: const Text('Password, passkeys and picture'),
+              title: const Text('Manage profile'),
+              subtitle: const Text('Name, picture, password and passkeys'),
               trailing: const Icon(Icons.open_in_new_rounded),
               // Legacy Auth's own page, for every Legacy app.
               onTap: () => launchUrl(

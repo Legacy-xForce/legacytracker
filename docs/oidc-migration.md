@@ -224,7 +224,7 @@ Fallback if AppAuth gets in the way: `flutter_web_auth_2` + PKCE and the token c
 - `login_screen.dart` → brand + "Sign in" button + error line + `AppUpdateBanner` (keep #57: updates install while signed out).
 - Delete `access_denied_screen.dart`, `passkey_client.dart`, `attestation.dart`, `passkeys_screen.dart`, the
   passkey methods in `auth_service.dart`, `models/passkey.dart`.
-- Profile tab: "Manage account (password, passkeys)" opens Legacy Auth's account page in the browser (decision 4).
+- Profile tab: "Manage profile (name, picture, password, passkeys)" opens Legacy Auth's account page in the browser (decision 4).
 - `app.dart` `_home`: initializing → spinner, signed out → sign-in screen, else the app. Nothing in between.
 
 3.4 **Calendar** (`calendar_service.dart`, `calendar_events_provider.dart`): use the calendar token from
