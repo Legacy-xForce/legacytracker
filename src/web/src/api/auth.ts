@@ -1,5 +1,8 @@
 import { config } from '../config';
 
+// The errors every sign-in path uses, and the legacy password-login session (`/auth/refresh`),
+// which sessions started before the move to OpenID Connect keep using until it fails.
+
 export interface AuthTokens {
     accessToken: string;
     refreshToken: string;
@@ -21,7 +24,7 @@ export class AuthError extends Error {
 /** The auth server definitively refused the session, as opposed to a network failure, which is transient. */
 export class AuthRejectedError extends AuthError {}
 
-/** An administrator disabled the account in Legacy Auth. Ends the session. */
+/** An administrator disabled the account in Legacy Auth (legacy sessions). Ends the session. */
 export class AccountDisabledError extends AuthRejectedError {
     constructor() {
         super('This account has been disabled.', 403);
@@ -70,16 +73,6 @@ function parseTokens(body: Record<string, unknown>, now: number): AuthTokens {
 
 async function readTokens(response: Response): Promise<AuthTokens> {
     return parseTokens((await response.json()) as Record<string, unknown>, Date.now());
-}
-
-export async function login(username: string, password: string): Promise<AuthTokens> {
-    const response = await post('/auth/login', { username, password });
-    if (response.status === 401) throw new AuthError('Wrong username or password.', 401);
-    if (response.status === 403 && (await serverError(response)) === 'Account disabled') {
-        throw new AccountDisabledError();
-    }
-    if (!response.ok) throw new AuthError('Sign-in failed.', response.status);
-    return readTokens(response);
 }
 
 export async function refresh(refreshToken: string): Promise<AuthTokens> {

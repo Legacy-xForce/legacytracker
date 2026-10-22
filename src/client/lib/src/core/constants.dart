@@ -12,7 +12,25 @@ class AppConstants {
       ? _productionBackendUrl
       : String.fromEnvironment('BACKEND_URL', defaultValue: _productionBackendUrl);
 
-  // Legacy Calendar, which accepts the same access token as the tracker. Like
+  // Legacy Auth, the OpenID Provider the app signs in with. Like the tracker
+  // backend, release builds always talk to production; a debug build can use a
+  // local one with `--dart-define=AUTH_URL=http://10.0.2.2:4000`.
+  static const _productionAuthUrl = 'https://auth.legacy-group.tech';
+  static const authBaseUrl = kReleaseMode
+      ? _productionAuthUrl
+      : String.fromEnvironment('AUTH_URL', defaultValue: _productionAuthUrl);
+
+  // This app's public client at Legacy Auth, and the custom-scheme URIs it is
+  // registered with (docs/oidc-migration.md).
+  static const oidcClientId = 'tracker-mobile';
+  static const oidcCallbackScheme = 'com.legacy.legacytracker';
+  static const oidcRedirectUri = '$oidcCallbackScheme:/oauth2redirect';
+  static const oidcPostLogoutRedirectUri = '$oidcCallbackScheme:/logout';
+
+  // Legacy Auth's own page for the account: password, passkeys, picture.
+  static const accountSettingsUrl = '$authBaseUrl/settings';
+
+  // Legacy Calendar, which takes a calendar token from the same sign-in. Like
   // the tracker backend, release builds always talk to production.
   static const _productionCalendarUrl = 'https://calendar.legacy-group.tech';
   static const calendarBaseUrl = kReleaseMode

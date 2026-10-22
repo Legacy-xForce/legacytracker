@@ -5,16 +5,38 @@ viewer's own location. Vue 3, Vite, Tailwind 4, Pinia, Leaflet.
 
 ## Sign-in
 
-Password sign-in against Legacy Auth (`/auth/login`, `/auth/refresh`). Passkeys
-are not supported on the web: the passkey RP ID is `auth.legacy-group.tech`,
-which a page on another origin cannot use.
+OpenID Connect against Legacy Auth's OpenID Provider (`config.authUrl` is the
+issuer), as the public client `tracker-spa`: authorization code + PKCE with
+`oauth4webapi` (`src/api/oidc.ts`). There is no login form: "Sign in with Legacy"
+redirects to Legacy Auth's own page (password or passkey; someone already
+signed in to another Legacy app goes straight through) and it redirects back to
+`<origin>/callback`, which `main.ts` completes before the router starts. A new
+domain only needs `https://<domain>/callback` (and `https://<domain>/` for
+sign-out) registered on the client. See `docs/oidc-migration.md`.
 
-- The access token is kept in memory only. The refresh token is stored in
-  `localStorage`, so a reload resumes the session.
-- Refresh tokens rotate. Concurrent refreshes in one tab share a request, and
-  if another tab already used the stored token, the successor it saved is tried.
-- Accounts without `scopes.tracker` see "Scope required"; disabled accounts
-  (403 `Account disabled`) see "Access restricted". Both mirror the phone app.
+- One grant covers two resources: the tracker token is asked for with
+  `resource=urn:legacy:tracker`, the calendar token (for events on the map) by
+  refreshing with `resource=urn:legacy:calendar`. Only when the tracker token's
+  `scopes.calendar` says the account has the calendar: a refused refresh spends
+  the refresh token.
+- Access tokens are kept in memory only. The refresh token (and the ID token,
+  the sign-out hint) are stored in `localStorage` (`legacytracker.oidc`), so a
+  reload resumes the session. This is a deliberate trade-off for domain
+  flexibility; the build writes a strict Content-Security-Policy to
+  `_headers` (`vite.config.ts`).
+- Refresh tokens rotate and the OP revokes the grant when an old one is reused,
+  so every refresh runs under one Web Lock (`src/lib/lock.ts`) across tabs and
+  reads the newest token from storage inside it. Removing the key in one tab
+  signs out the others.
+- An account the OP turns away (`error=access_denied`) gets one line on the
+  sign-in screen. If the sign-in asked for the calendar, it is first retried for
+  the tracker alone (no second password: the OP session already exists).
+- A 403 `Missing tracker scope` from the server, a refused refresh, or a
+  `signed_out` stream message (back-channel logout) ends the session.
+- Sign-out clears storage and goes to the OP's `end_session_endpoint`, which
+  ends the Legacy session for every app.
+- Sessions from the old password login (`legacytracker.session`) keep
+  refreshing through `/auth/refresh` until that fails.
 
 ## Look
 

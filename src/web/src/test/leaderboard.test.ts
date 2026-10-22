@@ -15,8 +15,7 @@ import {
     toDateInput
 } from '../lib/periods';
 import { useLeaderboardStore } from '../stores/leaderboard';
-import { useSessionStore } from '../stores/session';
-import { fakeJwt, jsonResponse, tokenResponse } from './helpers';
+import { fakeJwt, jsonResponse, tokenResponse, startSession } from './helpers';
 
 describe('periods', () => {
     it('runs weeks Monday to Sunday', () => {
@@ -129,7 +128,7 @@ describe('leaderboard view', () => {
         fetchMock.mockResolvedValueOnce(
             jsonResponse(tokenResponse(fakeJwt({ sub: 'me', username: 'ada', scopes: { tracker: true } })))
         );
-        await useSessionStore().login('ada', 'pw');
+        await startSession();
         fetchMock.mockImplementation(async () =>
             jsonResponse({
                 entries: [

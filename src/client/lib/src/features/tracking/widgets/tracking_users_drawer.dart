@@ -870,7 +870,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
   /// position itself arrives over the realtime stream.
   Future<void> _forceRefresh() async {
     if (_refreshing) return;
-    final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+    final accessToken = context.read<AuthProvider>().accessToken;
     if (accessToken == null) return;
     final service = LocationRefreshService(
       baseUrl: context.read<TrackingController>().baseUrl,
@@ -895,7 +895,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
   }
 
   Future<List<LocationSession>> _loadTodaySessions() {
-    final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+    final accessToken = context.read<AuthProvider>().accessToken;
     if (accessToken == null || !widget.user.profile.sharesWithMe) {
       return Future.value(const []);
     }
@@ -935,7 +935,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
 
   void _openHistory() {
     final baseUrl = context.read<TrackingController>().baseUrl;
-    final accessToken = context.read<AuthProvider>().tokens?.accessToken;
+    final accessToken = context.read<AuthProvider>().accessToken;
     if (accessToken == null) return;
     Navigator.of(context).push(
       MaterialPageRoute(

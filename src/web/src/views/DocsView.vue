@@ -156,8 +156,9 @@ onMounted(async () => {
                     <ul class="type-body-md text-on-surface-variant mt-5 flex list-disc flex-col gap-2 pl-5">
                         <li>
                             Endpoints marked <span class="chip" :class="ACCESS_CLASSES.session">Session only</span> take
-                            a signed-in session (<code>Authorization: Bearer &lt;access token&gt;</code> from Legacy
-                            Auth) and refuse API tokens, so a leaked token can't create new tokens or register devices.
+                            a signed-in session (<code>Authorization: Bearer &lt;access token&gt;</code> that Legacy
+                            Auth issued to a Legacy Tracker app) and refuse API tokens, so a leaked token can't create
+                            new tokens or register devices.
                         </li>
                         <li>
                             <strong class="text-on-surface">Rotate</strong> a token to replace its value: the old value
@@ -166,7 +167,7 @@ onMounted(async () => {
                         </li>
                         <li>
                             Tokens belong to your tracker access. If an administrator removes it, your tokens are
-                            deleted the next time your account reaches the tracker.
+                            deleted.
                         </li>
                         <li>If both headers are present, <code>X-API-Token</code> wins.</li>
                     </ul>

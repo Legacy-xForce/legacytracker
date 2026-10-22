@@ -81,6 +81,7 @@ class AppUpdateStatus {
     required this.currentVersionCode,
     this.availableVersionName,
     this.availableVersionCode,
+    this.minSupportedCode = 0,
     this.notes,
     this.downloaded = false,
     this.failed = false,
@@ -105,6 +106,7 @@ class AppUpdateStatus {
       currentVersionCode: (map['currentVersionCode'] as num?)?.toInt() ?? 0,
       availableVersionName: map['availableVersionName'] as String?,
       availableVersionCode: (map['availableVersionCode'] as num?)?.toInt(),
+      minSupportedCode: (map['minSupportedCode'] as num?)?.toInt() ?? 0,
       notes: map['notes'] as String?,
       downloaded: map['downloaded'] as bool? ?? false,
       failed: map['failed'] as bool? ?? false,
@@ -121,6 +123,9 @@ class AppUpdateStatus {
   final int currentVersionCode;
   final String? availableVersionName;
   final int? availableVersionCode;
+
+  /// The oldest build the server still supports; older ones must update.
+  final int minSupportedCode;
   final String? notes;
 
   /// The available update is downloaded and verified.
@@ -145,5 +150,6 @@ class AppUpdateStatus {
   final String? lastError;
 
   bool get updateAvailable => availableVersionCode != null;
+  bool get updateRequired => currentVersionCode < minSupportedCode;
   bool get downloading => progress != null;
 }

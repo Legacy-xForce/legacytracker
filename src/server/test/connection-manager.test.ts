@@ -152,3 +152,35 @@ test("the heartbeat pings every socket and drops one that never answered", () =>
   assert.equal(manager.count, 1);
   assert.deepEqual([...manager.activeMapUsers()], ["a"]);
 });
+
+test("a back-channel logout closes only the sockets of that session", () => {
+  const manager = new ConnectionManager();
+  const browser = fakeSocket();
+  const phone = fakeSocket();
+  const script = fakeSocket();
+  manager.add("a", browser, "sid-web");
+  manager.add("a", phone, "sid-app");
+  manager.add("a", script, null);
+
+  assert.equal(manager.closeSession("sid-web", { type: "signed_out" }), 1);
+  assert.deepEqual(browser.sent, ['{"type":"signed_out"}']);
+  assert.equal(browser.closed, true);
+  assert.equal(phone.closed, false);
+  assert.equal(manager.count, 2);
+});
+
+test("a user-wide logout spares API-token streams unless access was lost", () => {
+  const manager = new ConnectionManager();
+  const browser = fakeSocket();
+  const script = fakeSocket();
+  manager.add("a", browser, "sid-web");
+  manager.add("a", script, null);
+
+  assert.equal(manager.closeUser("a", { type: "signed_out" }, { sessionsOnly: true }), 1);
+  assert.equal(browser.closed, true);
+  assert.equal(script.closed, false);
+
+  assert.equal(manager.closeUser("a", { type: "signed_out" }), 1);
+  assert.equal(script.closed, true);
+  assert.equal(manager.count, 0);
+});

@@ -12,10 +12,15 @@ export class CalendarError extends Error {
     }
 }
 
-/** Events overlapping `from`..`to`, read from Legacy Calendar with the tracker's own access token. */
+/** Events overlapping `from`..`to`, read from Legacy Calendar with a calendar token from the same sign-in. */
 export async function fetchEvents(from: Date, to: Date): Promise<CalendarEvent[]> {
-    const token = await useSessionStore().getAccessToken();
-    if (!token) throw new CalendarError('Not signed in.', true);
+    let token: string | null;
+    try {
+        token = await useSessionStore().getCalendarToken();
+    } catch {
+        throw new CalendarError('Unable to reach the sign-in server.');
+    }
+    if (!token) throw new CalendarError('No calendar access.', true);
 
     const query = new URLSearchParams({ start: from.toISOString(), end: to.toISOString() });
     let response: Response;

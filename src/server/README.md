@@ -39,6 +39,9 @@ Create a `.env` file (or export variables):
 | `GITHUB_TOKEN` | — | Optional; raises GitHub's API rate limit for the release lookups. |
 | `AUTH_JWKS_URI` | `https://auth.legacy-group.tech/.well-known/jwks.json` | Legacy Auth's JWKS, used to verify access tokens. |
 | `AUTH_ISSUER` | `https://auth.legacy-group.tech` | `iss` required in access tokens; must match Legacy Auth's `JWT_ISSUER`. |
+| `ANDROID_MIN_SUPPORTED_CODE` | `0` | Oldest Android build (`version_code`) still allowed; older builds show "Update required". |
+| `AUTH_ALLOWED_CLIENTS` | `tracker-spa,tracker-mobile` | OIDC clients (`client_id`) whose access tokens are accepted, and the `aud` of back-channel logout tokens. |
+| `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices. |
 | `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
 
 ### 3. Run
@@ -80,7 +83,12 @@ docker run -p 3000:3000 -e DATABASE_URL=<url> legacytracker-server
 
 ## API reference
 
-All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against Legacy Auth's JWKS (`AUTH_JWKS_URI`) and must have `iss` = `AUTH_ISSUER`, `type: "access"`, `scopes.tracker: true` (otherwise `403`) and `tracker` in `aud` (otherwise `401`, e.g. for a token issued for the calendar). The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
+All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against Legacy Auth's JWKS (`AUTH_JWKS_URI`), must be ES256 with `iss` = `AUTH_ISSUER`, and comes in one of two shapes while the apps move to OpenID Connect (see `docs/oidc-migration.md`):
+
+- **OpenID Provider tokens** (header `typ: at+jwt`): `aud` must be `tracker` and `client_id` one of `AUTH_ALLOWED_CLIENTS` (otherwise `401`). The RFC 9068 `scope` decides access: `tracker.write` may do anything, `tracker.read` only what a read API token may (otherwise `403 { "error": "This session is read-only" }`), neither is `403`.
+- **Legacy password-login tokens**: `type: "access"`, `scopes.tracker: true` (otherwise `403`) and `tracker` in `aud` (otherwise `401`, e.g. for a token issued for the calendar). They have full access.
+
+The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
 
 The web app serves a readable version of this reference, with examples, at `/docs`.
 
@@ -99,9 +107,9 @@ precedence over `Authorization`.
   signed-in session, so a leaked token can't mint replacements.
 - Only `sha256(token)` is stored: the value is shown once, at creation or
   rotation. Up to 25 tokens per user.
-- A request whose JWT lacks `scopes.tracker` deletes that user's tokens, so
-  removing someone's tracker access also ends their integrations (once they
-  next reach the tracker).
+- Removing someone's tracker access also ends their integrations: a
+  back-channel logout reporting lost access (see [Sign-out](#sign-out-back-channel-logout))
+  deletes that user's tokens, as does a legacy JWT that lacks `scopes.tracker`.
 
 | Method   | Path                              | Auth | Description |
 |----------|-----------------------------------|------|-------------|
@@ -124,7 +132,7 @@ long-lived device token instead of the user JWT.
 
 | Method   | Path                    | Auth | Description |
 |----------|-------------------------|------|-------------|
-| `POST`   | `/api/v1/devices`       | JWT  | Body `{ "platform": "android", "replaces": "<old device id>" }` (both optional). Returns `{ "device_id", "device_token" }`; `replaces` revokes the old token. |
+| `POST`   | `/api/v1/devices`       | JWT  | Body `{ "platform": "android", "replaces": "<old device id>" }` (both optional). Returns `{ "device_id", "device_token" }`; `replaces` revokes the old token. OpenID Provider tokens must come from `AUTH_MOBILE_CLIENT` (the app), otherwise `403`. |
 | `DELETE` | `/api/v1/devices/:id`   | JWT, write API token, or that device's own token | Revokes the token (sign-out). |
 
 Only `sha256(token)` is stored.
@@ -133,7 +141,7 @@ Only `sha256(token)` is stored.
 
 | Method | Path                          | Auth | Description |
 |--------|-------------------------------|------|-------------|
-| `GET`  | `/api/v1/app/android/latest`  | none | The current Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at" }`, or 204 when none is published. |
+| `GET`  | `/api/v1/app/android/latest`  | none | The current Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at", "min_supported_code" }` (builds below `min_supported_code` must update first), or 204 when none is published. |
 
 Releases are GitHub releases tagged `android-v<name>+<code>`, read every five
 minutes; a new one is announced to every device with an FCM `lt_cmd: update`
@@ -244,10 +252,26 @@ someone watches. See `services/dwell-tracker.ts`.
 message without coordinates — refreshes `last_seen_at`, `here_since` and
 battery only.
 
+**Signed out** (just before the server closes the socket, after a back-channel
+logout for the session that opened it): `{ "type": "signed_out" }`. Clients
+drop their tokens and show the sign-in screen.
+
 #### WebSocket messages (client → server)
 
 `{ "type": "map_active", "active": true }` — whether this viewer's map is on
 screen; drives live mode.
+
+### Sign-out (back-channel logout)
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/auth/backchannel-logout` | Called by Legacy Auth, not by clients. Form body `logout_token=<JWT>` ([OIDC Back-Channel Logout](https://openid.net/specs/openid-connect-backchannel-1_0.html)): ES256 from `AUTH_ISSUER`, `typ: logout+jwt`, `aud` one of `AUTH_ALLOWED_CLIENTS`, at most 5 min old, the back-channel `events` member, no `nonce`. `200`, or `400` for an invalid token. |
+
+A token with `sid` closes the WebSocket streams opened with that OP session
+(`signed_out` message); one with only `sub` closes all of the user's
+session streams (API-token streams stay). When `events` also holds
+`urn:legacy:event:access-revoked` (the account lost the tracker scope or was
+disabled), the user's API tokens are deleted and all of their streams close.
 
 ## Project layout
 

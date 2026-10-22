@@ -119,7 +119,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     selfId: controller.selfProfile.id,
                     baseUrl: controller.baseUrl,
                     getAccessToken: () =>
-                        context.read<AuthProvider>().tokens?.accessToken,
+                        context.read<AuthProvider>().accessToken,
                   ),
                   TrackingProfileTab(controller: controller),
                 ],

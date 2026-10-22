@@ -169,7 +169,7 @@ export const DOC_SECTIONS: DocSection[] = [
                 path: '/api/v1/stream?ticket={ticket}',
                 summary: 'Open the live stream (WebSocket)',
                 description:
-                    'Upgrade to a WebSocket at wss://<host>/api/v1/stream?ticket=…. The server first sends a `snapshot` of everyone you can see, then one message per position or presence change. Send {"type":"map_active","active":true} while your map is on screen (and false when it is not) to put phones into realtime mode. People who hide their location from you appear with `sharing: false` and no coordinates.',
+                    'Upgrade to a WebSocket at wss://<host>/api/v1/stream?ticket=…. The server first sends a `snapshot` of everyone you can see, then one message per position or presence change. Send {"type":"map_active","active":true} while your map is on screen (and false when it is not) to put phones into realtime mode. People who hide their location from you appear with `sharing: false` and no coordinates. When the session that opened the stream signs out, the server sends {"type":"signed_out"} and closes it.',
                 access: 'read',
                 params: [
                     {
@@ -468,6 +468,8 @@ ws.onmessage = (event) => console.log(JSON.parse(event.data));`,
                 method: 'POST',
                 path: '/api/v1/devices',
                 summary: 'Register a phone for background uploads',
+                description:
+                    'Only sessions of the Legacy Tracker phone app may register devices; a web session gets 403.',
                 access: 'session',
                 params: [
                     { name: 'platform', in: 'body', type: 'string', description: '`android` or `ios`.' },
@@ -517,7 +519,8 @@ ws.onmessage = (event) => console.log(JSON.parse(event.data));`,
                     sha256: '…',
                     size: 41234567,
                     notes: '…',
-                    published_at: iso
+                    published_at: iso,
+                    min_supported_code: 0
                 }
             }
         ]

@@ -4,6 +4,7 @@ import { ApiError, requestStreamTicket, trackerFetch } from '../api/tracker';
 import { StreamClient, type StreamStatus } from '../api/stream';
 import { applyMessage, type Peer } from '../lib/peers';
 import { parseViewers, type Viewer } from '../lib/viewers';
+import { useSessionStore } from './session';
 
 export const UNREACHABLE_MESSAGE =
     'Unable to reach device for location update. The device may be offline or in battery saver mode.';
@@ -21,6 +22,11 @@ export const usePeersStore = defineStore('peers', () => {
     const list = computed(() => [...peers.value.values()]);
 
     function receive(message: unknown) {
+        if (typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'signed_out') {
+            // The session ended at Legacy Auth (signed out elsewhere, or access removed).
+            useSessionStore().expire();
+            return;
+        }
         const announced = parseViewers(message);
         if (announced) {
             viewers.value = announced;
@@ -39,7 +45,7 @@ export const usePeersStore = defineStore('peers', () => {
             getTicket: requestStreamTicket,
             onMessage: receive,
             onStatus: (next) => (status.value = next),
-            // Access errors already flip the session into its denied state; nothing to retry.
+            // Access errors already ended the session; nothing to retry.
             isFatal: (error) => error instanceof ApiError && (error.status === 401 || error.status === 403)
         });
         client.start();

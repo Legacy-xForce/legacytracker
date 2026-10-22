@@ -7,8 +7,7 @@ import ToastHost from '../components/ui/ToastHost.vue';
 import type { Peer } from '../lib/peers';
 import { toasts } from '../lib/toast';
 import { UNREACHABLE_MESSAGE, usePeersStore } from '../stores/peers';
-import { useSessionStore } from '../stores/session';
-import { fakeJwt, jsonResponse, tokenResponse } from './helpers';
+import { fakeJwt, jsonResponse, tokenResponse, startSession } from './helpers';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -27,7 +26,7 @@ beforeEach(async () => {
     fetchMock.mockResolvedValueOnce(
         jsonResponse(tokenResponse(fakeJwt({ sub: 'u', username: 'ada', scopes: { tracker: true } })))
     );
-    await useSessionStore().login('ada', 'pw');
+    await startSession();
     fetchMock.mockReset();
 });
 

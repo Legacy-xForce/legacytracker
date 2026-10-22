@@ -5,8 +5,7 @@ import { createApiToken, listApiTokens, parseApiToken } from '../api/apiTokens';
 import ApiTokensDialog from '../components/account/ApiTokensDialog.vue';
 import { curlExample, DOC_SECTIONS } from '../lib/apiDocs';
 import { router } from '../router';
-import { useSessionStore } from '../stores/session';
-import { fakeJwt, jsonResponse, tokenResponse } from './helpers';
+import { fakeJwt, jsonResponse, tokenResponse, startSession } from './helpers';
 
 const summary = {
     id: '0e7a3c3e-2f7b-4f63-9c55-0bb0a4f3c1d2',
@@ -33,7 +32,7 @@ async function signIn() {
     fetchMock.mockResolvedValueOnce(
         jsonResponse(tokenResponse(fakeJwt({ sub: 'u', username: 'ada', scopes: { tracker: true } })))
     );
-    await useSessionStore().login('ada', 'pw');
+    await startSession();
 }
 
 beforeEach(() => {

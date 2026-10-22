@@ -53,6 +53,8 @@ class AppUpdater private constructor(context: Context) {
         val sha256: String,
         val size: Long,
         val notes: String,
+        /** Builds older than this must update before they can be used (0: none). */
+        val minSupportedCode: Long = 0,
     )
 
     private val app = context.applicationContext
@@ -130,7 +132,11 @@ class AppUpdater private constructor(context: Context) {
         val newer = release?.takeIf { it.versionCode > installedVersionCode }
         val previous = prefs.getLong(K_AVAILABLE_CODE, 0L)
         saveAvailable(newer)
-        prefs.edit().putLong(K_LAST_CHECK, System.currentTimeMillis()).remove(K_LAST_ERROR).apply()
+        prefs.edit()
+            .putLong(K_LAST_CHECK, System.currentTimeMillis())
+            .putLong(K_MIN_SUPPORTED, release?.minSupportedCode ?: 0L)
+            .remove(K_LAST_ERROR)
+            .apply()
         if (newer != null && newer.versionCode != previous) {
             log("Update available: ${newer.versionName} (${newer.versionCode})")
         }
@@ -333,6 +339,7 @@ class AppUpdater private constructor(context: Context) {
             "currentVersionCode" to installedVersionCode,
             "currentVersionName" to installedVersionName,
             "availableVersionCode" to release?.versionCode,
+            "minSupportedCode" to prefs.getLong(K_MIN_SUPPORTED, 0L),
             "availableVersionName" to release?.versionName,
             "notes" to release?.notes,
             "downloaded" to (release != null && isDownloaded(release)),
@@ -379,6 +386,7 @@ class AppUpdater private constructor(context: Context) {
             sha256 = json.getString("sha256").lowercase(),
             size = json.getLong("size"),
             notes = json.optString("notes", ""),
+            minSupportedCode = json.optLong("min_supported_code", 0L),
         )
     }
 
@@ -474,6 +482,7 @@ class AppUpdater private constructor(context: Context) {
         private const val K_LAST_CHECK = "last_check"
         private const val K_LAST_ERROR = "last_error"
         private const val K_AVAILABLE_CODE = "available_code"
+        private const val K_MIN_SUPPORTED = "min_supported_code"
         private const val K_AVAILABLE_NAME = "available_name"
         private const val K_AVAILABLE_URL = "available_url"
         private const val K_AVAILABLE_SHA = "available_sha256"

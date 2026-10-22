@@ -1,5 +1,5 @@
 import { config } from '../config';
-import { useSessionStore } from '../stores/session';
+import { NO_ACCESS_MESSAGE, useSessionStore } from '../stores/session';
 
 /** A tracker request the server refused or that couldn't be made. `status` is 0 when unreachable. */
 export class ApiError extends Error {
@@ -22,13 +22,13 @@ async function send(path: string, init: RequestInit, token: string): Promise<Res
     }
 }
 
-/** A 403 that means "that person hides from you", not "you may not use the tracker". */
-async function isNotSharing(response: Response): Promise<boolean> {
+/** A 403 that means the account may no longer use the tracker, not e.g. "that person hides from you". */
+async function isAccessLost(response: Response): Promise<boolean> {
     const body = (await response
         .clone()
         .json()
         .catch(() => null)) as { error?: unknown } | null;
-    return body?.error === 'not_sharing';
+    return body?.error === 'Missing tracker scope';
 }
 
 /** A tracker request with the user's access token, retried once with a fresh token after a 401. */
@@ -48,9 +48,8 @@ export async function trackerFetch(path: string, init: RequestInit = {}): Promis
         if (!fresh) throw new ApiError('Session expired.', 401);
         response = await send(path, init, fresh);
     }
-    if (response.status === 403 && !(await isNotSharing(response))) {
-        // The server is stricter than the token's own claims (it re-checks the scope).
-        session.markForbidden();
+    if (response.status === 403 && (await isAccessLost(response))) {
+        session.expire(NO_ACCESS_MESSAGE);
         throw new ApiError('Access denied.', 403);
     }
     return response;
