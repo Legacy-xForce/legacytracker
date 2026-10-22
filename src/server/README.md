@@ -88,7 +88,7 @@ All REST endpoints require an `Authorization: Bearer <access_token>` header or a
 - **OpenID Provider tokens** (header `typ: at+jwt`): `aud` must be `tracker` and `client_id` one of `AUTH_ALLOWED_CLIENTS` (otherwise `401`). The RFC 9068 `scope` decides access: `tracker.write` may do anything, `tracker.read` only what a read API token may (otherwise `403 { "error": "This session is read-only" }`), neither is `403`.
 - **Legacy password-login tokens**: `type: "access"`, `scopes.tracker: true` (otherwise `403`) and `tracker` in `aud` (otherwise `401`, e.g. for a token issued for the calendar). They have full access.
 
-The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable username from the token claims when available, instead of defaulting to the UUID subject.
+The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable display name from the token claims (`display_name`, then `name`, then the login username) when available, instead of defaulting to the UUID subject.
 
 The web app serves a readable version of this reference, with examples, at `/docs`.
 

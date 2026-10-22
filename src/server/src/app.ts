@@ -3,7 +3,7 @@ import crypto from "crypto";
 import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
-import { createRemoteJWKSet, type JWTPayload } from "jose";
+import { createRemoteJWKSet } from "jose";
 import pool from "./config/db";
 import {
   ApiTokenLimitError,
@@ -55,6 +55,7 @@ import {
   verifyLogoutToken,
   type LogoutTokenResult,
 } from "./services/access-token";
+import { getDisplayNameFromToken } from "./services/display-name";
 import {
   parseTrackingIssues,
   type TrackingIssue,
@@ -369,35 +370,6 @@ function normalizeNumber(value: unknown): number | null {
     return null;
   }
   return value;
-}
-
-function readStringClaim(payload: JWTPayload, claim: string): string | null {
-  const value = payload[claim];
-  if (typeof value !== "string") {
-    return null;
-  }
-
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : null;
-}
-
-function getDisplayNameFromToken(
-  payload: JWTPayload,
-  fallbackId: string,
-): string {
-  const candidates = [
-    readStringClaim(payload, "preferred_username"),
-    readStringClaim(payload, "username"),
-    readStringClaim(payload, "nickname"),
-    readStringClaim(payload, "name"),
-    readStringClaim(payload, "email"),
-  ];
-
-  return (
-    candidates.find(
-      (candidate) => candidate != null && candidate !== fallbackId,
-    ) ?? fallbackId
-  );
 }
 
 // `forbidden`: a valid credential that may not do this — an account without
