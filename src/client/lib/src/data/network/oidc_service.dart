@@ -15,6 +15,10 @@ const calendarResource = 'urn:legacy:calendar';
 /// What an account the OP turned away is told.
 const noTrackerAccessMessage = 'This account can\'t use Legacy Tracker.';
 
+/// What a session that ended without the user asking is told: revoked or
+/// expired at Legacy Auth, access removed, or signed out in another app.
+const sessionEndedMessage = 'Your session ended. Sign in again to continue.';
+
 // `offline_access` gets a refresh token; the OP only grants it with
 // `prompt=consent`, which it answers without asking.
 const _baseScopes = 'openid profile offline_access tracker.read tracker.write';

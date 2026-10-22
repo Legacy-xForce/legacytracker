@@ -184,13 +184,13 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// What the sign-in screen says after the session was refused.
-  static String? _endMessage(AuthRejectedException error) {
+  static String _endMessage(AuthRejectedException error) {
     if (error is AccountDisabledException) return error.message;
     if (error.message == noTrackerAccessMessage ||
         error.message.contains('no access to tracker')) {
       return noTrackerAccessMessage;
     }
-    return null;
+    return sessionEndedMessage;
   }
 
   /// Signs out on this phone, then at Legacy Auth (which ends the session in

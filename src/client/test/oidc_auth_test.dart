@@ -553,6 +553,7 @@ void main() {
       final auth = await ready();
 
       expect(auth.isAuthenticated, isFalse);
+      expect(auth.errorMessage, sessionEndedMessage);
       expect(await (await _storage()).loadGrant(), isNull);
       auth.dispose();
     });

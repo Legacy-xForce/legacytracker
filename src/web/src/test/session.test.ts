@@ -2,7 +2,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { signInUrl } from '../api/oidc';
 import { redirectTo } from '../lib/redirect';
-import { LEGACY_KEY, STORAGE_KEY, useSessionStore } from '../stores/session';
+import { LEGACY_KEY, SESSION_ENDED_MESSAGE, STORAGE_KEY, useSessionStore } from '../stores/session';
 import { b64url, fakeJwt, jsonResponse, tokenResponse } from './helpers';
 
 vi.mock('../lib/redirect', () => ({ redirectTo: vi.fn() }));
@@ -221,7 +221,7 @@ describe('the OP session', () => {
 
         expect(await session.restore()).toBe(false);
         expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
-        expect(session.signInError).toBeNull();
+        expect(session.signInError).toBe(SESSION_ENDED_MESSAGE);
     });
 
     it('keeps the grant when the OP is unreachable', async () => {
@@ -289,6 +289,7 @@ describe('the OP session', () => {
 
         expect(session.isAuthenticated).toBe(false);
         expect(localStorage.getItem(STORAGE_KEY)).toBeNull();
+        expect(session.signInError).toBe(SESSION_ENDED_MESSAGE);
     });
 });
 
@@ -390,6 +391,7 @@ describe('a session from the old password login', () => {
 
         expect(await session.restore()).toBe(false);
         expect(localStorage.getItem(LEGACY_KEY)).toBeNull();
+        expect(session.signInError).toBe(SESSION_ENDED_MESSAGE);
     });
 
     it('explains a disabled account', async () => {

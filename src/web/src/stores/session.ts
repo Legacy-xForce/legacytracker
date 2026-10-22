@@ -18,6 +18,9 @@ export const LEGACY_KEY = 'legacytracker.session';
 const REFRESH_MARGIN_MS = 60_000;
 
 export const NO_ACCESS_MESSAGE = "This account can't use Legacy Tracker.";
+// A session that ended without the user asking: revoked or expired at Legacy Auth, access removed,
+// or signed out in another app.
+export const SESSION_ENDED_MESSAGE = 'Your session ended. Sign in again to continue.';
 
 interface StoredGrant {
     refreshToken: string;
@@ -66,10 +69,10 @@ function isFresh(grant: AccessGrant | null): grant is AccessGrant {
     return !!grant && grant.expiresAt - Date.now() >= REFRESH_MARGIN_MS;
 }
 
-/** The message a refused session leaves on the sign-in screen, if any. */
-function endMessage(error: unknown): string | null {
-    // 403s say why (disabled account, no tracker access); a revoked or expired grant just ends.
-    return error instanceof AuthRejectedError && error.status === 403 ? error.message : null;
+/** The message a refused session leaves on the sign-in screen. */
+function endMessage(error: unknown): string {
+    // 403s say why (disabled account, no tracker access); a revoked or expired grant doesn't.
+    return error instanceof AuthRejectedError && error.status === 403 ? error.message : SESSION_ENDED_MESSAGE;
 }
 
 export const useSessionStore = defineStore('session', () => {
@@ -243,7 +246,7 @@ export const useSessionStore = defineStore('session', () => {
     }
 
     /** The session ended elsewhere (lost access, or signed out through the OP). */
-    function expire(message: string | null = null) {
+    function expire(message: string = SESSION_ENDED_MESSAGE) {
         endSession(message);
     }
 
