@@ -4,10 +4,11 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/constants.dart';
 import '../../auth/api_tokens_screen.dart';
 import '../../auth/auth_provider.dart';
-import '../../auth/passkeys_screen.dart';
 import '../../checkpoints/checkpoints_screen.dart';
 import '../../debug/debug_log_screen.dart';
 import '../../updates/app_updater.dart';
@@ -98,17 +99,19 @@ class TrackingProfileTab extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const _SectionLabel('Sign-in'),
+          const _SectionLabel('Account'),
           Card(
             clipBehavior: Clip.antiAlias,
             child: ListTile(
-              leading: const Icon(Icons.fingerprint_rounded),
-              title: const Text('Passkeys'),
-              subtitle: const Text('Sign in with your fingerprint or screen lock'),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.of(
-                context,
-              ).push(MaterialPageRoute(builder: (_) => const PasskeysScreen())),
+              leading: const Icon(Icons.manage_accounts_rounded),
+              title: const Text('Manage account'),
+              subtitle: const Text('Password, passkeys and picture'),
+              trailing: const Icon(Icons.open_in_new_rounded),
+              // Legacy Auth's own page, for every Legacy app.
+              onTap: () => launchUrl(
+                Uri.parse(AppConstants.accountSettingsUrl),
+                mode: LaunchMode.externalApplication,
+              ),
             ),
           ),
           const SizedBox(height: 24),

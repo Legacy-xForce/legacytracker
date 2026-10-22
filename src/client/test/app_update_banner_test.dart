@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:legacytracker/src/features/updates/app_update_banner.dart';
 import 'package:legacytracker/src/features/updates/app_updater.dart';
+import 'package:legacytracker/src/features/updates/update_required_gate.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -19,8 +20,10 @@ void main() {
     double? progress,
     String? lastError,
     DateTime? lastCheckAt,
+    int minSupported = 0,
   }) => {
     'currentVersionCode': 11,
+    'minSupportedCode': minSupported,
     'currentVersionName': '1.1.0',
     'availableVersionCode': available,
     'availableVersionName': available == null ? null : '1.2.0',
@@ -147,5 +150,30 @@ void main() {
       const MaterialApp(home: Scaffold(body: AppUpdateBanner())),
     );
     expect(find.byIcon(Icons.system_update_rounded), findsNothing);
+  });
+
+  Future<void> pumpGate(WidgetTester tester, Map<String, Object?> current) async {
+    AppUpdater.debugSupportedOverride = true;
+    messenger.setMockMethodCallHandler(channel, (call) async => current);
+    await tester.pumpWidget(
+      const MaterialApp(home: UpdateRequiredGate(child: Text('the app'))),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+  }
+
+  testWidgets('the gate lets a supported build through', (tester) async {
+    await pumpGate(tester, status(available: 12, minSupported: 11));
+    expect(find.text('the app'), findsOneWidget);
+    expect(find.text('Update required'), findsNothing);
+  });
+
+  testWidgets('the gate blocks a build below the minimum, offering the update', (
+    tester,
+  ) async {
+    await pumpGate(tester, status(available: 12, minSupported: 12));
+    expect(find.text('the app'), findsNothing);
+    expect(find.text('Update required'), findsOneWidget);
+    expect(find.text('Install'), findsOneWidget);
   });
 }

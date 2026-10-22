@@ -39,6 +39,7 @@ Create a `.env` file (or export variables):
 | `GITHUB_TOKEN` | — | Optional; raises GitHub's API rate limit for the release lookups. |
 | `AUTH_JWKS_URI` | `https://auth.legacy-group.tech/.well-known/jwks.json` | Legacy Auth's JWKS, used to verify access tokens. |
 | `AUTH_ISSUER` | `https://auth.legacy-group.tech` | `iss` required in access tokens; must match Legacy Auth's `JWT_ISSUER`. |
+| `ANDROID_MIN_SUPPORTED_CODE` | `0` | Oldest Android build (`version_code`) still allowed; older builds show "Update required". |
 | `AUTH_ALLOWED_CLIENTS` | `tracker-spa,tracker-mobile` | OIDC clients (`client_id`) whose access tokens are accepted, and the `aud` of back-channel logout tokens. |
 | `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices. |
 | `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
@@ -140,7 +141,7 @@ Only `sha256(token)` is stored.
 
 | Method | Path                          | Auth | Description |
 |--------|-------------------------------|------|-------------|
-| `GET`  | `/api/v1/app/android/latest`  | none | The current Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at" }`, or 204 when none is published. |
+| `GET`  | `/api/v1/app/android/latest`  | none | The current Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at", "min_supported_code" }` (builds below `min_supported_code` must update first), or 204 when none is published. |
 
 Releases are GitHub releases tagged `android-v<name>+<code>`, read every five
 minutes; a new one is announced to every device with an FCM `lt_cmd: update`

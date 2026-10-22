@@ -1,9 +1,7 @@
-import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-import '../models/passkey.dart';
 import '../storage/token_storage.dart';
 
 /// The auth server definitively refused the session (invalid or expired
@@ -30,52 +28,27 @@ class AuthException implements Exception {
   String toString() => message;
 }
 
-/// An administrator disabled the account in Legacy Auth. Thrown both when
-/// signing in (an [AuthException]) and when refreshing, where it also means
-/// the session is over (an [AuthRejectedException]): the auth server revokes
-/// every refresh token of a disabled account.
+/// An administrator disabled the account in Legacy Auth. Thrown when
+/// refreshing a legacy session; it also means the session is over (an
+/// [AuthRejectedException]): the auth server revokes every refresh token of a
+/// disabled account.
 class AccountDisabledException extends AuthException
     implements AuthRejectedException {
   AccountDisabledException()
     : super('This account has been disabled.', statusCode: 403);
 }
 
-/// The passkey used to sign in is no longer on the account (deleted, maybe
-/// from another phone), though the phone still offers it.
-class PasskeyNotRegisteredException extends AuthException {
-  PasskeyNotRegisteredException(int statusCode)
-    : super(
-        'That passkey was removed from your account. Sign in with your '
-        'password instead.',
-        statusCode: statusCode,
-      );
-}
-
+/// The old password-login session (`/auth/refresh`, `/auth/logout`), kept for
+/// sessions started before the move to OpenID Connect until they fail. New
+/// sign-ins go through [OidcService].
 class AuthService {
   AuthService({http.Client? httpClient, String? baseUrl})
       : _httpClient = httpClient ?? http.Client(),
         _baseUri = Uri.parse(baseUrl ?? _defaultBaseUrl);
 
   static const String _defaultBaseUrl = 'https://auth.legacy-group.tech';
-  static const _timeout = Duration(seconds: 15);
   final Uri _baseUri;
   final http.Client _httpClient;
-
-  Future<AuthTokens> login(String username, String password) async {
-    final response = await _send(
-      () => _httpClient.post(
-        _baseUri.replace(path: '/auth/login'),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode({'username': username, 'password': password}),
-      ),
-    );
-
-    if (response.statusCode == 401) {
-      throw AuthException('Wrong username or password.', statusCode: 401);
-    }
-    _ensureOk(response, 'Sign-in failed');
-    return _parseTokenResponse(response.body);
-  }
 
   Future<AuthTokens> refresh(String refreshToken) async {
     final response = await _httpClient.post(
@@ -109,157 +82,6 @@ class AuthService {
     }
   }
 
-  /// WebAuthn request options for a passkey sign-in, as JSON.
-  Future<Map<String, dynamic>> passkeyLoginOptions() async {
-    final response = await _send(
-      () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkey/login-options'),
-        headers: {'content-type': 'application/json'},
-        // No username: any passkey the phone holds for this server will do.
-        body: '{}',
-      ),
-    );
-    _ensurePasskeysAvailable(response);
-    _ensureOk(response, 'Passkey sign-in is unavailable');
-    final options = jsonDecode(response.body) as Map<String, dynamic>;
-    return {...options, 'rpId': options['rpId'] ?? _relyingPartyId};
-  }
-
-  /// Exchanges the authenticator's assertion for a session. Throws a
-  /// [PasskeyNotRegisteredException] if the passkey was deleted from the
-  /// account.
-  Future<AuthTokens> passkeyLogin(Map<String, dynamic> assertion) async {
-    final response = await _send(
-      () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkey/login-verify'),
-        headers: {'content-type': 'application/json'},
-        body: jsonEncode(assertion),
-      ),
-    );
-    if (response.statusCode == 404 ||
-        _serverError(response) == 'Unknown passkey credential') {
-      throw PasskeyNotRegisteredException(response.statusCode);
-    }
-    _ensureOk(response, 'Passkey sign-in failed');
-    return _parseTokenResponse(response.body);
-  }
-
-  /// WebAuthn creation options for adding a passkey to the signed-in account.
-  Future<Map<String, dynamic>> passkeyRegistrationOptions(String accessToken) async {
-    final response = await _send(
-      () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkey/register-options'),
-        headers: _bearer(accessToken),
-      ),
-    );
-    _ensurePasskeysAvailable(response);
-    _ensureOk(response, 'Couldn\'t start creating a passkey');
-    final options = jsonDecode(response.body) as Map<String, dynamic>;
-    final rp = options['rp'] as Map<String, dynamic>? ?? const {};
-    return {
-      ...options,
-      'rp': {...rp, 'id': rp['id'] ?? _relyingPartyId},
-    };
-  }
-
-  /// Stores a new passkey. [attestation] is the authenticator's registration
-  /// response; the server also needs the credential's [publicKey]
-  /// (SubjectPublicKeyInfo, base64url), which it doesn't read from it.
-  Future<Passkey> registerPasskey(
-    String accessToken,
-    Map<String, dynamic> attestation, {
-    required String publicKey,
-    String? name,
-  }) async {
-    final response = await _send(
-      () => _httpClient.post(
-        _baseUri.replace(path: '/auth/passkey/register-verify'),
-        headers: {'content-type': 'application/json', ..._bearer(accessToken)},
-        body: jsonEncode({
-          ...attestation,
-          'response': {
-            ...attestation['response'] as Map<String, dynamic>,
-            'publicKey': publicKey,
-          },
-          'deviceName': ?name,
-        }),
-      ),
-    );
-    _ensureOk(response, 'Couldn\'t save the passkey');
-    final body = jsonDecode(response.body) as Map<String, dynamic>;
-    return Passkey(
-      id: body['credentialId'] as String,
-      name: body['deviceName'] as String? ?? name ?? 'Passkey',
-      createdAt: DateTime.now(),
-    );
-  }
-
-  /// The account's passkeys, or null when the server has no passkeys.
-  Future<List<Passkey>?> listPasskeys(String accessToken) async {
-    final response = await _send(
-      () => _httpClient.get(
-        _baseUri.replace(path: '/auth/passkey/credentials'),
-        headers: _bearer(accessToken),
-      ),
-    );
-    // Servers from before passkeys don't know the route.
-    if (response.statusCode == 404) return null;
-    _ensureOk(response, 'Couldn\'t load your passkeys');
-    return (jsonDecode(response.body) as List<dynamic>)
-        .map((item) => Passkey.fromJson(item as Map<String, dynamic>))
-        .toList();
-  }
-
-  Future<void> deletePasskey(String accessToken, String id) async {
-    final response = await _send(
-      () => _httpClient.delete(
-        _baseUri.replace(path: '/auth/passkey/credentials/$id'),
-        headers: _bearer(accessToken),
-      ),
-    );
-    // Already gone counts as done.
-    if (response.statusCode == 404) return;
-    _ensureOk(response, 'Couldn\'t remove the passkey');
-  }
-
-  /// Passkeys belong to the auth server's host. Its options leave the RP ID
-  /// out, as a browser on that host fills it in with the host itself, but
-  /// the platform authenticators need it spelled out.
-  String get _relyingPartyId => _baseUri.host;
-
-  Future<http.Response> _send(Future<http.Response> Function() request) async {
-    try {
-      return await request().timeout(_timeout);
-    } on TimeoutException {
-      throw AuthException('The server took too long to answer. Try again.');
-    } on http.ClientException {
-      throw AuthException('Can\'t reach the server. Check your connection and try again.');
-    }
-  }
-
-  /// 404: an auth server from before passkeys; 503: passkeys not configured.
-  void _ensurePasskeysAvailable(http.Response response) {
-    if (response.statusCode == 404 || response.statusCode == 503) {
-      throw AuthException(
-        'Passkeys aren\'t available yet. Sign in with your password.',
-        statusCode: response.statusCode,
-      );
-    }
-  }
-
-  /// Throws an [AuthException] for any non-2xx response, preferring the
-  /// server's own `error` text — it's written for people ("Account disabled").
-  void _ensureOk(http.Response response, String fallback) {
-    if (response.statusCode >= 200 && response.statusCode < 300) return;
-    final serverMessage = _serverError(response);
-    if (serverMessage == 'Account disabled') throw AccountDisabledException();
-    final message = switch (serverMessage) {
-      final String text when response.statusCode < 500 => _sentence(text),
-      _ => '$fallback (error ${response.statusCode}).',
-    };
-    throw AuthException(message, statusCode: response.statusCode);
-  }
-
   /// The `error` text of a JSON error response, if it has one.
   static String? _serverError(http.Response response) {
     try {
@@ -270,11 +92,6 @@ class AuthService {
     }
     return null;
   }
-
-  static String _sentence(String text) =>
-      text.endsWith('.') || text.endsWith('!') ? text : '$text.';
-
-  Map<String, String> _bearer(String accessToken) => {'authorization': 'Bearer $accessToken'};
 
   AuthTokens _parseTokenResponse(String body) {
     final decoded = jsonDecode(body) as Map<String, dynamic>;

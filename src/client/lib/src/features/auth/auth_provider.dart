@@ -1,208 +1,224 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_web_auth_2/flutter_web_auth_2.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../../data/models/passkey.dart';
 import '../../data/models/user_model.dart';
 import '../../data/network/auth_service.dart';
 import '../../data/network/device_service.dart';
+import '../../data/network/oidc_service.dart';
 import '../../data/network/profile_service.dart';
 import '../../data/storage/token_storage.dart';
 import '../location/tracking_engine.dart';
-import 'passkey_client.dart';
+import 'token_manager.dart';
 
-/// Why an account can't use the tracker, as decided by Legacy Auth.
-enum AccessDenial {
-  /// An administrator disabled the account. The session is over; only a
-  /// different account can sign in.
-  accountDisabled,
+/// Opens [url] in the system browser (Custom Tabs, ASWebAuthenticationSession)
+/// and completes with the URL it was sent back to on [callbackScheme].
+typedef BrowserAuth = Future<String> Function(Uri url, String callbackScheme);
 
-  /// The account hasn't been granted the `tracker` scope. The session is
-  /// kept so access can be checked again once an administrator grants it.
-  missingScope,
-}
+Future<String> _systemBrowser(Uri url, String callbackScheme) =>
+    FlutterWebAuth2.authenticate(
+      url: url.toString(),
+      callbackUrlScheme: callbackScheme,
+    );
 
+/// The session: signing in through Legacy Auth's OpenID Provider in the
+/// system browser (password or passkey, shared with the phone's browser), and
+/// keeping a tracker token and, for accounts with the calendar, a calendar
+/// token valid. An account the OP turns away never gets a session; one that
+/// loses access is signed out at its next refresh.
 class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   AuthProvider({
     required this.authService,
+    required this.oidcService,
     required this.profileService,
+    required this.callbackScheme,
     this.deviceService,
-    PasskeyClient? passkeyClient,
-  }) : passkeyClient =
-           passkeyClient ?? PasskeyClient(authService: authService) {
+    BrowserAuth? browser,
+    Future<TokenStorage> Function()? storage,
+  }) : _browser = browser ?? _systemBrowser,
+       _storageFactory = storage ?? _defaultStorage {
     WidgetsBinding.instance.addObserver(this);
     _initialize();
   }
 
   final AuthService authService;
+  final OidcService oidcService;
   final ProfileService profileService;
   final DeviceService? deviceService;
-  final PasskeyClient passkeyClient;
-  TokenStorage? _storage;
+  final String callbackScheme;
+  final BrowserAuth _browser;
+  final Future<TokenStorage> Function() _storageFactory;
+  TokenManager? _tokens;
 
   bool isInitializing = true;
   bool isLoading = false;
   bool isAuthenticated = false;
   String? username;
-  AuthTokens? tokens;
   UserProfile? profile;
+
+  /// Why the last sign-in failed or the session ended, for the sign-in screen.
   String? errorMessage;
 
-  // False while [profile] is a placeholder built offline from the token.
+  // False while [profile] is a placeholder built offline from the session.
   bool _profileLoaded = false;
-  bool _accountDisabled = false;
+  bool _foreground = true;
+  Timer? _refreshTimer;
 
-  /// Set when the account may not use the tracker; the app explains why
-  /// instead of showing the map. [username] still names the account.
-  AccessDenial? get accessDenial {
-    if (_accountDisabled) return AccessDenial.accountDisabled;
-    final accessToken = tokens?.accessToken;
-    if (accessToken != null && !_hasTrackerScope(accessToken)) {
-      return AccessDenial.missingScope;
-    }
-    return null;
-  }
+  static Future<TokenStorage> _defaultStorage() async =>
+      TokenStorage(await SharedPreferences.getInstance());
 
-  /// Whether the account may use Legacy Calendar, whose API takes the same
-  /// access token. Display gating only; the calendar server enforces it.
-  bool get hasCalendarScope {
-    final accessToken = tokens?.accessToken;
-    return accessToken != null && _hasScope(accessToken, 'calendar');
-  }
+  /// The current tracker access token. Kept fresh in the foreground; use
+  /// [freshAccessToken] when a request can wait for a refresh.
+  String? get accessToken => _tokens?.accessToken;
+
+  /// A token Legacy Calendar accepts, or null without calendar access.
+  String? get calendarAccessToken => _tokens?.calendarAccessToken;
+
+  /// Whether the account may use Legacy Calendar. Display gating only; the
+  /// calendar server enforces it.
+  bool get hasCalendarScope => calendarAccessToken != null;
 
   Future<void> _initialize() async {
-    final prefs = await SharedPreferences.getInstance();
-    _storage = TokenStorage(prefs);
-    final stored = await _storage!.load();
-    if (stored != null) {
-      username = stored.username;
-      tokens = stored.tokens;
+    final tokens = _tokens = TokenManager(
+      oidc: oidcService,
+      legacyAuth: authService,
+      storage: await _storageFactory(),
+    );
+    await tokens.load();
+    if (tokens.hasSession) {
+      username = tokens.username;
       try {
-        if (await _refreshTokensIfNeeded()) {
-          if (accessDenial == null) await _loadProfile();
-          isAuthenticated = true;
-        }
+        // OP access tokens aren't stored: a launch always starts with a refresh.
+        await tokens.refreshTracker();
+        await _refreshCalendar();
+        await _loadProfile();
+        isAuthenticated = true;
       } on AuthRejectedException catch (error) {
-        await _clearSession(disabled: error is AccountDisabledException);
+        await _clearSession(message: _endMessage(error));
       } catch (_) {
         // Offline (or a server hiccup) at launch must not sign the user out —
         // that would also stop location sharing. Continue on the stored
-        // session; tokens and profile refresh on the next resume.
+        // session; tokens and profile follow once the server is reachable.
         _useOfflineProfile();
       }
+      _scheduleRefresh();
     }
     isInitializing = false;
     notifyListeners();
   }
 
-  Future<void> login(String username, String password) {
-    return _signIn(attemptedUsername: username.trim(), () async {
-      final tokens = await authService.login(username.trim(), password);
-      return (username.trim(), tokens);
-    });
-  }
-
-  /// Signs in with a passkey on this device. Completes normally if the user
-  /// dismisses the system prompt — that's not an error worth reporting.
-  Future<void> loginWithPasskey() async {
-    try {
-      await _signIn(() async {
-        final tokens = await passkeyClient.signIn();
-        // No username was typed; the auth server puts it in the token.
-        final name = _tokenClaim(tokens.accessToken, 'username') ??
-            _tokenClaim(tokens.accessToken, 'sub')!;
-        return (name, tokens);
-      });
-    } on PasskeyException catch (error) {
-      if (!error.cancelled) rethrow;
-    }
-  }
-
-  /// [attemptedUsername] names the account on the "account disabled" screen
-  /// when the auth server refuses it.
-  Future<void> _signIn(
-    Future<(String, AuthTokens)> Function() authenticate, {
-    String? attemptedUsername,
-  }) async {
+  /// Signs in at Legacy Auth in the system browser. Completes normally if the
+  /// user closes the browser — that's not an error worth reporting.
+  Future<void> signIn() async {
+    final tokens = _tokens;
+    if (tokens == null || isLoading) return;
     isLoading = true;
     errorMessage = null;
     notifyListeners();
-
     try {
-      final (username, tokens) = await authenticate();
-      this.username = username;
-      this.tokens = tokens;
-      isAuthenticated = true;
-      await _storage?.save(username, tokens);
-      // Without the tracker scope the server would refuse the profile; the
-      // app shows why instead.
-      if (accessDenial == null) await _loadProfile();
-    } catch (error) {
-      final cancelled = error is PasskeyException && error.cancelled;
-      errorMessage = cancelled ? null : _describe(error);
-      isAuthenticated = false;
-      if (error is AccountDisabledException) {
-        _accountDisabled = true;
-        username = attemptedUsername;
+      var withCalendar = true;
+      while (true) {
+        final request = await oidcService.authorizationRequest(
+          withCalendar: withCalendar,
+        );
+        try {
+          final callback = await _browser(request.url, callbackScheme);
+          await tokens.adoptSignIn(
+            await oidcService.exchangeCode(request, Uri.parse(callback)),
+            calendar: withCalendar,
+          );
+          break;
+        } on SignInDeniedException catch (error) {
+          // Possibly only the calendar was refused. Ask again for the tracker
+          // alone; the browser is already signed in, so it closes right away.
+          if (!error.calendarRequested) rethrow;
+          withCalendar = false;
+        }
       }
-      rethrow;
+      username = tokens.username;
+      await _refreshCalendar();
+      await _ensureProfile();
+      isAuthenticated = true;
+      _scheduleRefresh();
+    } on PlatformException catch (error) {
+      // CANCELED: the user closed the browser.
+      if (error.code != 'CANCELED') {
+        errorMessage = 'Couldn\'t open the sign-in page. Please try again.';
+      }
+    } catch (error) {
+      errorMessage = _describe(error);
     } finally {
       isLoading = false;
       notifyListeners();
     }
   }
 
-  /// The account's passkeys, or null when the auth server has them disabled.
-  Future<List<Passkey>?> loadPasskeys() async {
-    return authService.listPasskeys(await freshAccessToken());
-  }
-
-  /// Creates a passkey on this device for the signed-in account. Returns
-  /// null if the user dismissed the system prompt.
-  Future<Passkey?> createPasskey() async {
-    try {
-      return await passkeyClient.create(await freshAccessToken());
-    } on PasskeyException catch (error) {
-      if (error.cancelled) return null;
-      rethrow;
-    }
-  }
-
-  Future<void> deletePasskey(String id) async {
-    await authService.deletePasskey(await freshAccessToken(), id);
-  }
-
-  /// A valid access token, refreshed first if it has expired. Throws when the
-  /// session can't be renewed.
+  /// A valid access token, refreshed first if it is about to expire. Throws
+  /// when the session can't be renewed.
   Future<String> freshAccessToken() async {
-    if (!await _refreshTokensIfNeeded()) {
+    final tokens = _tokens;
+    if (tokens == null || !tokens.hasSession) {
       throw AuthException('You\'re signed out. Sign in again to continue.');
     }
-    return tokens!.accessToken;
+    try {
+      await tokens.refreshTracker();
+    } on AuthRejectedException catch (error) {
+      await _clearSession(message: _endMessage(error));
+      notifyListeners();
+      throw AuthException('You\'re signed out. Sign in again to continue.');
+    }
+    _scheduleRefresh();
+    return tokens.accessToken!;
   }
 
   static String _describe(Object error) {
-    if (error is AuthException || error is PasskeyException) {
-      return error.toString();
+    if (error is AuthException) return error.message;
+    if (error is AuthRejectedException) {
+      return 'Sign-in failed. Please try again.';
     }
     // Plain exceptions from the profile fetch read "Exception: …".
     return error.toString().replaceFirst(RegExp(r'^Exception: '), '');
   }
 
+  /// What the sign-in screen says after the session was refused.
+  static String? _endMessage(AuthRejectedException error) {
+    if (error is AccountDisabledException) return error.message;
+    if (error.message == noTrackerAccessMessage ||
+        error.message.contains('no access to tracker')) {
+      return noTrackerAccessMessage;
+    }
+    return null;
+  }
+
+  /// Signs out on this phone, then at Legacy Auth (which ends the session in
+  /// the phone's browser too, so the next sign-in asks again).
   Future<void> logout() async {
+    final tokens = _tokens;
     isLoading = true;
     notifyListeners();
-
+    String? idToken;
+    var hadGrant = false;
     try {
-      if (tokens?.refreshToken != null) {
-        await authService.logout(tokens!.refreshToken);
+      idToken = tokens?.idToken;
+      hadGrant = (tokens?.hasSession ?? false) && !(tokens?.isLegacy ?? true);
+      if (tokens?.isLegacy ?? false) {
+        final legacy = await tokens!.storage.loadLegacy();
+        if (legacy != null) await authService.logout(legacy.tokens.refreshToken);
       }
     } finally {
       await _clearSession();
       isLoading = false;
       notifyListeners();
+    }
+    if (hadGrant) {
+      try {
+        await _browser(await oidcService.endSessionUrl(idToken), callbackScheme);
+      } catch (_) {
+        // Closed or offline: this phone is signed out either way.
+      }
     }
   }
 
@@ -214,7 +230,7 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
     try {
       profile = await profileService.updateProfile(
-        tokens!.accessToken,
+        await freshAccessToken(),
         name: name.trim(),
         avatarUrl: avatarUrl.trim(),
       );
@@ -224,54 +240,18 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  /// Checks again whether the account has the tracker scope, which an
-  /// administrator may have granted since. True when it now has access.
-  Future<bool> retryAccess() async {
-    isLoading = true;
-    notifyListeners();
+  Future<void> _refreshCalendar() async {
     try {
-      await _refreshTokensIfNeeded();
-      if (accessDenial == null) await _ensureProfile();
-      return accessDenial == null;
-    } on AuthRejectedException catch (error) {
-      await _clearSession(disabled: error is AccountDisabledException);
-      return false;
-    } finally {
-      isLoading = false;
-      notifyListeners();
+      await _tokens?.refreshCalendar();
+    } catch (_) {
+      // Offline: the calendar waits for the next refresh round.
     }
-  }
-
-  Future<bool> _refreshTokensIfNeeded() async {
-    if (tokens == null) {
-      return false;
-    }
-
-    final now = DateTime.now();
-    final hadAccess = accessDenial == null;
-    // A token without the tracker scope is renewed even while it's valid:
-    // the new one carries the account's current scopes.
-    if (hadAccess &&
-        tokens!.expiresAt.isAfter(now.add(const Duration(seconds: 10)))) {
-      return true;
-    }
-
-    if (tokens!.refreshExpiresAt.isBefore(now)) {
-      throw AuthRejectedException('Refresh token expired');
-    }
-
-    tokens = await authService.refresh(tokens!.refreshToken);
-    await _storage?.save(username!, tokens!);
-    // Losing tracker access stops location sharing, as signing out does.
-    if (hadAccess && accessDenial != null) await _stopSharing();
-    return true;
   }
 
   Future<void> _loadProfile() async {
-    if (username == null) {
-      return;
-    }
-    profile = await profileService.fetchProfile(tokens!.accessToken);
+    final token = accessToken;
+    if (token == null) return;
+    profile = await profileService.fetchProfile(token);
     _profileLoaded = true;
     notifyListeners();
   }
@@ -288,56 +268,24 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Signs in from the stored session alone, identifying the user by the
-  /// access token's subject (the server's user id).
+  /// account id (the server's user id).
   void _useOfflineProfile() {
-    final userId = _tokenClaim(tokens?.accessToken, 'sub');
+    final userId = _tokens?.userId;
     if (userId == null) return;
     profile ??= UserProfile(id: userId, name: username ?? userId);
     isAuthenticated = true;
   }
 
-  /// A string claim from a JWT's payload. Unverified — only for display and
-  /// identifying ourselves; the servers do the verifying.
-  static String? _tokenClaim(String? jwt, String claim) {
-    final value = _tokenPayload(jwt)?[claim];
-    return value is String && value.isNotEmpty ? value : null;
-  }
-
-  /// Whether the access token grants the tracker: Legacy Auth sends
-  /// `scopes: {calendar: bool, tracker: bool}`. The tracker server applies
-  /// the same rule; this only decides what the app shows.
-  static bool _hasTrackerScope(String jwt) => _hasScope(jwt, 'tracker');
-
-  static bool _hasScope(String jwt, String scope) {
-    final scopes = _tokenPayload(jwt)?['scopes'];
-    return scopes is Map && scopes[scope] == true;
-  }
-
-  static Map<String, dynamic>? _tokenPayload(String? jwt) {
-    final parts = jwt?.split('.');
-    if (parts == null || parts.length != 3) return null;
-    try {
-      final payload = jsonDecode(
-        utf8.decode(base64Url.decode(base64Url.normalize(parts[1]))),
-      );
-      return payload is Map<String, dynamic> ? payload : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  /// Ends the session on this phone. When the account was [disabled], the
-  /// username is kept so the explanation can name the account.
-  Future<void> _clearSession({bool disabled = false}) async {
+  /// Ends the session on this phone, leaving [message] for the sign-in screen.
+  Future<void> _clearSession({String? message}) async {
+    _refreshTimer?.cancel();
     await _stopSharing();
-    if (!disabled) username = null;
-    _accountDisabled = disabled;
-    tokens = null;
+    await _tokens?.clear();
+    username = null;
     profile = null;
     _profileLoaded = false;
     isAuthenticated = false;
-    errorMessage = null;
-    await _storage?.clear();
+    errorMessage = message;
   }
 
   /// Ends location sharing for this account: the engine makes a last upload
@@ -362,34 +310,57 @@ class AuthProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
-  // The access token is short-lived; while the app sits backgrounded it can
-  // expire without anything noticing, since [_refreshTokensIfNeeded] is
-  // otherwise only checked at cold start. Re-checking on resume keeps
-  // [tokens] valid before any screen tries to use it. (Background location
-  // uploads don't need it: the engine uses its own device token.)
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && isAuthenticated) {
-      unawaited(_refreshOnResume());
-    }
+  /// Renews the tokens a minute before the first one expires, while the app
+  /// is in the foreground: the screens read [accessToken] as it is. (Background
+  /// location uploads don't need it: the engine uses its own device token.)
+  void _scheduleRefresh() {
+    _refreshTimer?.cancel();
+    final tokens = _tokens;
+    if (!_foreground || tokens == null || !tokens.hasSession) return;
+    final expiries = [tokens.trackerExpiresAt, tokens.calendarExpiresAt].nonNulls;
+    // No token yet (offline at launch): try again shortly.
+    final due = expiries.isEmpty
+        ? DateTime.now().add(const Duration(seconds: 30))
+        : expiries.reduce((a, b) => a.isBefore(b) ? a : b)
+              .subtract(const Duration(minutes: 1));
+    var delay = due.difference(DateTime.now());
+    if (delay < const Duration(seconds: 5)) delay = const Duration(seconds: 5);
+    _refreshTimer = Timer(delay, () => unawaited(_refreshSession()));
   }
 
-  Future<void> _refreshOnResume() async {
+  Future<void> _refreshSession() async {
+    final tokens = _tokens;
+    if (tokens == null || !tokens.hasSession) return;
     try {
-      // Also picks up a tracker scope granted while the app was away.
-      await _refreshTokensIfNeeded();
-      if (accessDenial == null) await _ensureProfile();
+      await tokens.refreshTracker();
+      await _refreshCalendar();
+      await _ensureProfile();
+      isAuthenticated = true;
       notifyListeners();
     } on AuthRejectedException catch (error) {
-      await _clearSession(disabled: error is AccountDisabledException);
+      await _clearSession(message: _endMessage(error));
       notifyListeners();
+      return;
     } catch (_) {
-      // Transient (offline); try again on the next resume.
+      // Transient (offline); the next round tries again.
+    }
+    _scheduleRefresh();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _foreground = true;
+      if (isAuthenticated) unawaited(_refreshSession());
+    } else if (state == AppLifecycleState.paused) {
+      _foreground = false;
+      _refreshTimer?.cancel();
     }
   }
 
   @override
   void dispose() {
+    _refreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }

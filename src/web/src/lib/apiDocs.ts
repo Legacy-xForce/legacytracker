@@ -519,7 +519,8 @@ ws.onmessage = (event) => console.log(JSON.parse(event.data));`,
                     sha256: '…',
                     size: 41234567,
                     notes: '…',
-                    published_at: iso
+                    published_at: iso,
+                    min_supported_code: 0
                 }
             }
         ]

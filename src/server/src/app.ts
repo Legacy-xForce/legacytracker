@@ -78,6 +78,8 @@ const AUTH_ALLOWED_CLIENTS = (
   .split(",")
   .map((client) => client.trim())
   .filter((client) => client.length > 0);
+// Android builds older than this must update before they can be used.
+const ANDROID_MIN_SUPPORTED_CODE = Number(process.env.ANDROID_MIN_SUPPORTED_CODE ?? 0) || 0;
 // The only client that may register devices (mint device tokens).
 const AUTH_MOBILE_CLIENT = process.env.AUTH_MOBILE_CLIENT ?? "tracker-mobile";
 
@@ -1580,6 +1582,9 @@ app.get("/api/v1/app/android/latest", async (_request, reply) => {
       size: release.size,
       notes: release.notes,
       published_at: release.publishedAt,
+      // Builds below this are blocked until they update (e.g. once the
+      // password login they rely on is gone).
+      min_supported_code: ANDROID_MIN_SUPPORTED_CODE,
     });
   } catch (error) {
     app.log.warn({ error }, "[updates] unable to read Android releases");

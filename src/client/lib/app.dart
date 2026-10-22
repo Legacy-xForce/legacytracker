@@ -11,12 +11,12 @@ import 'src/data/network/auth_service.dart';
 import 'src/data/network/calendar_service.dart';
 import 'src/data/network/checkpoint_service.dart';
 import 'src/data/network/device_service.dart';
+import 'src/data/network/oidc_service.dart';
 import 'src/data/network/event_geocoder.dart';
 import 'src/data/network/place_search_service.dart';
 import 'src/data/network/profile_service.dart';
 import 'src/data/network/remote_backend.dart';
 import 'src/data/network/sharing_service.dart';
-import 'src/features/auth/access_denied_screen.dart';
 import 'src/features/auth/auth_provider.dart';
 import 'src/features/auth/login_screen.dart';
 import 'src/features/calendar/calendar_events_provider.dart';
@@ -27,12 +27,19 @@ import 'src/features/tracking/map_settings.dart';
 import 'src/features/tracking/sharing_provider.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
+import 'src/features/updates/update_required_gate.dart';
 import 'src/data/models/user_model.dart';
 
 class App extends StatelessWidget {
   App({super.key});
 
-  final AuthService authService = AuthService();
+  final AuthService authService = AuthService(baseUrl: AppConstants.authBaseUrl);
+  final OidcService oidcService = OidcService(
+    issuer: AppConstants.authBaseUrl,
+    clientId: AppConstants.oidcClientId,
+    redirectUri: AppConstants.oidcRedirectUri,
+    postLogoutRedirectUri: AppConstants.oidcPostLogoutRedirectUri,
+  );
   final ProfileService profileService = ProfileService(baseUrl: AppConstants.backendBaseUrl);
   final DeviceService deviceService = DeviceService(baseUrl: AppConstants.backendBaseUrl);
 
@@ -54,6 +61,8 @@ class App extends StatelessWidget {
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             authService: authService,
+            oidcService: oidcService,
+            callbackScheme: AppConstants.oidcCallbackScheme,
             profileService: profileService,
             deviceService: deviceService,
           ),
@@ -66,11 +75,11 @@ class App extends StatelessWidget {
             prefs: SharedPreferences.getInstance(),
           ),
           update: (_, auth, checkpoints) {
-            final usable = auth.isAuthenticated && auth.accessDenial == null;
+            final usable = auth.isAuthenticated;
             return checkpoints!
               ..bindSession(
                 userId: usable ? auth.profile?.id : null,
-                getAccessToken: () => auth.tokens?.accessToken,
+                getAccessToken: () => auth.accessToken,
               );
           },
         ),
@@ -79,16 +88,16 @@ class App extends StatelessWidget {
             service: SharingService(baseUrl: AppConstants.backendBaseUrl),
           ),
           update: (_, auth, sharing) {
-            final usable = auth.isAuthenticated && auth.accessDenial == null;
+            final usable = auth.isAuthenticated;
             return sharing!
               ..bindSession(
                 userId: usable ? auth.profile?.id : null,
-                getAccessToken: () => auth.tokens?.accessToken,
+                getAccessToken: () => auth.accessToken,
               );
           },
         ),
-        // Events from Legacy Calendar on the map, for accounts whose token
-        // carries the calendar scope.
+        // Events from Legacy Calendar on the map, for accounts with the
+        // calendar, read with a calendar token from the same sign-in.
         ChangeNotifierProxyProvider<AuthProvider, CalendarEventsProvider>(
           create: (_) {
             final prefs = SharedPreferences.getInstance();
@@ -99,12 +108,12 @@ class App extends StatelessWidget {
             );
           },
           update: (_, auth, events) {
-            final usable = auth.isAuthenticated && auth.accessDenial == null;
+            final usable = auth.isAuthenticated;
             return events!
               ..bindSession(
                 userId: usable ? auth.profile?.id : null,
                 hasCalendarScope: auth.hasCalendarScope,
-                getAccessToken: () => auth.tokens?.accessToken,
+                getAccessToken: () => auth.calendarAccessToken,
               );
           },
         ),
@@ -161,7 +170,8 @@ class App extends StatelessWidget {
       darkTheme: darkTheme,
       builder: (context, child) =>
           ConnectionBannerOverlay(child: child ?? const SizedBox.shrink()),
-      home: _home(auth),
+      // Blocks builds the server no longer supports, signed in or not.
+      home: UpdateRequiredGate(child: _home(auth)),
     );
   }
 
@@ -169,13 +179,7 @@ class App extends StatelessWidget {
     if (auth.isInitializing) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    if (auth.accessDenial == AccessDenial.accountDisabled) {
-      return const AccountDisabledScreen();
-    }
     if (!auth.isAuthenticated) return const LoginScreen();
-    if (auth.accessDenial == AccessDenial.missingScope) {
-      return const MissingScopeScreen();
-    }
     return AuthenticatedApp(
       selfId: auth.profile?.id ?? '',
       profile: auth.profile,
@@ -216,7 +220,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
       final baseUrl = AppConstants.backendBaseUrl;
       final backend = RemoteBackend(
         baseUrl: baseUrl,
-        getAccessToken: () => _auth.tokens!.accessToken,
+        getAccessToken: () => _auth.accessToken ?? '',
         selfId: widget.selfId,
       );
       await backend.registerFcmToken(token);
@@ -226,7 +230,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         final b = RemoteBackend(
           baseUrl: baseUrl,
-          getAccessToken: () => _auth.tokens!.accessToken,
+          getAccessToken: () => _auth.accessToken ?? '',
           selfId: widget.selfId,
         );
         await b.registerFcmToken(newToken);
@@ -246,13 +250,13 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
       final baseUrl = AppConstants.backendBaseUrl;
       final backend = RemoteBackend(
         baseUrl: baseUrl,
-        getAccessToken: () => _auth.tokens!.accessToken,
+        getAccessToken: () => _auth.accessToken ?? '',
         selfId: widget.selfId,
       );
       _trackingController = TrackingController(
         backend: backend,
         baseUrl: baseUrl,
-        getAccessToken: () => _auth.tokens?.accessToken,
+        getAccessToken: () => _auth.accessToken,
         initialProfile: widget.profile ?? UserProfile(id: widget.selfId, name: widget.selfId),
       );
     }

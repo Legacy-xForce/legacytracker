@@ -1,6 +1,8 @@
 # Moving Legacy Tracker to OAuth2 / OpenID Connect
 
-Status: plan, not started. Tracks the legacytracker part of
+Status (2026-10-22): Phase 1 (server) and Phase 2 (web) committed on `oidc-migration`; Phase 3 (app) written but
+uncommitted, with Flutter tests and analyze green. Still open: Phase 0 on the legacy-auth side (legacy-auth#8), a
+real end-to-end run against a local OP, the calendar-side test, and Phase 4. Tracks the legacytracker part of
 [legacy-auth#4](https://github.com/Legacy-xForce/legacy-auth/issues/4) (Phases 2 and 3).
 Snapshot: legacytracker `3669a0f`, legacy-auth `db691ff` (OP merged in #5, clients seeded **disabled**),
 legacy-calendar `c02297e`.

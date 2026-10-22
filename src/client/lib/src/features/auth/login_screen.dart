@@ -8,84 +8,16 @@ import '../tracking/widgets/user_avatar.dart';
 import '../updates/app_update_banner.dart';
 import 'auth_provider.dart';
 
-enum _Method { password, passkey }
-
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _passwordController = TextEditingController();
-  final FocusNode _passwordFocus = FocusNode();
-  bool _obscurePassword = true;
-
-  /// The sign-in in flight, so only its button shows a spinner.
-  _Method? _pending;
-  String? _error;
-
-  @override
-  void dispose() {
-    _usernameController.dispose();
-    _passwordController.dispose();
-    _passwordFocus.dispose();
-    super.dispose();
-  }
-
-  Future<void> _signInWithPassword() async {
-    final username = _usernameController.text.trim();
-    final password = _passwordController.text;
-    if (username.isEmpty || password.isEmpty) {
-      setState(() => _error = 'Enter your username and password.');
-      return;
-    }
-    await _run(_Method.password, () async {
-      await context.read<AuthProvider>().login(username, password);
-      // Offer to save the password with the platform's password manager.
-      TextInput.finishAutofillContext();
-    });
-  }
-
-  Future<void> _signInWithPasskey() {
-    FocusScope.of(context).unfocus();
-    return _run(
-      _Method.passkey,
-      () => context.read<AuthProvider>().loginWithPasskey(),
-    );
-  }
-
-  Future<void> _run(_Method method, Future<void> Function() signIn) async {
-    final auth = context.read<AuthProvider>();
-    setState(() {
-      _pending = method;
-      _error = null;
-    });
-    try {
-      await signIn();
-    } catch (_) {
-      if (mounted) {
-        setState(() {
-          _error = auth.errorMessage ?? 'Sign-in failed. Please try again.';
-        });
-      }
-    } finally {
-      // On success the app swaps this screen out for the map.
-      if (mounted) setState(() => _pending = null);
-    }
-  }
-
-  void _clearError(String _) {
-    if (_error != null) setState(() => _error = null);
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final busy = _pending != null;
+    final auth = context.watch<AuthProvider>();
+    final busy = auth.isLoading;
+    final error = auth.errorMessage;
     final dark = theme.brightness == Brightness.dark;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -98,8 +30,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 : Brightness.dark,
           ),
       child: Scaffold(
-        // Lets a fix reach users even when signing in is what broke. Out of
-        // the way while typing: the keyboard covers it.
+        // Lets a fix reach users even when signing in is what broke.
         bottomNavigationBar: SafeArea(
           child: Align(
             heightFactor: 1,
@@ -120,127 +51,70 @@ class _LoginScreenState extends State<LoginScreen> {
               padding: const EdgeInsets.fromLTRB(20, 32, 20, 24),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 420),
-                child: AutofillGroup(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const _BrandMark(),
-                      const SizedBox(height: 20),
-                      Text(
-                        'Legacy Tracker',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.headlineSmall?.copyWith(
-                          fontWeight: FontWeight.w700,
-                        ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _BrandMark(),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Legacy Tracker',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
                       ),
-                      const SizedBox(height: 6),
-                      Text(
-                        'Sign in to see where everyone is.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodyMedium?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Sign in to see where everyone is.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: scheme.onSurfaceVariant,
                       ),
-                      const SizedBox(height: 32),
-                      Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(16),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              TextField(
-                                controller: _usernameController,
-                                enabled: !busy,
-                                autocorrect: false,
-                                enableSuggestions: false,
-                                textInputAction: TextInputAction.next,
-                                autofillHints: const [AutofillHints.username],
-                                onChanged: _clearError,
-                                onSubmitted: (_) =>
-                                    _passwordFocus.requestFocus(),
-                                decoration: const InputDecoration(
-                                  labelText: 'Username',
-                                  prefixIcon: Icon(
-                                    Icons.person_outline_rounded,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: _passwordController,
-                                focusNode: _passwordFocus,
-                                enabled: !busy,
-                                obscureText: _obscurePassword,
-                                textInputAction: TextInputAction.done,
-                                autofillHints: const [AutofillHints.password],
-                                onChanged: _clearError,
-                                onSubmitted: (_) => _signInWithPassword(),
-                                decoration: InputDecoration(
-                                  labelText: 'Password',
-                                  prefixIcon: const Icon(
-                                    Icons.lock_outline_rounded,
-                                  ),
-                                  suffixIcon: IconButton(
-                                    tooltip: _obscurePassword
-                                        ? 'Show password'
-                                        : 'Hide password',
-                                    icon: Icon(
-                                      _obscurePassword
-                                          ? Icons.visibility_outlined
-                                          : Icons.visibility_off_outlined,
-                                    ),
-                                    onPressed: () => setState(
-                                      () =>
-                                          _obscurePassword = !_obscurePassword,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              AnimatedSize(
-                                duration: const Duration(milliseconds: 200),
-                                curve: Curves.easeOutCubic,
-                                alignment: Alignment.topCenter,
-                                child: _error == null
-                                    ? const SizedBox(width: double.infinity)
-                                    : Padding(
-                                        padding: const EdgeInsets.only(top: 12),
-                                        child: _ErrorBanner(message: _error!),
+                    ),
+                    const SizedBox(height: 32),
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            AnimatedSize(
+                              duration: const Duration(milliseconds: 200),
+                              curve: Curves.easeOutCubic,
+                              alignment: Alignment.topCenter,
+                              child: error == null
+                                  ? const SizedBox(width: double.infinity)
+                                  : Padding(
+                                      padding: const EdgeInsets.only(
+                                        bottom: 16,
                                       ),
-                              ),
-                              const SizedBox(height: 16),
-                              FilledButton(
-                                onPressed: busy ? null : _signInWithPassword,
-                                child: _pending == _Method.password
-                                    ? _ButtonSpinner(color: scheme.onPrimary)
-                                    : const Text('Sign in'),
-                              ),
-                            ],
-                          ),
+                                      child: _ErrorBanner(message: error),
+                                    ),
+                            ),
+                            // Signing in happens on Legacy Auth's own page
+                            // (password or passkey) in the system browser.
+                            FilledButton(
+                              onPressed: busy
+                                  ? null
+                                  : () => context.read<AuthProvider>().signIn(),
+                              child: busy
+                                  ? _ButtonSpinner(color: scheme.onPrimary)
+                                  : const Text('Sign in with Legacy'),
+                            ),
+                          ],
                         ),
                       ),
-                      const SizedBox(height: 24),
-                      const _OrDivider(),
-                      const SizedBox(height: 24),
-                      FilledButton.tonalIcon(
-                        onPressed: busy ? null : _signInWithPasskey,
-                        icon: _pending == _Method.passkey
-                            ? _ButtonSpinner(
-                                color: scheme.onSecondaryContainer,
-                              )
-                            : const Icon(Icons.fingerprint_rounded),
-                        label: const Text('Sign in with a passkey'),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'One Legacy account for the tracker and the calendar, '
+                      'with a password or a passkey.',
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: scheme.onSurfaceVariant,
                       ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'Use your fingerprint, face or screen lock instead of '
-                        'a password.',
-                        textAlign: TextAlign.center,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -407,33 +281,6 @@ class _ErrorBanner extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _OrDivider extends StatelessWidget {
-  const _OrDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final line = Expanded(
-      child: Divider(color: theme.colorScheme.outlineVariant, height: 1),
-    );
-    return Row(
-      children: [
-        line,
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 14),
-          child: Text(
-            'or',
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        line,
-      ],
     );
   }
 }

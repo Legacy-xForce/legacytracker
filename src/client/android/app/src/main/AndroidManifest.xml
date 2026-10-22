@@ -45,6 +45,21 @@
             </intent-filter>
         </activity>
 
+        <!-- Receives Legacy Auth's redirect after signing in or out in the
+             browser (com.legacy.legacytracker:/oauth2redirect, :/logout);
+             flutter_web_auth_2 hands it to the app. -->
+        <activity
+            android:name="com.linusu.flutter_web_auth_2.CallbackActivity"
+            android:exported="true"
+            android:taskAffinity="">
+            <intent-filter android:label="flutter_web_auth_2">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="com.legacy.legacytracker" />
+            </intent-filter>
+        </activity>
+
         <!-- Native tracking engine (see tracking/TrackingEngine.kt). The
              foreground service runs only while a trip is being recorded. -->
         <service
