@@ -1,77 +1,130 @@
 <script setup lang="ts">
-import L from 'leaflet';
+import { Marker } from 'maplibre-gl';
 import { onBeforeUnmount, watch } from 'vue';
+import { circlePolygon } from '../lib/geo';
 import { escapeHtml } from '../lib/format';
 import { icons } from '../lib/icons';
+import { isStyleNotLoaded } from '../lib/maplibre';
 import { useMap } from '../lib/mapContext';
 import type { Checkpoint } from '../stores/checkpoints';
 
 const props = defineProps<{ checkpoints: Checkpoint[] }>();
 const map = useMap();
 // Names sit under people and events, so a place never hides who is in it.
-const PANE = 'checkpoint-labels';
+const Z_INDEX = 0;
 // Zoomed out further, the names would pile up into noise; the circles stay.
 const LABELS_FROM_ZOOM = 13;
-let group: L.LayerGroup | null = null;
+const SOURCE = 'lt-checkpoints';
+const FILL = 'lt-checkpoints-fill';
+const LINE = 'lt-checkpoints-line';
+const labels = new Map<string, Marker>();
 
 function updateLabels() {
     const target = map.value;
-    target?.getContainer().classList.toggle('lt-hide-places', target.getZoom() < LABELS_FROM_ZOOM);
+    const visible = (target?.getZoom() ?? 0) >= LABELS_FROM_ZOOM;
+    for (const marker of labels.values()) marker.getElement().style.display = visible ? '' : 'none';
+}
+
+function clearLayers() {
+    const target = map.value;
+    if (!target) return;
+    if (target.getLayer(LINE)) target.removeLayer(LINE);
+    if (target.getLayer(FILL)) target.removeLayer(FILL);
+    if (target.getSource(SOURCE)) target.removeSource(SOURCE);
+}
+
+function clearLabels() {
+    for (const marker of labels.values()) marker.remove();
+    labels.clear();
 }
 
 // The app's place circle (as in its checkpoint editor) with a compact name pill.
 function draw() {
-    group?.remove();
-    group = null;
+    try {
+        paint();
+    } catch (error) {
+        // A style change removes the layers; style.load draws them again once it is ready.
+        if (!isStyleNotLoaded(error)) throw error;
+    }
+}
+
+function paint() {
     const target = map.value;
     if (!target) return;
-    if (!target.getPane(PANE)) target.createPane(PANE).style.zIndex = '450';
-    group = L.layerGroup(
-        props.checkpoints.map((checkpoint) =>
-            L.circle([checkpoint.latitude, checkpoint.longitude], {
-                radius: checkpoint.radius,
-                color: '#82d5c8',
-                weight: 1.5,
-                opacity: 0.9,
-                fillColor: '#82d5c8',
-                fillOpacity: 0.14,
-                interactive: false
-            }).bindTooltip(`${icons.place}<span>${escapeHtml(checkpoint.name)}</span>`, {
-                permanent: true,
-                direction: 'center',
-                className: 'checkpoint-label',
-                pane: PANE
-            })
-        )
-    ).addTo(target);
+    clearLayers();
+    clearLabels();
+    if (props.checkpoints.length > 0) {
+        target.addSource(SOURCE, {
+            type: 'geojson',
+            data: {
+                type: 'FeatureCollection',
+                features: props.checkpoints.map((checkpoint) => ({
+                    type: 'Feature',
+                    properties: { id: checkpoint.id },
+                    geometry: {
+                        type: 'Polygon',
+                        coordinates: [
+                            circlePolygon({ lat: checkpoint.latitude, lng: checkpoint.longitude }, checkpoint.radius)
+                        ]
+                    }
+                }))
+            }
+        });
+        target.addLayer({
+            id: FILL,
+            type: 'fill',
+            source: SOURCE,
+            paint: { 'fill-color': '#82d5c8', 'fill-opacity': 0.14 }
+        });
+        target.addLayer({
+            id: LINE,
+            type: 'line',
+            source: SOURCE,
+            paint: { 'line-color': '#82d5c8', 'line-width': 1.5, 'line-opacity': 0.9 }
+        });
+        for (const checkpoint of props.checkpoints) {
+            const el = document.createElement('div');
+            el.className = 'checkpoint-label lt-marker';
+            el.style.pointerEvents = 'none';
+            el.style.zIndex = `${Z_INDEX}`;
+            el.innerHTML = `${icons.place}<span>${escapeHtml(checkpoint.name)}</span>`;
+            const marker = new Marker({ element: el, anchor: 'center' })
+                .setLngLat([checkpoint.longitude, checkpoint.latitude])
+                .addTo(target);
+            labels.set(checkpoint.id, marker);
+        }
+    }
     updateLabels();
 }
 
-watch([map, () => props.checkpoints], draw, { immediate: true });
 watch(
     map,
     (target, previous) => {
-        previous?.off('zoomend', updateLabels);
-        target?.on('zoomend', updateLabels);
+        previous?.off('style.load', draw);
+        previous?.off('zoom', updateLabels);
+        target?.on('style.load', draw);
+        target?.on('zoom', updateLabels);
+        draw();
     },
     { immediate: true }
 );
+watch(() => props.checkpoints, draw);
 onBeforeUnmount(() => {
-    map.value?.off('zoomend', updateLabels);
-    map.value?.getContainer().classList.remove('lt-hide-places');
-    group?.remove();
+    map.value?.off('style.load', draw);
+    map.value?.off('zoom', updateLabels);
+    clearLabels();
+    clearLayers();
 });
 </script>
 
 <template><span hidden /></template>
 
 <style>
-.leaflet-tooltip.checkpoint-label {
+.checkpoint-label {
     display: flex;
     align-items: center;
     gap: 4px;
     padding: 3px 10px 3px 6px;
-    border: none;
     border-radius: 9999px;
     background: rgb(37 43 42 / 0.92);
     color: var(--color-on-surface);
@@ -79,18 +132,11 @@ onBeforeUnmount(() => {
     font-weight: 600;
     line-height: 16px;
     box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+    white-space: nowrap;
 }
 
-.leaflet-tooltip.checkpoint-label svg {
+.checkpoint-label svg {
     color: var(--color-primary);
     font-size: 14px;
-}
-
-.leaflet-tooltip.checkpoint-label::before {
-    display: none;
-}
-
-.lt-hide-places .checkpoint-label {
-    display: none !important;
 }
 </style>

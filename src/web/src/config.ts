@@ -9,5 +9,8 @@ export const config = {
     oidcClientId: env.VITE_OIDC_CLIENT_ID || 'tracker-spa',
     calendarUrl: env.VITE_CALENDAR_URL || 'https://calendar.legacy-group.tech',
     // The Legacy Calendar web app (not its API): where an event's "Open in Legacy Calendar" link goes.
-    calendarWebUrl: env.VITE_CALENDAR_WEB_URL || 'https://legacy-calendar.pages.dev'
+    calendarWebUrl: env.VITE_CALENDAR_WEB_URL || 'https://legacy-calendar.pages.dev',
+    // The default map style: a MapLibre style URL. OpenFreeMap is free and needs no API key;
+    // point this at another style (or its own host) without touching the map code.
+    mapStyleUrl: env.VITE_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty'
 };

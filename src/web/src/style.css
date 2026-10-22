@@ -277,50 +277,56 @@ html[data-theme='adaptive'] {
     scrollbar-color: var(--color-outline-variant) transparent;
 }
 
-/* ---- Leaflet chrome in the app's colours ---------------------------------------------------- */
+/* ---- MapLibre chrome in the app's colours --------------------------------------------------- */
 
-.leaflet-container {
+.maplibregl-map {
     background: var(--color-surface-container-lowest);
     font-family: var(--font-sans);
 }
 
-.leaflet-control-attribution {
+.maplibregl-ctrl-attrib {
     background: color-mix(in srgb, var(--color-surface) 70%, transparent) !important;
     color: var(--color-on-surface-variant) !important;
     border-radius: 8px 0 0 0;
     font-size: 10px;
 }
 
-.leaflet-control-attribution a {
+.maplibregl-ctrl-attrib a {
     color: var(--color-primary) !important;
 }
 
-.leaflet-popup-content-wrapper,
-.leaflet-popup-tip {
+.maplibregl-ctrl-attrib-button {
+    background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
+}
+
+.maplibregl-popup-content {
     background: var(--color-surface-container-high);
     color: var(--color-on-surface);
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
-}
-
-.leaflet-popup-content-wrapper {
     border-radius: 20px;
-}
-
-.leaflet-popup-content {
-    margin: 16px 18px;
+    margin: 0;
+    padding: 16px 18px;
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
     font-size: 14px;
     line-height: 20px;
 }
 
-.leaflet-container a.leaflet-popup-close-button {
+.maplibregl-popup-tip {
+    border-top-color: var(--color-surface-container-high);
+    border-bottom-color: var(--color-surface-container-high);
+    border-left-color: var(--color-surface-container-high);
+    border-right-color: var(--color-surface-container-high);
+}
+
+.maplibregl-popup-close-button {
     color: var(--color-on-surface-variant);
     top: 6px;
     right: 6px;
+    padding: 0 6px;
+    font-size: 20px;
 }
 
 /* Marker boxes are larger than what they draw (beams, badges); only the drawn parts take clicks. */
-.leaflet-marker-icon.lt-marker,
-.leaflet-marker-icon.lt-marker.leaflet-interactive {
+.lt-marker {
     background: none;
     border: none;
     pointer-events: none;

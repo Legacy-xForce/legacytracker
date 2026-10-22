@@ -80,8 +80,7 @@ function left(index: number): string {
     position: relative;
 }
 
-/* Leaflet gives every SVG in the map pane z-index 200 (meant for its vector layers), which put
-   the bubble over the faces: an empty white cloud. */
+/* The bubble is an SVG; keep it under the avatar faces instead of covering them. */
 .peer-cluster > .peer-cluster__bubble {
     position: absolute;
     left: 0;

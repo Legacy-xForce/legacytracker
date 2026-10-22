@@ -40,6 +40,10 @@ describe('map overlays', () => {
         const wrapper = mountMap(() => h(EventsLayer, { events: [placed, unplaced], now: Date.now() }));
         await wrapper.vm.$nextTick();
         expect(document.querySelectorAll('.event-marker').length).toBe(1);
+
+        document.querySelector('.event-marker')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        await wrapper.vm.$nextTick();
+        expect(document.querySelector('.maplibregl-popup')?.textContent).toContain('Party');
         wrapper.unmount();
     });
 
