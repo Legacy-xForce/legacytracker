@@ -23,6 +23,7 @@ import PopoverMenu from '../components/ui/PopoverMenu.vue';
 import Spinner from '../components/ui/Spinner.vue';
 import { useMediaQuery } from '../composables/useMediaQuery';
 import { useNow } from '../composables/useNow';
+import { config } from '../config';
 import type { Insets } from '../lib/camera';
 import { decodeJwt } from '../lib/jwt';
 import { hasPosition } from '../lib/peers';
@@ -179,6 +180,12 @@ function openDocs() {
     window.open(router.resolve({ name: 'docs' }).href, '_blank', 'noopener');
 }
 
+// Name, picture and credentials live in Legacy Auth, not in the tracker.
+function openProfile() {
+    accountMenu.value = false;
+    window.open(`${config.authUrl}/settings`, '_blank', 'noopener');
+}
+
 async function signOut() {
     await session.logout();
     await router.replace({ name: 'login' });
@@ -276,6 +283,7 @@ watch(replaying, (isReplaying) => {
                     </div>
                 </div>
                 <div class="bg-outline-variant mx-3 mb-2 h-px" />
+                <MenuItem icon="person" label="Manage profile" @click="openProfile" />
                 <MenuItem icon="palette" label="Appearance" @click="openAppearance" />
                 <MenuItem icon="api" label="API tokens" @click="openApiTokens" />
                 <MenuItem icon="menuBook" label="API documentation" @click="openDocs" />

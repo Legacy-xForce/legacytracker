@@ -95,10 +95,11 @@ tile layer drop and reload its tiles.
 
 ## API tokens and docs
 
-The account menu has **API tokens** (create a read or write token, copy it
-once, rotate or delete it; the phone app has the same under Profile →
-Integrations) and **API documentation**, which opens `/docs`. That page is
-public, so integrators can read it before signing in. Its content lives in
+The account menu has **Manage profile** (opens Legacy Auth's account page for
+name, picture, password and passkeys), **API tokens** (create a read or write
+token, copy it once, rotate or delete it; the phone app has the same under
+Profile → Integrations) and **API documentation**, which opens `/docs`. That
+page is public, so integrators can read it before signing in. Its content lives in
 `src/lib/apiDocs.ts`; keep it in step with `src/server/README.md` when an
 endpoint changes.
 
