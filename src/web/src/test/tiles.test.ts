@@ -98,7 +98,17 @@ describe('styleFor', () => {
             'poi_transit'
         ]);
         // The raster imagery sits under the POIs so the symbols stay readable.
-        expect(style.layers[1]).toMatchObject({ type: 'raster', source: 'esri-imagery' });
+        expect(style.layers[1]).toMatchObject({
+            type: 'raster',
+            source: 'esri-imagery',
+            // Dimmed so Esri's baked-in place labels stand out.
+            paint: { 'raster-brightness-max': 0.85 }
+        });
+        expect(style.layers[2]).toMatchObject({
+            type: 'raster',
+            source: 'esri-reference',
+            paint: { 'raster-contrast': 0.4 }
+        });
     });
 
     it('overlays the same POIs on the terrain raster', () => {

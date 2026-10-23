@@ -2,6 +2,7 @@ import type {
     FilterSpecification,
     LayerSpecification,
     Map as MapLibreMap,
+    RasterLayerSpecification,
     StyleSpecification,
     SymbolLayerSpecification
 } from 'maplibre-gl';
@@ -28,6 +29,13 @@ export const MAP_STYLES: { id: MapStyle; label: string }[] = [
 const ESRI = 'Tiles &copy; Esri';
 const TOPO =
     'Map data &copy; OpenStreetMap contributors, SRTM | Style &copy; <a href="https://opentopomap.org">OpenTopoMap</a>';
+/**
+ * Esri bakes its place labels into the reference raster, so their contrast can only be tuned
+ * relative to the imagery underneath: dim the imagery's highlights and push the labels' mid-tones
+ * apart. Both are subtle enough to leave the photography looking normal.
+ */
+const IMAGERY_BRIGHTNESS_MAX = 0.85;
+const REFERENCE_CONTRAST = 0.4;
 
 /** The vector style's POI layers plus the sprite and glyphs they draw with. */
 export interface PoiOverlay {
@@ -105,7 +113,11 @@ export function styleFor(style: MapStyle, poi: PoiOverlay | null = poiOverlay): 
                         maxzoom: 18
                     }
                 },
-                poi
+                poi,
+                {
+                    'esri-imagery': { 'raster-brightness-max': IMAGERY_BRIGHTNESS_MAX },
+                    'esri-reference': { 'raster-contrast': REFERENCE_CONTRAST }
+                }
             );
         case 'terrain':
             return rasterStyle(
@@ -151,20 +163,25 @@ export function applyPoiZoom(map: MapLibreMap): void {
 function rasterStyle(
     background: string,
     sources: Record<string, StyleSpecification['sources'][string]>,
-    poi: PoiOverlay | null = null
+    poi: PoiOverlay | null = null,
+    paint: Record<string, RasterLayerSpecification['paint']> = {}
 ): StyleSpecification {
     const style: StyleSpecification = {
         version: 8,
         sources: poi ? { ...sources, [VECTOR_SOURCE]: poi.source } : sources,
         layers: [
             { id: 'background', type: 'background', paint: { 'background-color': background } },
-            ...Object.keys(sources).map((id) => ({
-                id,
-                type: 'raster' as const,
-                source: id,
-                minzoom: 0,
-                maxzoom: 22
-            })),
+            ...Object.keys(sources).map((id) => {
+                const layerPaint = paint[id];
+                return {
+                    id,
+                    type: 'raster' as const,
+                    source: id,
+                    minzoom: 0,
+                    maxzoom: 22,
+                    ...(layerPaint ? { paint: layerPaint } : {})
+                };
+            }),
             ...(poi?.layers ?? [])
         ]
     };
