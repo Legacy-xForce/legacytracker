@@ -149,6 +149,12 @@ describe('preloadPoiOverlay', () => {
             const overlay = await tiles.preloadPoiOverlay();
             expect(overlay?.layers.map((layer) => layer.id)).toEqual(['poi_transit', 'poi_r1']);
             expect(overlay?.source).toEqual(libertyLike.sources.openmaptiles);
+            // Label paint and font are reworked so names stay legible over imagery.
+            expect(overlay?.layers[0].paint).toMatchObject({
+                'text-color': '#ffffff',
+                'text-halo-color': 'rgba(0, 0, 0, 0.8)'
+            });
+            expect(overlay?.layers[0].layout).toMatchObject({ 'text-font': ['Noto Sans Regular'] });
 
             // Cached: a third call does not hit the network again.
             expect(await tiles.preloadPoiOverlay()).toBe(overlay);

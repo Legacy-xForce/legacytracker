@@ -49,6 +49,21 @@ let poiOverlay: PoiOverlay | null = null;
 let poiOverlayRequest: Promise<PoiOverlay | null> | null = null;
 
 /**
+ * The vector style draws POI names in mid grey, in italics, with a thin halo. That works on its
+ * pale basemap but disappears over photography, so the overlay uses the treatment satellite maps
+ * use instead: white text with a dark casing, upright rather than italic.
+ */
+const IMAGERY_LABEL_PAINT = {
+    'text-color': '#ffffff',
+    'text-halo-color': 'rgba(0, 0, 0, 0.8)',
+    'text-halo-width': 1.6,
+    'text-halo-blur': 0.5
+} satisfies NonNullable<SymbolLayerSpecification['paint']>;
+const IMAGERY_LABEL_LAYOUT = {
+    'text-font': ['Noto Sans Regular']
+} satisfies NonNullable<SymbolLayerSpecification['layout']>;
+
+/**
  * Satellite and terrain are raster tiles, which carry no POIs of their own. Reuse the vector
  * style's `poi_*` symbol layers (and its sprite, glyphs and source) so those views keep the same
  * amenities as Standard. Fetched once per session and cached; failures leave the raster styles
@@ -72,14 +87,23 @@ export function preloadPoiOverlay(): Promise<PoiOverlay | null> {
 function poisFrom(style: StyleSpecification): PoiOverlay | null {
     const source = style.sources?.[VECTOR_SOURCE];
     if (!source) return null;
-    // Keep the layers verbatim: applyPoiZoom tunes their filters and zoom ranges after load.
-    const layers = (style.layers ?? []).filter((layer) => POI_LAYER_IDS.includes(layer.id));
+    // Keep the layers' layout and filters: applyPoiZoom tunes the filters and zoom ranges after load.
+    const layers = (style.layers ?? [])
+        .filter((layer) => POI_LAYER_IDS.includes(layer.id))
+        .map((layer) => {
+            const clone = structuredClone(layer);
+            if (clone.type === 'symbol') {
+                clone.layout = { ...clone.layout, ...IMAGERY_LABEL_LAYOUT };
+                clone.paint = { ...clone.paint, ...IMAGERY_LABEL_PAINT };
+            }
+            return clone;
+        });
     if (layers.length === 0) return null;
     return {
         sprite: style.sprite,
         glyphs: style.glyphs,
         source: structuredClone(source),
-        layers: structuredClone(layers)
+        layers
     };
 }
 
