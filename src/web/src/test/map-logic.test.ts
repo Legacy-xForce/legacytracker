@@ -1,6 +1,6 @@
-import L from 'leaflet';
 import { describe, expect, it } from 'vitest';
 import { clusterAnchor, clusterWidth, groupByDistance } from '../lib/clusters';
+import { latLng, sameLatLng } from '../lib/geo';
 import { Motion } from '../lib/motion';
 import { resolveCheckpoint, type Checkpoint } from '../stores/checkpoints';
 
@@ -83,8 +83,8 @@ describe('group bubble', () => {
 });
 
 describe('Motion', () => {
-    const a = L.latLng(45, 9);
-    const b = L.latLng(45.01, 9);
+    const a = latLng(45, 9);
+    const b = latLng(45.01, 9);
 
     it('glides linearly to a new position over the time since the previous update', () => {
         const motion = new Motion(a);
@@ -92,7 +92,7 @@ describe('Motion', () => {
         motion.step(500);
         expect(motion.shown.lat).toBeCloseTo(45.005, 6);
         motion.step(1000);
-        expect(motion.shown.equals(b)).toBe(true);
+        expect(sameLatLng(motion.shown, b)).toBe(true);
         expect(motion.gliding).toBe(false);
 
         // Two seconds later: the next glide lasts two seconds.
@@ -105,7 +105,7 @@ describe('Motion', () => {
         const motion = new Motion(a);
         motion.moveTo(b, 0);
         motion.step(500);
-        motion.moveTo(L.latLng(45.02, 9), 500);
+        motion.moveTo(latLng(45.02, 9), 500);
         motion.step(500);
         expect(motion.shown.lat).toBeCloseTo(45.005, 6);
     });
@@ -113,7 +113,7 @@ describe('Motion', () => {
     it('keeps glides between 0.3 and 4 seconds', () => {
         const motion = new Motion(a);
         motion.moveTo(b, 0);
-        motion.moveTo(L.latLng(45.02, 9), 10); // 10 ms later: still 300 ms
+        motion.moveTo(latLng(45.02, 9), 10); // 10 ms later: still 300 ms
         motion.step(160);
         expect(motion.gliding).toBe(true);
         motion.step(310);

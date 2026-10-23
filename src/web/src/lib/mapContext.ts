@@ -1,14 +1,14 @@
-import type L from 'leaflet';
+import type { Map as MapLibreMap } from 'maplibre-gl';
 import { inject, type InjectionKey, type Ref, type ShallowRef } from 'vue';
 import { NO_INSETS, type Insets } from './camera';
 
-/** The Leaflet map owned by PeersMap, shared with the overlay layers drawn inside it. */
-export const mapKey: InjectionKey<ShallowRef<L.Map | null>> = Symbol('map');
+/** The MapLibre map owned by PeersMap, shared with the overlay layers drawn inside it. */
+export const mapKey: InjectionKey<ShallowRef<MapLibreMap | null>> = Symbol('map');
 
 /** How much of the map the panels cover, so overlays can frame things in the visible part. */
 export const insetsKey: InjectionKey<Ref<Insets>> = Symbol('insets');
 
-export function useMap(): ShallowRef<L.Map | null> {
+export function useMap(): ShallowRef<MapLibreMap | null> {
     const map = inject(mapKey);
     if (!map) throw new Error('Map layers must be placed inside <PeersMap>.');
     return map;

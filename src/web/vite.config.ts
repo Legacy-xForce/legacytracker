@@ -9,6 +9,8 @@ const TILE_HOSTS = [
     'https://*.tile.opentopomap.org',
     'https://server.arcgisonline.com'
 ];
+// The OpenFreeMap vector style, its TileJSON, glyphs and sprites.
+const MAP_STYLE_HOSTS = ['https://tiles.openfreemap.org'];
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 
 /**
@@ -22,14 +24,26 @@ function securityHeaders(env: Record<string, string>): Plugin {
     const auth = origin(env.VITE_AUTH_URL, 'https://auth.legacy-group.tech');
     const calendar = origin(env.VITE_CALENDAR_URL, 'https://calendar.legacy-group.tech');
     const stream = backend.replace(/^http/, 'ws');
+    // A custom style URL may live on another host; its glyph and sprite URLs usually share it.
+    const styleHosts = [...MAP_STYLE_HOSTS];
+    if (env.VITE_MAP_STYLE_URL) {
+        try {
+            const configured = new URL(env.VITE_MAP_STYLE_URL).origin;
+            if (!styleHosts.includes(configured)) styleHosts.push(configured);
+        } catch {
+            // The app itself will report a malformed URL; keep the default CSP.
+        }
+    }
     const csp = [
         "default-src 'self'",
         "script-src 'self'",
-        // Leaflet and Vue style bindings set inline styles.
+        // Vue style bindings set inline styles; MapLibre positions its chrome inline.
         "style-src 'self' 'unsafe-inline'",
         "font-src 'self' data:",
-        `img-src 'self' data: blob: ${auth} ${TILE_HOSTS.join(' ')}`,
-        `connect-src 'self' ${backend} ${stream} ${auth} ${calendar} ${NOMINATIM}`,
+        `img-src 'self' data: blob: ${auth} ${TILE_HOSTS.join(' ')} ${styleHosts.join(' ')}`,
+        `connect-src 'self' ${backend} ${stream} ${auth} ${calendar} ${NOMINATIM} ${styleHosts.join(' ')}`,
+        // MapLibre runs its tile worker from a blob.
+        "worker-src 'self' blob:",
         "object-src 'none'",
         "base-uri 'self'",
         "form-action 'self'",
@@ -54,6 +68,7 @@ function securityHeaders(env: Record<string, string>): Plugin {
 export default defineConfig(({ mode }) => ({
     plugins: [vue(), tailwindcss(), securityHeaders(loadEnv(mode, process.cwd(), 'VITE_'))],
     test: {
-        environment: 'jsdom'
+        environment: 'jsdom',
+        setupFiles: ['./src/test/setup.ts']
     }
 }));

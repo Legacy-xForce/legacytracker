@@ -1,4 +1,4 @@
-import L from 'leaflet';
+import { sameLatLng, type LatLng } from './geo';
 
 // Glide bounds, as in the app: long enough that movement reads as continuous, short enough that a
 // late update doesn't leave the marker crawling far behind reality.
@@ -13,25 +13,25 @@ const FIRST_GLIDE_MS = 1_000;
  */
 export class Motion {
     /** Where the marker is drawn now. */
-    shown: L.LatLng;
+    shown: LatLng;
     /** The newest reported position. */
-    target: L.LatLng;
-    private from: L.LatLng;
+    target: LatLng;
+    private from: LatLng;
     private start = 0;
     private duration = 0;
     private lastUpdate: number | null = null;
 
-    constructor(at: L.LatLng) {
+    constructor(at: LatLng) {
         this.shown = this.target = this.from = at;
     }
 
     get gliding(): boolean {
-        return !this.shown.equals(this.target);
+        return !sameLatLng(this.shown, this.target);
     }
 
     /** Starts gliding towards `target`; false when there is nowhere new to go. */
-    moveTo(target: L.LatLng, now: number): boolean {
-        if (target.equals(this.target)) return false;
+    moveTo(target: LatLng, now: number): boolean {
+        if (sameLatLng(target, this.target)) return false;
         const interval = this.lastUpdate === null ? null : now - this.lastUpdate;
         this.lastUpdate = now;
         this.from = this.shown;
@@ -42,7 +42,7 @@ export class Motion {
     }
 
     /** Jumps straight to `target`, e.g. when it is too far away for a glide to make sense. */
-    jumpTo(target: L.LatLng, now: number): void {
+    jumpTo(target: LatLng, now: number): void {
         this.lastUpdate = now;
         this.shown = this.from = this.target = target;
     }
@@ -53,9 +53,9 @@ export class Motion {
         this.shown =
             t >= 1
                 ? this.target
-                : L.latLng(
-                      this.from.lat + (this.target.lat - this.from.lat) * t,
-                      this.from.lng + (this.target.lng - this.from.lng) * t
-                  );
+                : {
+                      lat: this.from.lat + (this.target.lat - this.from.lat) * t,
+                      lng: this.from.lng + (this.target.lng - this.from.lng) * t
+                  };
     }
 }

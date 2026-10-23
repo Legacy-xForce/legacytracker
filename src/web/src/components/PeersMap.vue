@@ -1,14 +1,16 @@
 <script setup lang="ts">
-import L from 'leaflet';
+import { Map as MapLibreMap } from 'maplibre-gl';
 import { onBeforeUnmount, onMounted, provide, ref, shallowRef, toRef, watch } from 'vue';
+import '../lib/maplibre';
 import ClusterMarker from './map/ClusterMarker.vue';
 import PeerMarker from './map/PeerMarker.vue';
 import { centerShowing, framePadding, holdAt, NO_INSETS, visibleCenter, type Insets } from '../lib/camera';
 import { CLUSTER, clusterAnchor, clusterWidth, groupByDistance, PEER_MARKER_SIZE } from '../lib/clusters';
+import { boundsOf, centroid as meanLatLng, type LatLng } from '../lib/geo';
 import { insetsKey, mapKey } from '../lib/mapContext';
 import { Motion } from '../lib/motion';
 import { hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
-import { tileLayers, type MapStyle } from '../lib/tiles';
+import { applyPoiZoom, preloadPoiOverlay, styleFor, type MapStyle } from '../lib/tiles';
 import { VueMarker } from '../lib/vueMarker';
 
 const props = withDefaults(
@@ -29,8 +31,8 @@ const props = withDefaults(
 const emit = defineEmits<{ select: [id: string] }>();
 
 const element = ref<HTMLElement | null>(null);
-let map: L.Map | null = null;
-const mapRef = shallowRef<L.Map | null>(null);
+let map: MapLibreMap | null = null;
+const mapRef = shallowRef<MapLibreMap | null>(null);
 provide(mapKey, mapRef);
 provide(insetsKey, toRef(props, 'insets'));
 
@@ -44,8 +46,6 @@ interface Group {
     view: VueMarker<{ members: { id: string; name: string; stale: boolean }[] }>;
 }
 
-let tiles: L.TileLayer[] = [];
-const people = L.layerGroup();
 const entries = new Map<string, Entry>();
 const groups = new Map<string, Group>();
 let framed = false;
@@ -56,10 +56,15 @@ let flying = false;
 let zooming = false;
 
 function applyStyle() {
-    if (!map) return;
-    for (const layer of tiles) layer.remove();
-    tiles = tileLayers(props.mapStyle);
-    tiles.forEach((layer) => layer.addTo(map!));
+    const style = props.mapStyle;
+    if (style === 'standard') {
+        map?.setStyle(styleFor(style));
+        return;
+    }
+    // The raster styles borrow Standard's POIs, so wait for that overlay before switching.
+    void preloadPoiOverlay().then(() => {
+        if (map && props.mapStyle === style) map.setStyle(styleFor(style));
+    });
 }
 
 function markerProps(peer: Peer) {
@@ -77,6 +82,14 @@ function markerProps(peer: Peer) {
     };
 }
 
+interface Showable {
+    addTo(map: MapLibreMap): void;
+}
+
+function show(view: Showable): void {
+    if (map && !props.hidden) view.addTo(map);
+}
+
 function sync() {
     if (!map) return;
     const now = performance.now();
@@ -84,14 +97,14 @@ function sync() {
     for (const peer of props.peers) {
         if (!hasPosition(peer)) continue;
         present.add(peer.id);
-        const at = L.latLng(peer.latitude!, peer.longitude!);
+        const at: LatLng = { lat: peer.latitude!, lng: peer.longitude! };
         let entry = entries.get(peer.id);
         if (!entry) {
             const view = new VueMarker(at, PeerMarker, markerProps(peer), PEER_MARKER_SIZE, [
                 PEER_MARKER_SIZE[0] / 2,
                 PEER_MARKER_SIZE[1] / 2
             ]);
-            view.marker.on('click', () => emit('select', peer.id));
+            view.onClick(() => emit('select', peer.id));
             entry = { peer, view, motion: new Motion(at) };
             entries.set(peer.id, entry);
         } else {
@@ -100,7 +113,7 @@ function sync() {
             glideTo(entry, at, now);
         }
         // Whoever is selected draws over everyone else.
-        entry.view.marker.setZIndexOffset(peer.id === props.selectedId ? 1000 : 0);
+        entry.view.setZIndex(peer.id === props.selectedId ? 1000 : 2);
     }
     for (const [id, entry] of entries) {
         if (present.has(id)) continue;
@@ -112,22 +125,23 @@ function sync() {
     // Frame everyone once, the first time there is anyone to frame.
     if (!framed && entries.size > 0) {
         framed = true;
-        map.fitBounds(L.latLngBounds([...entries.values()].map((e) => e.motion.target)), {
+        map.fitBounds(boundsOf([...entries.values()].map((entry) => entry.motion.target)), {
             ...framePadding(props.insets, 60),
             maxZoom: 15,
-            animate: false
+            duration: 0
         });
     }
 }
 
-function glideTo(entry: Entry, at: L.LatLng, now: number) {
-    if (!map || at.equals(entry.motion.target)) return;
+function glideTo(entry: Entry, at: LatLng, now: number) {
+    if (!map || (at.lat === entry.motion.target.lat && at.lng === entry.motion.target.lng)) return;
     // Across more than a screen there is nothing to watch: just be there.
-    const size = map.getSize();
-    const jump = map.latLngToContainerPoint(at).distanceTo(map.latLngToContainerPoint(entry.motion.shown));
-    if (jump > Math.hypot(size.x, size.y)) {
+    const shown = map.project([entry.motion.shown.lng, entry.motion.shown.lat]);
+    const next = map.project([at.lng, at.lat]);
+    const size = map.getContainer();
+    if (Math.hypot(next.x - shown.x, next.y - shown.y) > Math.hypot(size.clientWidth, size.clientHeight)) {
         entry.motion.jumpTo(at, now);
-        entry.view.marker.setLatLng(at);
+        entry.view.setLatLng(at);
         if (following.value === entry.peer.id) keepFollowing();
         return;
     }
@@ -146,10 +160,10 @@ function tick() {
     for (const entry of entries.values()) {
         if (!entry.motion.gliding) continue;
         entry.motion.step(now);
-        entry.view.marker.setLatLng(entry.motion.shown);
+        entry.view.setLatLng(entry.motion.shown);
         moving ||= entry.motion.gliding;
     }
-    for (const group of groups.values()) group.view.marker.setLatLng(centroid(group.ids));
+    for (const group of groups.values()) group.view.setLatLng(centroid(group.ids));
     keepFollowing();
     if (moving) animate();
 }
@@ -160,39 +174,32 @@ function keepFollowing() {
     holdAt(map, entry.motion.shown, visibleCenter(map, props.insets));
 }
 
-function centroid(ids: string[]): L.LatLng {
-    let lat = 0;
-    let lng = 0;
-    for (const id of ids) {
-        const shown = entries.get(id)!.motion.shown;
-        lat += shown.lat;
-        lng += shown.lng;
-    }
-    return L.latLng(lat / ids.length, lng / ids.length);
-}
-
-function show(marker: L.Marker) {
-    if (!people.hasLayer(marker)) people.addLayer(marker);
+function centroid(ids: string[]): LatLng {
+    return meanLatLng(ids.map((id) => entries.get(id)!.motion.shown));
 }
 
 /** Folds people who would overlap on screen into group bubbles, and splits groups that separated. */
 function regroup() {
     if (!map) return;
+    if (props.hidden) {
+        for (const entry of entries.values()) entry.view.remove();
+        for (const group of groups.values()) group.view.remove();
+        return;
+    }
     const list = [...entries.values()];
-    const zoom = map.getZoom();
     const wanted = new Map<string, Entry[]>();
     for (const indexes of groupByDistance(
-        list.map((e) => ({
-            ...map!.project(e.motion.target, zoom),
-            lat: e.motion.target.lat,
-            lng: e.motion.target.lng
+        list.map((entry) => ({
+            ...map!.project([entry.motion.target.lng, entry.motion.target.lat]),
+            lat: entry.motion.target.lat,
+            lng: entry.motion.target.lng
         }))
     )) {
         const members = indexes.map((i) => list[i]);
-        if (members.length === 1) show(members[0].view.marker);
+        if (members.length === 1) show(members[0].view);
         else {
-            for (const member of members) people.removeLayer(member.view.marker);
-            wanted.set(members.map((m) => m.peer.id).join('\n'), members);
+            for (const member of members) member.view.remove();
+            wanted.set(members.map((member) => member.peer.id).join('\n'), members);
         }
     }
     for (const [key, group] of groups) {
@@ -201,7 +208,7 @@ function regroup() {
         groups.delete(key);
     }
     for (const [key, members] of wanted) {
-        const ids = members.map((m) => m.peer.id);
+        const ids = members.map((member) => member.peer.id);
         const bubble = {
             members: members.map(({ peer }) => ({
                 id: peer.id,
@@ -212,7 +219,8 @@ function regroup() {
         const existing = groups.get(key);
         if (existing) {
             existing.view.update(bubble);
-            existing.view.marker.setLatLng(centroid(ids));
+            existing.view.setLatLng(centroid(ids));
+            show(existing.view);
             continue;
         }
         const view = new VueMarker(
@@ -222,15 +230,16 @@ function regroup() {
             [clusterWidth(ids.length), CLUSTER.height],
             clusterAnchor(ids.length)
         );
-        view.marker.on('click', (event) => openGroup(ids, event));
-        people.addLayer(view.marker);
+        view.setZIndex(2);
+        view.onClick((event) => openGroup(ids, event));
+        show(view);
         groups.set(key, { ids, view });
     }
 }
 
 /** A face selects that person; anywhere else on the bubble zooms in until the group separates. */
-function openGroup(ids: string[], event: L.LeafletMouseEvent) {
-    const face = (event.originalEvent.target as Element | null)?.closest('[data-member]');
+function openGroup(ids: string[], event: MouseEvent) {
+    const face = (event.target as Element | null)?.closest('[data-member]');
     const id = face?.getAttribute('data-member');
     if (id) {
         emit('select', id);
@@ -238,10 +247,10 @@ function openGroup(ids: string[], event: L.LeafletMouseEvent) {
     }
     if (!map) return;
     following.value = null;
-    map.flyToBounds(L.latLngBounds(ids.map((member) => entries.get(member)!.motion.shown)), {
+    map.fitBounds(boundsOf(ids.map((member) => entries.get(member)!.motion.shown)), {
         ...framePadding(props.insets, 90),
         maxZoom: map.getMaxZoom(),
-        duration: 0.6
+        duration: 600
     });
 }
 
@@ -253,17 +262,18 @@ function focus(id: string) {
     const zoom = Math.max(map.getZoom(), 16);
     flying = true;
     map.once('moveend', () => (flying = false));
-    map.flyTo(centerShowing(map, entry.motion.shown, zoom, props.insets), zoom, { duration: 0.8 });
+    const centre = centerShowing(map, entry.motion.shown, zoom, props.insets);
+    map.flyTo({ center: [centre.lng, centre.lat], zoom, duration: 800 });
 }
 
 /** Frames everyone on the map. */
 function fitEveryone() {
     if (!map || entries.size === 0) return;
     following.value = null;
-    map.flyToBounds(L.latLngBounds([...entries.values()].map((e) => e.motion.target)), {
+    map.fitBounds(boundsOf([...entries.values()].map((entry) => entry.motion.target)), {
         ...framePadding(props.insets, 60),
         maxZoom: 15,
-        duration: 0.8
+        duration: 800
     });
 }
 
@@ -273,26 +283,38 @@ function zoomBy(delta: number) {
     else map.zoomOut();
 }
 
-// Web Mercator ends here; beyond it there are no tiles, just a void.
-const WORLD = L.latLngBounds([-85.0511, -1e5], [85.0511, 1e5]);
-
 /** Never zoomed out so far that the world is shorter than the map. */
 function fitWorldHeight() {
     if (!map) return;
-    map.setMinZoom(Math.max(1, Math.ceil(Math.log2(map.getSize().y / 256))));
+    // MapLibre's world is 512 px per tile at zoom 0.
+    map.setMinZoom(Math.max(1, Math.ceil(Math.log2(map.getContainer().clientHeight / 512))));
 }
 
-onMounted(() => {
-    // Longitude wraps (worldCopyJump), so only latitude is bounded, like the app's camera constraint.
-    map = L.map(element.value!, {
-        zoomControl: false,
-        worldCopyJump: true,
-        maxBounds: WORLD,
-        maxBoundsViscosity: 1,
-        maxZoom: 19
-    }).setView([30, 0], 3);
+onMounted(async () => {
+    // The raster styles borrow Standard's POIs; wait for that overlay before the first render.
+    if (props.mapStyle !== 'standard') await preloadPoiOverlay();
+    const container = element.value;
+    if (!container) return;
+    map = new MapLibreMap({
+        container,
+        style: styleFor(props.mapStyle),
+        center: [0, 30],
+        zoom: 3,
+        maxZoom: 19,
+        // Longitude wraps, so only the Mercator latitude limit constrains the camera, like the app.
+        renderWorldCopies: true,
+        // The web map is a flat, north-up map: rotation and pitch would only disorient.
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false,
+        attributionControl: { compact: true }
+    });
     fitWorldHeight();
     map.on('resize', fitWorldHeight);
+    // OpenFreeMap's style is shared; tune POI zoom levels after every style switch.
+    map.on('style.load', () => {
+        if (map) applyPoiZoom(map);
+    });
     // Panning by hand means "let me look around": stop following.
     map.on('dragstart', () => (following.value = null));
     map.on('zoomstart', () => (zooming = true));
@@ -301,10 +323,8 @@ onMounted(() => {
         regroup();
         keepFollowing();
     });
-    if (!props.hidden) people.addTo(map);
-    applyStyle();
-    sync();
     mapRef.value = map;
+    sync();
 });
 
 onBeforeUnmount(() => {
@@ -330,10 +350,8 @@ watch(
     () => props.hidden,
     (hidden) => {
         if (!map) return;
-        if (hidden) {
-            following.value = null;
-            people.remove();
-        } else people.addTo(map);
+        if (hidden) following.value = null;
+        regroup();
     }
 );
 

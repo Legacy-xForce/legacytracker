@@ -10,7 +10,7 @@ Legacy Tracker is a real-time location-sharing app, a monorepo with three indepe
 |---|---|---|
 | `src/client` | Flutter (Dart) + native Kotlin/Swift | Phone app. A **native** tracking engine records and uploads positions; Flutter is only the UI. |
 | `src/server` | Fastify + TypeScript, PostgreSQL/PostGIS | REST + WebSocket API, live-mode controller, FCM pushes, Android release feed. |
-| `src/web` | Vue 3, Vite, Tailwind 4, Pinia, Leaflet | Read-only browser map (never shares the viewer's own location), API token management and the public API reference at `/docs`. |
+| `src/web` | Vue 3, Vite, Tailwind 4, Pinia, MapLibre GL JS | Read-only browser map (never shares the viewer's own location), API token management and the public API reference at `/docs`. |
 
 Design docs live in `docs/` (`location-tracking.md` is the key one; also `app-updates.md`, `calendar-events.md`, `web-app.md`) and `src/server/README.md` holds the full API reference. Read them before changing the matching area.
 
@@ -33,7 +33,7 @@ npx vitest run src/test/peers.test.ts   # single test file
 npm run format:check             # prettier; `npm run format` to fix
 npm run build                    # vue-tsc -b && vite build
 ```
-Production services are used unless overridden by `VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL` (see `.env.example`).
+Production services are used unless overridden by `VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL`, `VITE_MAP_STYLE_URL` (see `.env.example`).
 
 Client (`src/client`; Flutter 3.44, Dart ^3.12):
 ```bash
@@ -62,7 +62,7 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 ### Client structure (`src/client/lib`)
 `provider`-based. `data/network/` has one service per API area plus the `Backend` interface (realtime peers/viewers) with `RemoteBackend` (used by `app.dart`) and `MockBackend`; `data/models/` are plain models; `features/<area>/` hold screens, providers and widgets. Native code is in `android/app/src/main/kotlin/com/legacy/legacytracker/` (`tracking/`, `updates/`).
 ### Web structure (`src/web/src`)
-`api/` (REST + WebSocket clients), `stores/` (Pinia: session, peers, history, checkpoints, events, sharing, appearance), `lib/` (pure logic: clustering, replay, geocoding throttle, presence, `apiDocs.ts`), `components/`, `views/` (map, login, public `DocsView`). Themes are `data-theme` blocks in `style.css` (listed in `theme/themes.ts`): use the colour tokens (`bg-surface-container`, `hover:bg-on-surface/6`, …), never hard-coded colours or `white/…`, so light themes work. Markers are Vue components mounted into Leaflet markers and patched in place; pan followed points with `panBy`, not `setView`/`panTo` (an unanimated view reset drops all tiles).
+`api/` (REST + WebSocket clients), `stores/` (Pinia: session, peers, history, checkpoints, events, sharing, appearance), `lib/` (pure logic: clustering, replay, geocoding throttle, presence, `apiDocs.ts`), `components/`, `views/` (map, login, public `DocsView`). Themes are `data-theme` blocks in `style.css` (listed in `theme/themes.ts`): use the colour tokens (`bg-surface-container`, `hover:bg-on-surface/6`, …), never hard-coded colours or `white/…`, so light themes work. Markers are Vue components mounted into MapLibre markers and patched in place; pan followed points with `panBy`, not a view reset (resetting the view drops all tiles).
 
 ### Cross-cutting rules worth knowing
 - **Access scopes**: Legacy Auth refuses sign-in for accounts without the tracker scope or disabled ones (`error=access_denied` at the redirect URI); the clients show one line on the sign-in screen, and losing access mid-session ends at the next refresh (also with a line: "Your session ended…" unless the OP said why, e.g. disabled). The server returns 403 for tokens without the needed scope. Device-token uploads are **not** scope-checked. The calendar uses a second token from the same grant (refresh with `resource=urn:legacy:calendar`); ask for it only when the tracker token shows calendar access, because a refused refresh spends the refresh token. All refreshes are serialized (Web Lock on the web, `TokenManager` queue in the app).
