@@ -10,7 +10,7 @@ import { boundsOf, centroid as meanLatLng, type LatLng } from '../lib/geo';
 import { insetsKey, mapKey } from '../lib/mapContext';
 import { Motion } from '../lib/motion';
 import { hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
-import { applyPoiZoom, styleFor, type MapStyle } from '../lib/tiles';
+import { applyPoiZoom, preloadPoiOverlay, styleFor, type MapStyle } from '../lib/tiles';
 import { VueMarker } from '../lib/vueMarker';
 
 const props = withDefaults(
@@ -56,7 +56,15 @@ let flying = false;
 let zooming = false;
 
 function applyStyle() {
-    map?.setStyle(styleFor(props.mapStyle));
+    const style = props.mapStyle;
+    if (style === 'standard') {
+        map?.setStyle(styleFor(style));
+        return;
+    }
+    // The raster styles borrow Standard's POIs, so wait for that overlay before switching.
+    void preloadPoiOverlay().then(() => {
+        if (map && props.mapStyle === style) map.setStyle(styleFor(style));
+    });
 }
 
 function markerProps(peer: Peer) {
@@ -282,9 +290,13 @@ function fitWorldHeight() {
     map.setMinZoom(Math.max(1, Math.ceil(Math.log2(map.getContainer().clientHeight / 512))));
 }
 
-onMounted(() => {
+onMounted(async () => {
+    // The raster styles borrow Standard's POIs; wait for that overlay before the first render.
+    if (props.mapStyle !== 'standard') await preloadPoiOverlay();
+    const container = element.value;
+    if (!container) return;
     map = new MapLibreMap({
-        container: element.value!,
+        container,
         style: styleFor(props.mapStyle),
         center: [0, 30],
         zoom: 3,
