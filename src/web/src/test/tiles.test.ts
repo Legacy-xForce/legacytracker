@@ -4,7 +4,7 @@ import { applyPoiZoom, styleFor, type PoiOverlay } from '../lib/tiles';
 import { config } from '../config';
 
 const geomFilter = ['match', ['geometry-type'], ['Point'], true, false];
-const treeFilter = ['match', ['get', 'class'], ['park', 'garden', 'dog_park', 'amusement_park'], false, true];
+const hiddenFilter = ['match', ['get', 'class'], ['bus', 'park', 'garden', 'dog_park', 'amusement_park'], false, true];
 
 function fakeMap() {
     const layers = [
@@ -72,11 +72,11 @@ describe('applyPoiZoom', () => {
 
         applyPoiZoom(map);
 
-        // Bus stops are filtered out, not moved to a later layer.
+        // Bus stops also arrive through the ranked layers, so they are filtered out of those too.
         expect(added).toEqual([]);
         expect(filters.get('poi_transit')).toEqual(['match', ['get', 'class'], ['airport', 'rail'], true, false]);
         for (const id of ['poi_r1', 'poi_r7', 'poi_r20']) {
-            expect(filters.get(id)).toEqual(['all', geomFilter, treeFilter]);
+            expect(filters.get(id)).toEqual(['all', geomFilter, hiddenFilter]);
         }
         expect(zoomRanges.get('poi_r1')).toEqual([14, 24]);
         expect(zoomRanges.get('poi_r7')).toEqual([15, 24]);

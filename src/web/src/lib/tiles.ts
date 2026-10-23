@@ -12,8 +12,8 @@ export type MapStyle = 'standard' | 'satellite' | 'terrain';
 /** General amenities (shops, restaurants, services) can show one zoom level earlier. */
 const OTHER_POI_ZOOM_SHIFT = -1;
 const OTHER_POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20'];
-/** Green-space pins read as tree clutter when spread over a city; keep the map quieter. */
-const TREE_POI_CLASSES = ['park', 'garden', 'dog_park', 'amusement_park'];
+/** Bus stops are too dense at any zoom, and green-space pins read as tree clutter. */
+const HIDDEN_POI_CLASSES = ['bus', 'park', 'garden', 'dog_park', 'amusement_park'];
 
 /** Where the vector style keeps POIs and the assets its symbol layers need. */
 const VECTOR_SOURCE = 'openmaptiles';
@@ -128,9 +128,10 @@ export function styleFor(style: MapStyle, poi: PoiOverlay | null = poiOverlay): 
 
 /**
  * OpenFreeMap keeps bus stops, airports and railway stations in one `poi_transit` layer from zoom
- * 0. Filter the bus stops out entirely, let ordinary POIs arrive one level earlier, and drop the
- * green-space pins. Runs after every style load, because a style switch replaces the layers.
- * Custom styles without these OpenFreeMap layers are left alone.
+ * 0, but bus stops also come through the ranked `poi_r*` layers, which filter on `rank` alone.
+ * Drop them from both, let ordinary POIs arrive one level earlier, and hide the green-space pins.
+ * Runs after every style load, because a style switch replaces the layers. Custom styles without
+ * these OpenFreeMap layers are left alone.
  */
 export function applyPoiZoom(map: MapLibreMap): void {
     const layers = map.getStyle().layers;
@@ -138,11 +139,11 @@ export function applyPoiZoom(map: MapLibreMap): void {
         // Airports and railway stations stay at their original zoom; bus stops are too dense to keep.
         map.setFilter('poi_transit', ['match', ['get', 'class'], ['airport', 'rail'], true, false]);
     }
-    const treeFilter: FilterSpecification = ['match', ['get', 'class'], TREE_POI_CLASSES, false, true];
+    const hiddenFilter: FilterSpecification = ['match', ['get', 'class'], HIDDEN_POI_CLASSES, false, true];
     for (const id of OTHER_POI_LAYERS) {
         const layer = layers.find((candidate) => candidate.id === id) as SymbolLayerSpecification | undefined;
         if (!layer || typeof layer.minzoom !== 'number') continue;
-        map.setFilter(id, layer.filter ? (['all', layer.filter, treeFilter] as FilterSpecification) : treeFilter);
+        map.setFilter(id, layer.filter ? (['all', layer.filter, hiddenFilter] as FilterSpecification) : hiddenFilter);
         map.setLayerZoomRange(id, Math.max(0, layer.minzoom + OTHER_POI_ZOOM_SHIFT), layer.maxzoom ?? 24);
     }
 }
