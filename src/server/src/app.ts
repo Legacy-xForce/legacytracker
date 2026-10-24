@@ -2029,6 +2029,13 @@ app.register(async () => {
   });
 });
 
+// Lightweight liveness probe for Docker/Coolify. It answers as soon as the
+// HTTP server is accepting requests; startup work (schema, FCM, sharing) has
+// already completed by the time we listen.
+app.get("/health", async (_request, reply) => {
+  return reply.code(200).send({ status: "ok" });
+});
+
 const port = Number(process.env.PORT || 3000);
 
 const start = async (): Promise<void> => {

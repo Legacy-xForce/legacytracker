@@ -81,6 +81,8 @@ docker build -t legacytracker-server .
 docker run -p 3000:3000 -e DATABASE_URL=<url> legacytracker-server
 ```
 
+The image exposes port `3000` and defines a `HEALTHCHECK` against `/health` for Coolify.
+
 ## API reference
 
 All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against Legacy Auth's JWKS (`AUTH_JWKS_URI`), must be ES256 with `iss` = `AUTH_ISSUER`, and comes in one of two shapes while the apps move to OpenID Connect (see `docs/oidc-migration.md`):
