@@ -13,8 +13,11 @@ const BUS_STOP_MIN_ZOOM = 18;
 /** General amenities (shops, restaurants, services) can show one zoom level earlier. */
 const OTHER_POI_ZOOM_SHIFT = -1;
 const OTHER_POI_LAYERS = ['poi_r1', 'poi_r7', 'poi_r20'];
-/** Green-space pins read as tree clutter when spread over a city; keep the map quieter. */
-const TREE_POI_CLASSES = ['park', 'garden', 'dog_park', 'amusement_park'];
+/**
+ * Green-space pins read as tree clutter when spread over a city, and bus stops have their own
+ * later layer. Keep both out of the general POI rank layers.
+ */
+const HIDDEN_POI_CLASSES = ['park', 'garden', 'dog_park', 'amusement_park', 'bus'];
 const BUS_STOP_LAYER = 'poi_transit_bus';
 
 export const MAP_STYLES: { id: MapStyle; label: string }[] = [
@@ -92,11 +95,11 @@ export function applyPoiZoom(map: MapLibreMap): void {
             map.addLayer(bus, next?.id);
         }
     }
-    const treeFilter: FilterSpecification = ['match', ['get', 'class'], TREE_POI_CLASSES, false, true];
+    const hiddenFilter: FilterSpecification = ['match', ['get', 'class'], HIDDEN_POI_CLASSES, false, true];
     for (const id of OTHER_POI_LAYERS) {
         const layer = layers.find((candidate) => candidate.id === id) as SymbolLayerSpecification | undefined;
         if (!layer || typeof layer.minzoom !== 'number') continue;
-        map.setFilter(id, layer.filter ? (['all', layer.filter, treeFilter] as FilterSpecification) : treeFilter);
+        map.setFilter(id, layer.filter ? (['all', layer.filter, hiddenFilter] as FilterSpecification) : hiddenFilter);
         map.setLayerZoomRange(id, Math.max(0, layer.minzoom + OTHER_POI_ZOOM_SHIFT), layer.maxzoom ?? 24);
     }
 }

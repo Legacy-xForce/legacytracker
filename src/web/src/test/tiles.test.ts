@@ -3,7 +3,7 @@ import type { LayerSpecification, Map as MapLibreMap } from 'maplibre-gl';
 import { applyPoiZoom } from '../lib/tiles';
 
 const geomFilter = ['match', ['geometry-type'], ['Point'], true, false];
-const treeFilter = ['match', ['get', 'class'], ['park', 'garden', 'dog_park', 'amusement_park'], false, true];
+const hiddenFilter = ['match', ['get', 'class'], ['park', 'garden', 'dog_park', 'amusement_park', 'bus'], false, true];
 
 function fakeMap() {
     const layers = [
@@ -45,7 +45,7 @@ describe('applyPoiZoom', () => {
             filter: ['==', ['get', 'class'], 'bus']
         });
         for (const id of ['poi_r1', 'poi_r7', 'poi_r20']) {
-            expect(filters.get(id)).toEqual(['all', geomFilter, treeFilter]);
+            expect(filters.get(id)).toEqual(['all', geomFilter, hiddenFilter]);
         }
         expect(zoomRanges.get('poi_r1')).toEqual([14, 24]);
         expect(zoomRanges.get('poi_r7')).toEqual([15, 24]);
