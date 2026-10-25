@@ -37,6 +37,11 @@ import {
 } from "./services/fcm-service";
 import { LiveController, type TrackingCommand } from "./services/live-controller";
 import { LocationRefreshCoordinator } from "./services/location-refresh";
+import {
+  MapboxNotConfiguredError,
+  MapboxTokenRequestError,
+  MapboxTokenService,
+} from "./services/mapbox-tokens";
 import { ViewerPresence } from "./services/viewer-presence";
 import { parseHistoryRange } from "./services/history-range";
 import {
@@ -81,7 +86,8 @@ const AUTH_ALLOWED_CLIENTS = (
   .filter((client) => client.length > 0);
 // Android builds older than this must update before they can be used.
 const ANDROID_MIN_SUPPORTED_CODE = Number(process.env.ANDROID_MIN_SUPPORTED_CODE ?? 0) || 0;
-// The only client that may register devices (mint device tokens).
+// The only client that may register devices (mint device tokens) and ask for
+// Mapbox temporary tokens. The web uses a URL-restricted public token instead.
 const AUTH_MOBILE_CLIENT = process.env.AUTH_MOBILE_CLIENT ?? "tracker-mobile";
 
 const authVerifier = {
@@ -113,6 +119,18 @@ const app = Fastify({
 const connectionManager = new ConnectionManager();
 const deviceAuth = new DeviceAuth(pool);
 const apiTokens = new ApiTokens(pool);
+// The phone app has no Mapbox token of its own: it asks this server for a
+// short-lived one. The secret below can mint tokens and must stay server-side.
+const mapboxTokens = new MapboxTokenService({
+  secretToken: process.env.MAPBOX_SECRET_TOKEN,
+  username: process.env.MAPBOX_USERNAME,
+  ttlSeconds: Number(process.env.MAPBOX_TOKEN_TTL_SECONDS),
+});
+if (!mapboxTokens.configured) {
+  app.log.warn(
+    "[mapbox] MAPBOX_SECRET_TOKEN and MAPBOX_USERNAME are not set; the app cannot get a map token",
+  );
+}
 const sharing = new SharingRegistry();
 const tickets = new Map<string, TicketEntry>();
 const lastKnownLocation = new Map<string, KnownLocation>();
@@ -1232,6 +1250,52 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
   );
 
   return reply.send({ ok: true });
+});
+
+// Mints a short-lived Mapbox token for the phone app. Release builds carry no
+// Mapbox token, so they fetch one here before creating the map. Tokens are
+// cached per user until shortly before they expire. Only the app's sessions
+// may ask: the web ships a public token restricted to its own origins.
+app.post("/api/v1/mapbox/token", async (request, reply) => {
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, "/api/v1/mapbox/token", identity);
+  }
+  if (identity.clientId !== null && identity.clientId !== AUTH_MOBILE_CLIENT) {
+    return rejectRequest(request, reply, "/api/v1/mapbox/token", {
+      ok: false,
+      reason: "Mapbox token requested by a client other than the app",
+      detail: `client_id ${identity.clientId}`,
+      forbidden: true,
+      error: "Map tokens are only issued to the app",
+    });
+  }
+
+  try {
+    const token = await mapboxTokens.getForUser(identity.userId);
+    // A bearer credential: never let a proxy or browser cache it.
+    return reply.header("Cache-Control", "no-store").send({
+      token: token.token,
+      expires_at: token.expiresAt,
+    });
+  } catch (error) {
+    if (error instanceof MapboxNotConfiguredError) {
+      app.log.error(
+        { userId: identity.userId },
+        "[mapbox] token requested but the service is not configured",
+      );
+      return reply.code(503).send({ error: "Map rendering is not configured" });
+    }
+    if (error instanceof MapboxTokenRequestError) {
+      // The message is safe to log: it never contains the secret or a token.
+      app.log.error(
+        { userId: identity.userId, status: error.status, error: error.message },
+        "[mapbox] unable to mint a temporary token",
+      );
+      return reply.code(503).send({ error: "Map rendering is temporarily unavailable" });
+    }
+    throw error;
+  }
 });
 
 // Exchanges a valid user JWT for a long-lived device token the native

@@ -12,5 +12,9 @@ export const config = {
     calendarWebUrl: env.VITE_CALENDAR_WEB_URL || 'https://legacy-calendar.pages.dev',
     // The default map style: a MapLibre style URL. OpenFreeMap is free and needs no API key;
     // point this at another style (or its own host) without touching the map code.
-    mapStyleUrl: env.VITE_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty'
+    mapStyleUrl: env.VITE_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty',
+    // Mapbox public token, restricted to the app's origins. The migration in
+    // #69 replaces the MapLibre stack; the build already refuses to ship
+    // without it.
+    mapboxToken: env.VITE_MAPBOX_TOKEN || ''
 };

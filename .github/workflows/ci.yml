@@ -79,6 +79,10 @@ jobs:
         working-directory: src/web
       - run: npm run build
         working-directory: src/web
+        env:
+          # Public Mapbox token, restricted to the app's origins. The build
+          # fails clearly when it is missing (see docs/mapbox.md).
+          VITE_MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN_WEB }}
 
   server-docker-meta:
     name: Prepare server image metadata
