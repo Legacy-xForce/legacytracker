@@ -3,14 +3,9 @@ import { loadEnv, type Plugin } from 'vite';
 import vue from '@vitejs/plugin-vue';
 import tailwindcss from '@tailwindcss/vite';
 
-// Map tiles (src/lib/tiles.ts) and place search (src/lib/geocoder.ts).
-const TILE_HOSTS = [
-    'https://*.tile.openstreetmap.org',
-    'https://*.tile.opentopomap.org',
-    'https://server.arcgisonline.com'
-];
-// The OpenFreeMap vector style, its TileJSON, glyphs and sprites.
-const MAP_STYLE_HOSTS = ['https://tiles.openfreemap.org'];
+// Mapbox styles, tiles, glyphs, sprites, telemetry and place search.
+const MAPBOX_API = 'https://api.mapbox.com';
+const MAPBOX_EVENTS = 'https://events.mapbox.com';
 const NOMINATIM = 'https://nominatim.openstreetmap.org';
 
 /**
@@ -24,25 +19,16 @@ function securityHeaders(env: Record<string, string>): Plugin {
     const auth = origin(env.VITE_AUTH_URL, 'https://auth.legacy-group.tech');
     const calendar = origin(env.VITE_CALENDAR_URL, 'https://calendar.legacy-group.tech');
     const stream = backend.replace(/^http/, 'ws');
-    // A custom style URL may live on another host; its glyph and sprite URLs usually share it.
-    const styleHosts = [...MAP_STYLE_HOSTS];
-    if (env.VITE_MAP_STYLE_URL) {
-        try {
-            const configured = new URL(env.VITE_MAP_STYLE_URL).origin;
-            if (!styleHosts.includes(configured)) styleHosts.push(configured);
-        } catch {
-            // The app itself will report a malformed URL; keep the default CSP.
-        }
-    }
     const csp = [
         "default-src 'self'",
-        "script-src 'self'",
-        // Vue style bindings set inline styles; MapLibre positions its chrome inline.
+        // Mapbox Standard uses WebAssembly for buildings and 3D features.
+        "script-src 'self' 'wasm-unsafe-eval'",
+        // Vue style bindings set inline styles; Mapbox positions its chrome inline.
         "style-src 'self' 'unsafe-inline'",
         "font-src 'self' data:",
-        `img-src 'self' data: blob: ${auth} ${TILE_HOSTS.join(' ')} ${styleHosts.join(' ')}`,
-        `connect-src 'self' ${backend} ${stream} ${auth} ${calendar} ${NOMINATIM} ${styleHosts.join(' ')}`,
-        // MapLibre runs its tile worker from a blob.
+        `img-src 'self' data: blob: ${auth} ${MAPBOX_API}`,
+        `connect-src 'self' ${backend} ${stream} ${auth} ${calendar} ${NOMINATIM} ${MAPBOX_API} ${MAPBOX_EVENTS}`,
+        // Mapbox GL JS runs its tile worker from a blob.
         "worker-src 'self' blob:",
         "object-src 'none'",
         "base-uri 'self'",

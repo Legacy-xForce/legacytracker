@@ -28,7 +28,9 @@ import type { Insets } from '../lib/camera';
 import { decodeJwt } from '../lib/jwt';
 import { hasPosition } from '../lib/peers';
 import { storage } from '../lib/storage';
-import { MAP_STYLES, type MapStyle } from '../lib/tiles';
+import { useAppearanceStore } from '../stores/appearance';
+import { getTheme } from '../theme/themes';
+import { lightPresetFor, MAP_STYLES, type MapStyle } from '../lib/styles';
 import { useCheckpointsStore } from '../stores/checkpoints';
 import { useEventsStore } from '../stores/events';
 import { useHistoryStore } from '../stores/history';
@@ -38,6 +40,7 @@ import { useSessionStore } from '../stores/session';
 import { useSharingStore } from '../stores/sharing';
 
 const session = useSessionStore();
+const appearance = useAppearanceStore();
 const peers = usePeersStore();
 const checkpoints = useCheckpointsStore();
 const events = useEventsStore();
@@ -54,6 +57,7 @@ let eventsTimer: ReturnType<typeof setInterval> | undefined;
 
 const mapView = ref<InstanceType<typeof PeersMap> | null>(null);
 const wide = useMediaQuery('(min-width: 768px)');
+const systemDark = useMediaQuery('(prefers-color-scheme: dark)');
 const viewportHeight = ref(window.innerHeight);
 // Markers re-check staleness every few seconds; the panel's counters tick every second.
 const mapNow = useNow();
@@ -61,6 +65,10 @@ const now = useNow(1_000);
 
 const showCheckpoints = ref(storage.get(CHECKPOINTS_KEY) !== 'false');
 const mapStyle = ref<MapStyle>(readStyle());
+const lightPreset = computed(() => {
+    const mode = getTheme(appearance.theme).mode;
+    return lightPresetFor(mode === 'system' ? (systemDark.value ? 'dark' : 'light') : mode);
+});
 const styleMenu = ref(false);
 const accountMenu = ref(false);
 const appearanceOpen = ref(false);
@@ -241,6 +249,7 @@ watch(replaying, (isReplaying) => {
             :selected-id="selectedId"
             :now="mapNow"
             :map-style="mapStyle"
+            :light-preset="lightPreset"
             :insets="insets"
             :hidden="replaying"
             @select="select"
@@ -299,7 +308,7 @@ watch(replaying, (isReplaying) => {
                     <MenuItem
                         v-for="option in MAP_STYLES"
                         :key="option.id"
-                        :icon="option.id === 'satellite' ? 'satellite' : option.id === 'terrain' ? 'landscape' : 'map'"
+                        :icon="option.id === 'satellite' ? 'satellite' : 'map'"
                         :label="option.label"
                         :checked="option.id === mapStyle"
                         @click="chooseStyle(option.id)"

@@ -23,7 +23,7 @@ export function centroid(points: LatLng[]): LatLng {
     return latLng(lat / points.length, lng / points.length);
 }
 
-/** South-west and north-east corners, the `[[west, south], [east, north]]` MapLibre accepts. */
+/** South-west and north-east corners, the `[[west, south], [east, north]]` Mapbox accepts. */
 export function boundsOf(points: LatLng[]): [[number, number], [number, number]] {
     if (points.length === 0)
         return [
@@ -50,7 +50,7 @@ const EARTH_RADIUS_M = 6_371_008.8;
 
 /**
  * A closed ring approximating a circle of `radius` metres around `center`, as `[lng, lat]`
- * pairs, because MapLibre draws circles as GeoJSON geometry.
+ * pairs, because Mapbox draws circles as GeoJSON geometry.
  */
 export function circlePolygon(center: LatLng, radius: number, steps = 64): [number, number][] {
     const ring: [number, number][] = [];

@@ -43,7 +43,7 @@ describe('map overlays', () => {
 
         document.querySelector('.event-marker')!.dispatchEvent(new MouseEvent('click', { bubbles: true }));
         await wrapper.vm.$nextTick();
-        expect(document.querySelector('.maplibregl-popup')?.textContent).toContain('Party');
+        expect(document.querySelector('.mapboxgl-popup')?.textContent).toContain('Party');
         wrapper.unmount();
     });
 

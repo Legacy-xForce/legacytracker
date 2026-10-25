@@ -6,5 +6,5 @@ interface ImportMetaEnv {
     readonly VITE_OIDC_CLIENT_ID?: string;
     readonly VITE_CALENDAR_URL?: string;
     readonly VITE_CALENDAR_WEB_URL?: string;
-    readonly VITE_MAP_STYLE_URL?: string;
+    readonly VITE_MAPBOX_TOKEN?: string;
 }

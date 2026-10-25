@@ -1,7 +1,7 @@
 # Web app
 
 A browser client for watching the tracker map (`src/web`). It never shares the
-viewer's own location. Vue 3, Vite, Tailwind 4, Pinia, MapLibre GL JS.
+viewer's own location. Vue 3, Vite, Tailwind 4, Pinia, Mapbox GL JS.
 
 ## Sign-in
 
@@ -53,7 +53,7 @@ badge. Someone not heard from for 90 minutes is greyed out, never see-through.
 People close together on screen fold into one bubble of faces; a face selects
 that person, the rest of the bubble zooms in.
 
-Markers are Vue components mounted into MapLibre markers and patched in place,
+Markers are Vue components mounted into Mapbox markers and patched in place,
 never rebuilt, so photos and animations don't flicker. Anything that follows a
 moving point frame by frame (the selected person, a replay) pans with
 `panBy`: resetting the view instead would make every tile layer drop and

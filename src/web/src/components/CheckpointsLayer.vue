@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Marker } from 'maplibre-gl';
+import { Marker } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
 import { circlePolygon } from '../lib/geo';
 import { escapeHtml } from '../lib/format';
 import { icons } from '../lib/icons';
-import { isStyleNotLoaded } from '../lib/maplibre';
+import { isStyleNotLoaded } from '../lib/mapbox';
 import { useMap } from '../lib/mapContext';
 import type { Checkpoint } from '../stores/checkpoints';
 

@@ -1,9 +1,9 @@
-import { Marker, type MarkerOptions } from 'maplibre-gl';
+import { Marker, type MarkerOptions } from 'mapbox-gl';
 import { h, render, type Component } from 'vue';
 import type { LatLng } from './geo';
 
 /**
- * A MapLibre marker drawn by a Vue component. Updates patch the component in place, so pictures,
+ * A Mapbox marker drawn by a Vue component. Updates patch the component in place, so pictures,
  * animations and transitions survive every position or status change. (Rebuilding the icon on
  * each update is what made markers flicker.)
  */
@@ -35,7 +35,7 @@ export class VueMarker<P extends object> {
         }).setLngLat([at.lng, at.lat]);
     }
 
-    addTo(map: import('maplibre-gl').Map): void {
+    addTo(map: import('mapbox-gl').Map): void {
         if (this.attached) return;
         this.marker.addTo(map);
         this.attached = true;

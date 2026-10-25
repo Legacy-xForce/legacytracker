@@ -118,7 +118,9 @@ The web build's `_headers` allows only:
   (`img-src` and `connect-src`);
 - `https://events.mapbox.com` for telemetry (`connect-src`);
 - the existing backend, Legacy Auth, Legacy Calendar and Nominatim origins;
-- `blob:` workers, which Mapbox GL JS uses for its worker.
+- `blob:` workers, which Mapbox GL JS uses for its worker;
+- `'wasm-unsafe-eval'` in `script-src`, which Mapbox Standard needs for its
+  WebAssembly building and 3D features.
 
 No OpenFreeMap, OpenStreetMap tile, Esri or OpenTopoMap host remains after the
 migration. Mapbox's logo and attribution stay visible.

@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { Map as MapLibreMap } from 'maplibre-gl';
+import mapboxgl, { type Map as MapboxMap } from 'mapbox-gl';
 import { onBeforeUnmount, onMounted, provide, ref, shallowRef, toRef, watch } from 'vue';
-import '../lib/maplibre';
+import '../lib/mapbox';
 import ClusterMarker from './map/ClusterMarker.vue';
 import PeerMarker from './map/PeerMarker.vue';
 import { centerShowing, framePadding, holdAt, NO_INSETS, visibleCenter, type Insets } from '../lib/camera';
@@ -10,7 +10,8 @@ import { boundsOf, centroid as meanLatLng, type LatLng } from '../lib/geo';
 import { insetsKey, mapKey } from '../lib/mapContext';
 import { Motion } from '../lib/motion';
 import { hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
-import { applyPoiZoom, preloadPoiOverlay, styleFor, type MapStyle } from '../lib/tiles';
+import { isStyleNotLoaded } from '../lib/mapbox';
+import { applyStandardTheme, styleFor, type MapLightPreset, type MapStyle } from '../lib/styles';
 import { VueMarker } from '../lib/vueMarker';
 
 const props = withDefaults(
@@ -21,18 +22,20 @@ const props = withDefaults(
         /** Changes every few seconds so "stale" markers grey out without new data. */
         now: number;
         mapStyle?: MapStyle;
+        /** Standard's lighting preset, matched to the app's light/dark theme. */
+        lightPreset?: MapLightPreset;
         /** Parts of the map covered by panels; centring and framing aim at the rest. */
         insets?: Insets;
         /** Takes everyone off the map, e.g. while a trip replays. */
         hidden?: boolean;
     }>(),
-    { mapStyle: 'standard', insets: () => NO_INSETS, hidden: false }
+    { mapStyle: 'standard', lightPreset: 'day', insets: () => NO_INSETS, hidden: false }
 );
 const emit = defineEmits<{ select: [id: string] }>();
 
 const element = ref<HTMLElement | null>(null);
-let map: MapLibreMap | null = null;
-const mapRef = shallowRef<MapLibreMap | null>(null);
+let map: MapboxMap | null = null;
+const mapRef = shallowRef<MapboxMap | null>(null);
 provide(mapKey, mapRef);
 provide(insetsKey, toRef(props, 'insets'));
 
@@ -56,15 +59,17 @@ let flying = false;
 let zooming = false;
 
 function applyStyle() {
-    const style = props.mapStyle;
-    if (style === 'standard') {
-        map?.setStyle(styleFor(style));
-        return;
+    map?.setStyle(styleFor(props.mapStyle));
+}
+
+/** Standard's light/dark look is a config property, reset by every style switch. */
+function applyTheme() {
+    if (!map || !map.isStyleLoaded()) return;
+    try {
+        applyStandardTheme(map, props.lightPreset);
+    } catch (error) {
+        if (!isStyleNotLoaded(error)) throw error;
     }
-    // The raster styles borrow Standard's POIs, so wait for that overlay before switching.
-    void preloadPoiOverlay().then(() => {
-        if (map && props.mapStyle === style) map.setStyle(styleFor(style));
-    });
 }
 
 function markerProps(peer: Peer) {
@@ -83,7 +88,7 @@ function markerProps(peer: Peer) {
 }
 
 interface Showable {
-    addTo(map: MapLibreMap): void;
+    addTo(map: MapboxMap): void;
 }
 
 function show(view: Showable): void {
@@ -286,16 +291,14 @@ function zoomBy(delta: number) {
 /** Never zoomed out so far that the world is shorter than the map. */
 function fitWorldHeight() {
     if (!map) return;
-    // MapLibre's world is 512 px per tile at zoom 0.
+    // Mapbox's world is 512 px per tile at zoom 0.
     map.setMinZoom(Math.max(1, Math.ceil(Math.log2(map.getContainer().clientHeight / 512))));
 }
 
-onMounted(async () => {
-    // The raster styles borrow Standard's POIs; wait for that overlay before the first render.
-    if (props.mapStyle !== 'standard') await preloadPoiOverlay();
+onMounted(() => {
     const container = element.value;
     if (!container) return;
-    map = new MapLibreMap({
+    map = new mapboxgl.Map({
         container,
         style: styleFor(props.mapStyle),
         center: [0, 30],
@@ -307,14 +310,16 @@ onMounted(async () => {
         dragRotate: false,
         pitchWithRotate: false,
         touchPitch: false,
-        attributionControl: { compact: true }
+        attributionControl: false
     });
+    map.addControl(new mapboxgl.AttributionControl({ compact: true }));
+    // Mapbox's pinch gesture includes rotation; keep zoom and pan only.
+    map.touchZoomRotate.disableRotation();
     fitWorldHeight();
     map.on('resize', fitWorldHeight);
-    // OpenFreeMap's style is shared; tune POI zoom levels after every style switch.
-    map.on('style.load', () => {
-        if (map) applyPoiZoom(map);
-    });
+    // A style switch resets config properties, so re-apply the theme on every load.
+    map.on('style.load', applyTheme);
+    applyTheme();
     // Panning by hand means "let me look around": stop following.
     map.on('dragstart', () => (following.value = null));
     map.on('zoomstart', () => (zooming = true));
@@ -346,6 +351,7 @@ watch(
     }
 );
 watch(() => props.mapStyle, applyStyle);
+watch(() => props.lightPreset, applyTheme);
 watch(
     () => props.hidden,
     (hidden) => {

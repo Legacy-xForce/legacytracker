@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Marker, Popup } from 'maplibre-gl';
+import { Marker, Popup } from 'mapbox-gl';
 import { h, onBeforeUnmount, render, watch } from 'vue';
 import EventDetails from './map/EventDetails.vue';
 import { EVENT_FALLBACK_COLOR, type CalendarEvent } from '../lib/events';

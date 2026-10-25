@@ -1,4 +1,4 @@
-import type { Map as MapLibreMap } from 'maplibre-gl';
+import type { Map as MapboxMap } from 'mapbox-gl';
 import type { LatLng } from './geo';
 
 /** Pixels of the map hidden behind panels and controls, per side. */
@@ -16,7 +16,7 @@ export interface Point {
     y: number;
 }
 
-function mapSize(map: MapLibreMap): Point {
+function mapSize(map: MapboxMap): Point {
     const container = map.getContainer();
     return { x: container.clientWidth, y: container.clientHeight };
 }
@@ -36,7 +36,7 @@ function worldPoint(at: LatLng, zoom: number): Point {
  * `map.project` only works at the current zoom, but focus frames at the next one. Projecting by
  * hand keeps the maths honest without moving the camera twice.
  */
-function projectAt(map: MapLibreMap, at: LatLng, zoom: number): Point {
+function projectAt(map: MapboxMap, at: LatLng, zoom: number): Point {
     const size = mapSize(map);
     const centre = map.getCenter();
     const world = worldPoint(at, zoom);
@@ -44,7 +44,7 @@ function projectAt(map: MapLibreMap, at: LatLng, zoom: number): Point {
     return { x: world.x - origin.x + size.x / 2, y: world.y - origin.y + size.y / 2 };
 }
 
-function unprojectAt(map: MapLibreMap, point: Point, zoom: number): LatLng {
+function unprojectAt(map: MapboxMap, point: Point, zoom: number): LatLng {
     const size = mapSize(map);
     const centre = map.getCenter();
     const origin = worldPoint({ lat: centre.lat, lng: centre.lng }, zoom);
@@ -58,7 +58,7 @@ function unprojectAt(map: MapLibreMap, point: Point, zoom: number): LatLng {
 }
 
 /** The middle of the part of the map that isn't covered, in container pixels. */
-export function visibleCenter(map: MapLibreMap, insets: Insets): Point {
+export function visibleCenter(map: MapboxMap, insets: Insets): Point {
     const size = mapSize(map);
     return {
         x: insets.left + (size.x - insets.left - insets.right) / 2,
@@ -67,7 +67,7 @@ export function visibleCenter(map: MapLibreMap, insets: Insets): Point {
 }
 
 /** The map centre that shows `point` in the middle of the uncovered part, at `zoom`. */
-export function centerShowing(map: MapLibreMap, point: LatLng, zoom: number, insets: Insets): LatLng {
+export function centerShowing(map: MapboxMap, point: LatLng, zoom: number, insets: Insets): LatLng {
     const centre = visibleCenter(map, insets);
     const size = mapSize(map);
     const projected = projectAt(map, point, zoom);
@@ -91,10 +91,10 @@ export function framePadding(
 }
 
 /**
- * Pans so `point` sits at `target` on screen, for following something frame by frame. MapLibre
+ * Pans so `point` sits at `target` on screen, for following something frame by frame. Mapbox
  * panBy with no duration does not reset the camera or reload the style, so tiles do not flash.
  */
-export function holdAt(map: MapLibreMap, point: LatLng, target: Point): void {
+export function holdAt(map: MapboxMap, point: LatLng, target: Point): void {
     const projected = map.project([point.lng, point.lat]);
     const dx = Math.round(projected.x - target.x);
     const dy = Math.round(projected.y - target.y);
