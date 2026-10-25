@@ -185,7 +185,7 @@ frame-ancestors 'none'`. Check against every tile layer and Nominatim before shi
   `AccountDisabledError`/`markForbidden`, scope decoding in `lib/jwt.ts` (keep `sub`/`username` reads).
 - `LoginView` becomes a card: brand, "Sign in with Legacy", the `access_denied` message.
 - `api/tracker.ts`: 401 → one refresh + retry (as now), then sign-in; 403 → sign-out (access lost).
-- `DocsView`/`apiDocs.ts`: "session" = an OP access token for the tracker; integrators use API tokens.
+- `DocsView`/`openapi.ts`: "session" = an OP access token for the tracker; integrators use API tokens.
 - `docs/web-app.md` Sign-in section; passkeys now work on the web (the OP page runs on the RP ID's origin).
 - Tests (vitest): PKCE/callback (`state` mismatch, `access_denied`), cross-tab refresh (two stores sharing a
   fake `localStorage` and a fake lock), calendar refusal keeps the session, legacy session migration.
@@ -253,7 +253,7 @@ refusal), provider state transitions, legacy-session migration. Manual: emulator
 - Close PR #56 as superseded (the OP sets `aud` per resource). Tell legacy-auth that the tracker no longer
   calls `/auth/login`, `/auth/refresh`, `/auth/passkey/*`, so `REQUIRE_AUDIENCE=true` and ROPC removal are unblocked
   for the tracker.
-- Docs: `CLAUDE.md` (auth paragraph, scope screens, gotchas), `docs/web-app.md`, server README, `apiDocs.ts`.
+- Docs: `CLAUDE.md` (auth paragraph, scope screens, gotchas), `docs/web-app.md`, server README, `openapi.ts`.
   Update the local-dev memory: local OP instead of the fake Legacy Auth.
 
 ## Rollout order

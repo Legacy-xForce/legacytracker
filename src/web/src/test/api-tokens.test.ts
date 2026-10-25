@@ -3,7 +3,7 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApiToken, listApiTokens, parseApiToken } from '../api/apiTokens';
 import ApiTokensDialog from '../components/account/ApiTokensDialog.vue';
-import { curlExample, DOC_SECTIONS } from '../lib/apiDocs';
+import { openApiDocument } from '../lib/openapi';
 import { router } from '../router';
 import { fakeJwt, jsonResponse, tokenResponse, startSession } from './helpers';
 
@@ -159,24 +159,30 @@ describe('API docs', () => {
         expect(router.currentRoute.value.name).toBe('docs');
     });
 
-    it('document every endpoint with its access and a request example', () => {
-        const endpoints = DOC_SECTIONS.flatMap((section) => section.endpoints);
-        expect(new Set(endpoints.map((e) => e.id)).size).toBe(endpoints.length);
-        const paths = endpoints.map((e) => `${e.method} ${e.path}`);
-        expect(paths).toContain('POST /api/v1/api-tokens/{id}/rotate');
-        expect(paths).toContain('POST /api/v1/location');
-        expect(endpoints.find((e) => e.id === 'post-location')!.access).toBe('write');
-        expect(endpoints.find((e) => e.id === 'get-history')!.access).toBe('read');
-        expect(endpoints.find((e) => e.id === 'create-token')!.access).toBe('session');
+    it('publish an OpenAPI document for the API', () => {
+        expect(openApiDocument.openapi).toBe('3.1.0');
+        expect(openApiDocument.info.title).toBe('Legacy Tracker API');
+        expect(openApiDocument.paths['/api/v1/location'].post.operationId).toBe('post-location');
+        expect(openApiDocument.paths['/api/v1/history'].get.operationId).toBe('get-history');
+        expect(openApiDocument.paths['/api/v1/api-tokens/{id}/rotate'].post.operationId).toBe('rotate-token');
+        expect(openApiDocument.paths['/api/v1/stream'].get.operationId).toBe('stream');
     });
 
-    it('build curl examples with the right credential', () => {
-        const endpoints = Object.fromEntries(DOC_SECTIONS.flatMap((s) => s.endpoints).map((e) => [e.id, e]));
-        expect(curlExample(endpoints['get-profile'], 'https://t.example')).toBe(
-            'curl "https://t.example/api/v1/profile" \\\n  -H "X-API-Token: $LEGACY_TRACKER_TOKEN"'
-        );
-        expect(curlExample(endpoints['create-token'], 'https://t.example')).toContain('Authorization: Bearer');
-        expect(curlExample(endpoints['android-latest'], 'https://t.example')).not.toContain('-H');
-        expect(curlExample(endpoints['create-checkpoint'], 'https://t.example')).toContain('-d \'{"name":"Office"');
+    it('separates token endpoints from session-only ones', () => {
+        expect(openApiDocument.paths['/api/v1/profile'].get.security).toEqual([{ apiToken: [] }, { bearerAuth: [] }]);
+        expect(openApiDocument.paths['/api/v1/api-tokens'].get.security).toEqual([{ bearerAuth: [] }]);
+        expect(openApiDocument.paths['/api/v1/app/android/latest'].get.security).toEqual([]);
+    });
+
+    it('documents both credential schemes', () => {
+        expect(openApiDocument.components.securitySchemes.apiToken).toMatchObject({
+            type: 'apiKey',
+            in: 'header',
+            name: 'X-API-Token'
+        });
+        expect(openApiDocument.components.securitySchemes.bearerAuth).toMatchObject({
+            type: 'http',
+            scheme: 'bearer'
+        });
     });
 });

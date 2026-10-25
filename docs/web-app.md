@@ -99,9 +99,9 @@ The account menu has **Manage profile** (opens Legacy Auth's account page for
 name, picture, password and passkeys), **API tokens** (create a read or write
 token, copy it once, rotate or delete it; the phone app has the same under
 Profile → Integrations) and **API documentation**, which opens `/docs`. That
-page is public, so integrators can read it before signing in. Its content lives in
-`src/lib/apiDocs.ts`; keep it in step with `src/server/README.md` when an
-endpoint changes.
+page is public, so integrators can read it before signing in. It renders the
+OpenAPI document in `src/lib/openapi.ts` with Scalar; keep it in step with
+`src/server/README.md` when an endpoint changes.
 
 ## Running locally
 

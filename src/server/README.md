@@ -92,7 +92,7 @@ All REST endpoints require an `Authorization: Bearer <access_token>` header or a
 
 The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable display name from the token claims (`display_name`, then `name`, then the login username) when available, instead of defaulting to the UUID subject.
 
-The web app serves a readable version of this reference, with examples, at `/docs`.
+The web app renders this reference, with examples, from the OpenAPI document in `src/web/src/lib/openapi.ts` using Scalar at `/docs`.
 
 ### API tokens
 
