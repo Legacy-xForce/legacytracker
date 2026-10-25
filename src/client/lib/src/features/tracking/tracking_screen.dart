@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../features/tracking/tracking_controller.dart';
+import '../../data/network/mapbox_token_service.dart';
 import '../auth/auth_provider.dart';
 import '../travel/travel_tab.dart';
 import 'local_avatar_store.dart';
@@ -25,6 +26,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   late final LocalAvatarStore _avatarStore;
   late final MapSettings _mapSettings;
+  late final MapboxTokenService _mapboxTokenService;
   bool _initialized = false;
   bool _trackingStarted = false;
   int _selectedIndex = _mapTab;
@@ -42,6 +44,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
       // Changing the default in the profile applies to the map right away.
       _mapSettings = context.read<MapSettings>()
         ..addListener(_followDefaultLayer);
+      _mapboxTokenService = MapboxTokenService(
+        baseUrl: controller.baseUrl,
+        getAccessToken: () => context.read<AuthProvider>().accessToken,
+      );
       _initialized = true;
     }
 
@@ -56,6 +62,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   void dispose() {
+    _mapboxTokenService.dispose();
     _mapSettings.removeListener(_followDefaultLayer);
     _avatarStore.dispose();
     super.dispose();
@@ -107,6 +114,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     selfLive: controller.status.live,
                     viewers: controller.viewers,
                     selectedUserId: _selectedUserId,
+                    mapboxTokenService: _mapboxTokenService,
                     onLayerSelected: (layer) =>
                         setState(() => _layerOverride = layer),
                     onUserSelected: (user) {
