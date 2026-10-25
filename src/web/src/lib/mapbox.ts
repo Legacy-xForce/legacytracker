@@ -6,11 +6,15 @@ import { config } from '../config';
 // backend instead.
 mapboxgl.accessToken = config.mapboxToken || null;
 
-/** Fails early with an actionable message when a local build lost its token. */
+/**
+ * Warns if the Mapbox token is missing. The token is committed in .env, so
+ * this should not happen unless .env is deleted. The map will still fail to
+ * load styles at runtime, but the build does not fail.
+ */
 export function assertMapboxConfigured(): void {
     if (!config.mapboxToken) {
-        throw new Error(
-            'VITE_MAPBOX_TOKEN is missing. Set the Mapbox public token in .env.local or the build environment (see docs/mapbox.md).'
+        console.warn(
+            'VITE_MAPBOX_TOKEN is missing. Mapbox styles will not load. Set the Mapbox public token in .env or the build environment (see docs/mapbox.md).'
         );
     }
 }

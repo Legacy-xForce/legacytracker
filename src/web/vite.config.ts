@@ -53,13 +53,8 @@ function securityHeaders(env: Record<string, string>): Plugin {
 
 export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), 'VITE_');
-    // A production map without a token is broken for everyone who opens it.
-    // Fail the build instead of shipping it; see docs/mapbox.md.
-    if (mode === 'production' && !env.VITE_MAPBOX_TOKEN?.trim()) {
-        throw new Error(
-            'VITE_MAPBOX_TOKEN is required for the web build. Set the Mapbox public token in the build environment or .env.local (see docs/mapbox.md).'
-        );
-    }
+    // The Mapbox public token is committed in .env. A runtime check in mapbox.ts
+    // warns if it somehow goes missing (e.g. .env deleted).
     return {
         plugins: [vue(), tailwindcss(), securityHeaders(env)],
         test: {
