@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Marker } from 'maplibre-gl';
+import { Marker } from 'mapbox-gl';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import PeerMarker from './map/PeerMarker.vue';
 import Icon from './ui/Icon.vue';
@@ -9,7 +9,7 @@ import { framePadding, holdAt, visibleCenter, type Insets } from '../lib/camera'
 import { PEER_MARKER_SIZE } from '../lib/clusters';
 import { boundsOf, type LatLng } from '../lib/geo';
 import { formatClock, formatLongDay } from '../lib/format';
-import { isStyleNotLoaded } from '../lib/maplibre';
+import { isStyleNotLoaded } from '../lib/mapbox';
 import { useInsets, useMap } from '../lib/mapContext';
 import { MOVING_SPEED } from '../lib/peers';
 import { BASE_SPEED, PLAYBACK_SPEEDS, speedSegments, type ReplayTrack } from '../lib/replay';

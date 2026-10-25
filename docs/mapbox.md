@@ -88,9 +88,10 @@ secret or a minted token.
 `lightPreset` (`day`/`night`) to match the light or dark theme and keeps
 rotation and pitch disabled.
 
-The production build fails with a clear message when `VITE_MAPBOX_TOKEN` is
-missing, rather than shipping a map that cannot load a style. Local development
-reads `.env.local`; see `src/web/.env.example`.
+The production build fails when `VITE_MAPBOX_TOKEN` is missing, rather than
+shipping a map that cannot load a style. CI provides it via the `MAPBOX_TOKEN_WEB`
+secret. Local development reads `.env.local` (copy from `.env.example`); see
+`src/web/.env.example`.
 
 ## App
 
@@ -118,7 +119,9 @@ The web build's `_headers` allows only:
   (`img-src` and `connect-src`);
 - `https://events.mapbox.com` for telemetry (`connect-src`);
 - the existing backend, Legacy Auth, Legacy Calendar and Nominatim origins;
-- `blob:` workers, which Mapbox GL JS uses for its worker.
+- `blob:` workers, which Mapbox GL JS uses for its worker;
+- `'wasm-unsafe-eval'` in `script-src`, which Mapbox Standard needs for its
+  WebAssembly building and 3D features.
 
 No OpenFreeMap, OpenStreetMap tile, Esri or OpenTopoMap host remains after the
 migration. Mapbox's logo and attribution stay visible.

@@ -57,7 +57,7 @@ export function speedColor(speedMps: number): string {
     return `#${channels.map((value) => value.toString(16).padStart(2, '0')).join('')}`;
 }
 
-/** The route split into runs with the same speed colour, ready for MapLibre line layers. */
+/** The route split into runs with the same speed colour, ready for Mapbox line layers. */
 export function speedSegments(points: ReplayPoint[]): ReplaySegment[] {
     const segments: ReplaySegment[] = [];
     for (let i = 1; i < points.length; i++) {
