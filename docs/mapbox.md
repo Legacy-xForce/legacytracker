@@ -88,9 +88,9 @@ secret or a minted token.
 `lightPreset` (`day`/`night`) to match the light or dark theme and keeps
 rotation and pitch disabled.
 
-The public `pk.*` token is committed in `src/web/.env`; the build no longer
-fails if it is missing — a runtime warning is logged instead. The token is
-URL-restricted and safe to commit. Local development works out of the box; see
+The production build fails when `VITE_MAPBOX_TOKEN` is missing, rather than
+shipping a map that cannot load a style. CI provides it via the `MAPBOX_TOKEN_WEB`
+secret. Local development reads `.env.local` (copy from `.env.example`); see
 `src/web/.env.example`.
 
 ## App
@@ -137,8 +137,8 @@ migration. Mapbox's logo and attribution stay visible.
 
 ## CI
 
-- Web: the `web` job in `.github/workflows/ci.yml` uses the committed `src/web/.env`
-  for `VITE_MAPBOX_TOKEN`; the `MAPBOX_TOKEN_WEB` secret is no longer required.
+- Web: the `web` job in `.github/workflows/ci.yml` maps the
+  `MAPBOX_TOKEN_WEB` secret to `VITE_MAPBOX_TOKEN` for `npm run build`.
 - Server: `npm test` and `npm run build` need no Mapbox credentials; the token
   service is unit-tested with an injected `fetch`.
 - Android/iOS: no Mapbox build-time token is required or embedded.
