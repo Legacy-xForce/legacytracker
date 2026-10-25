@@ -10,7 +10,10 @@ export const config = {
     calendarUrl: env.VITE_CALENDAR_URL || 'https://calendar.legacy-group.tech',
     // The Legacy Calendar web app (not its API): where an event's "Open in Legacy Calendar" link goes.
     calendarWebUrl: env.VITE_CALENDAR_WEB_URL || 'https://legacy-calendar.pages.dev',
-    // The default map style: a MapLibre style URL. OpenFreeMap is free and needs no API key;
-    // point this at another style (or its own host) without touching the map code.
-    mapStyleUrl: env.VITE_MAP_STYLE_URL || 'https://tiles.openfreemap.org/styles/liberty'
+    // Mapbox public token, restricted to the app's origins. Production builds
+    // fail without it (see docs/mapbox.md).
+    mapboxToken: env.VITE_MAPBOX_TOKEN || '',
+    // Mapbox Standard and Standard Satellite. The app never uses a raster tile host.
+    mapboxStandardStyle: 'mapbox://styles/mapbox/standard',
+    mapboxSatelliteStyle: 'mapbox://styles/mapbox/standard-satellite'
 };

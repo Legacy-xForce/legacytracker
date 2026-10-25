@@ -1,5 +1,5 @@
 /**
- * A small MapLibre stand-in for jsdom. The real library needs WebGL, which jsdom does not have;
+ * A small Mapbox GL JS stand-in for jsdom. The real library needs WebGL, which jsdom does not have;
  * this mock keeps the DOM markers, camera maths and style bookkeeping that the app and its tests
  * actually use.
  */
@@ -36,10 +36,13 @@ export class Map {
     minZoom = 0;
     maxZoom = 22;
     padding = { top: 0, right: 0, bottom: 0, left: 0 };
+    readonly config = new globalThis.Map<string, unknown>();
+    readonly touchZoomRotate = { disableRotation: () => {} };
+    readonly dragRotate = { disable: () => {} };
 
     constructor(options: { container: HTMLElement; zoom?: number; center?: [number, number]; maxZoom?: number }) {
         this.container = options.container;
-        this.container.classList.add('maplibregl-map');
+        this.container.classList.add('mapboxgl-map');
         this.zoom = options.zoom ?? 0;
         this.center = options.center ?? [0, 0];
         this.maxZoom = options.maxZoom ?? 22;
@@ -181,6 +184,15 @@ export class Map {
         return true;
     }
 
+    getStyle(): { layers: { id: string }[] } {
+        return { layers: [] };
+    }
+
+    setConfigProperty(scope: string, name: string, value: unknown): this {
+        this.config.set(`${scope}.${name}`, value);
+        return this;
+    }
+
     addSource(id: string, source: unknown): this {
         this.sources.set(id, source);
         return this;
@@ -205,6 +217,11 @@ export class Map {
         return this;
     }
 
+    addControl(control: { onAdd(map: Map): HTMLElement }): this {
+        control.onAdd(this);
+        return this;
+    }
+
     getLayer(id: string): { id: string } | undefined {
         return this.layers.get(id);
     }
@@ -221,13 +238,26 @@ export class Map {
     }
 }
 
+export class AttributionControl {
+    constructor(readonly options: { compact?: boolean } = {}) {}
+
+    onAdd(map: Map): HTMLElement {
+        const element = document.createElement('div');
+        element.className = 'mapboxgl-ctrl mapboxgl-ctrl-attrib';
+        map.getContainer().appendChild(element);
+        return element;
+    }
+
+    onRemove(): void {}
+}
+
 export class Marker {
     readonly element: HTMLElement;
     lngLat: [number, number] = [0, 0];
 
     constructor(options: { element?: HTMLElement } = {}) {
         this.element = options.element ?? document.createElement('div');
-        this.element.classList.add('maplibregl-marker');
+        this.element.classList.add('mapboxgl-marker');
     }
 
     setLngLat(value: LngLatLike): this {
@@ -268,7 +298,7 @@ export class Popup {
     private open = false;
 
     constructor() {
-        this.element.className = 'maplibregl-popup';
+        this.element.className = 'mapboxgl-popup';
     }
 
     on(type: string, handler: Handler): this {
@@ -320,4 +350,6 @@ export class Popup {
     }
 }
 
-export default { Map, Marker, Popup };
+export const accessToken: string | null = null;
+
+export default { Map, Marker, Popup, AttributionControl, accessToken };

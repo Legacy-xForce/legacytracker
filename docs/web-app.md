@@ -1,7 +1,7 @@
 # Web app
 
 A browser client for watching the tracker map (`src/web`). It never shares the
-viewer's own location. Vue 3, Vite, Tailwind 4, Pinia, MapLibre GL JS.
+viewer's own location. Vue 3, Vite, Tailwind 4, Pinia, Mapbox GL JS.
 
 ## Sign-in
 
@@ -53,7 +53,7 @@ badge. Someone not heard from for 90 minutes is greyed out, never see-through.
 People close together on screen fold into one bubble of faces; a face selects
 that person, the rest of the bubble zooms in.
 
-Markers are Vue components mounted into MapLibre markers and patched in place,
+Markers are Vue components mounted into Mapbox markers and patched in place,
 never rebuilt, so photos and animations don't flicker. Anything that follows a
 moving point frame by frame (the selected person, a replay) pans with
 `panBy`: resetting the view instead would make every tile layer drop and
@@ -112,8 +112,10 @@ npm run dev      # http://localhost:5173
 npm test
 ```
 
-Production services are used unless overridden (copy `.env.example` to `.env`):
-`VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL`. When developing
+Production services are used unless overridden (copy `.env.example` to `.env.local`):
+`VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL`.
+`VITE_MAPBOX_TOKEN` is required for a production build: it is the public token
+restricted to the app's origins (see [`mapbox.md`](mapbox.md)). When developing
 against a local tracker server, use one with its own database and no
 `FIREBASE_SERVICE_ACCOUNT_JSON`: with it set, opening the map sends "go live"
 pushes to every registered device.

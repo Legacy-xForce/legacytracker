@@ -122,6 +122,7 @@ export const openApiDocument = {
             '| 404 | Nothing with that id, or it is not yours. |',
             '| 409 | Conflicts, such as a checkpoint name that is taken. |',
             '| 500 | Something broke on our side. Retry later. |',
+            '| 503 | A dependency the endpoint needs is unavailable, such as the Mapbox token service. Retry later. |',
             '',
             'Requests and responses are JSON. Times are ISO 8601 in UTC, distances in metres and speeds in metres per second.'
         ].join('\n')
@@ -153,6 +154,11 @@ export const openApiDocument = {
         {
             name: 'Location sharing',
             description: 'Your location is shared with everyone by default. You can hide it from specific people.'
+        },
+        {
+            name: 'Map rendering',
+            description:
+                'Short-lived Mapbox credentials for the phone app. Release builds contain no Mapbox token; the app asks for one before it creates the map. Web clients use their own public token and do not call this.'
         },
         {
             name: 'Devices and app updates',
@@ -825,6 +831,32 @@ export const openApiDocument = {
                 }
             }
         },
+        '/api/v1/mapbox/token': {
+            post: {
+                tags: ['Map rendering'],
+                operationId: 'mapbox-token',
+                summary: 'Get a short-lived Mapbox token',
+                description:
+                    'Mints a temporary Mapbox token for the signed-in phone app. `503` when the server has no Mapbox credentials or Mapbox refuses the request. Never call this from a web client; the web uses its URL-restricted public token instead.',
+                security: sessionOnly,
+                responses: {
+                    '200': {
+                        description: 'A temporary token. The response is not cacheable.',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/MapboxToken' },
+                                example: {
+                                    token: 'tk.eyJ1IjoibGVnYWN5LXRyYWNrZXIiLCJleHAiOjE3OTI5NDAwMDB9.signature',
+                                    expires_at: '2026-10-25T13:00:00.000Z'
+                                }
+                            }
+                        }
+                    },
+                    '503': errorResponse('Map rendering is not configured or temporarily unavailable.'),
+                    ...commonErrors
+                }
+            }
+        },
         '/api/v1/fcm-token': {
             post: {
                 tags: ['Devices and app updates'],
@@ -1047,6 +1079,21 @@ export const openApiDocument = {
         },
         schemas: {
             Error: errorSchema,
+            MapboxToken: {
+                type: 'object',
+                required: ['token', 'expires_at'],
+                properties: {
+                    token: {
+                        type: 'string',
+                        description: 'Temporary Mapbox token (`tk.…`). Set it before creating the map.'
+                    },
+                    expires_at: {
+                        type: 'string',
+                        format: 'date-time',
+                        description: 'When the token stops working. Renew before this.'
+                    }
+                }
+            },
             Profile: {
                 type: 'object',
                 required: ['id', 'name', 'avatar_url', 'role'],

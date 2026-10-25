@@ -55,6 +55,7 @@ __pycache__/
 # Environment files
 .env
 .env.*
+!**/.env.example
 
 # Logs, reports, and coverage
 report/

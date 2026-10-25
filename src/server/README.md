@@ -41,8 +41,11 @@ Create a `.env` file (or export variables):
 | `AUTH_ISSUER` | `https://auth.legacy-group.tech` | `iss` required in access tokens; must match Legacy Auth's `JWT_ISSUER`. |
 | `ANDROID_MIN_SUPPORTED_CODE` | `0` | Oldest Android build (`version_code`) still allowed; older builds show "Update required". |
 | `AUTH_ALLOWED_CLIENTS` | `tracker-spa,tracker-mobile` | OIDC clients (`client_id`) whose access tokens are accepted, and the `aud` of back-channel logout tokens. |
-| `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices. |
+| `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices and request Mapbox tokens. |
 | `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
+| `MAPBOX_SECRET_TOKEN` | — | Mapbox secret token with `tokens:write`, `styles:read` and `fonts:read`. Server-side only; mints the app's temporary tokens. The app cannot show a map until this is set. |
+| `MAPBOX_USERNAME` | — | Mapbox account that owns the temporary tokens. |
+| `MAPBOX_TOKEN_TTL_SECONDS` | `3300` | Lifetime of minted temporary tokens (60–3600). Tokens are cached per user and renewed five minutes before expiry. |
 
 ### 3. Run
 
@@ -138,6 +141,21 @@ long-lived device token instead of the user JWT.
 | `DELETE` | `/api/v1/devices/:id`   | JWT, write API token, or that device's own token | Revokes the token (sign-out). |
 
 Only `sha256(token)` is stored.
+
+### Mapbox tokens
+
+Release builds of the phone app contain no Mapbox token. Before creating the
+map they ask the tracker for a short-lived temporary token, which the server
+mints with its `MAPBOX_SECRET_TOKEN` and caches per user until five minutes
+before expiry.
+
+| Method | Path                     | Auth | Description |
+|--------|--------------------------|------|-------------|
+| `POST` | `/api/v1/mapbox/token`   | JWT  | Session-only; OpenID Provider tokens must come from `AUTH_MOBILE_CLIENT` (the app), otherwise `403`. Returns `{ "token": "tk.…", "expires_at": "2026-10-25T13:00:00.000Z" }` with `Cache-Control: no-store`. `503` when `MAPBOX_SECRET_TOKEN`/`MAPBOX_USERNAME` are not configured or Mapbox refuses the request. |
+
+The endpoint refuses API tokens and never logs the minted token or the secret.
+Temporary tokens cannot be revoked or restricted to URLs, so they expire within
+an hour and are renewed ahead of time; see [`docs/mapbox.md`](../../docs/mapbox.md).
 
 ### App updates
 

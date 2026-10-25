@@ -16,7 +16,7 @@
         "@material-symbols/svg-400": "0.47.5",
         "@scalar/api-reference": "^1.76.0",
         "@tailwindcss/vite": "^4.3.3",
-        "maplibre-gl": "^6.15.0",
+        "mapbox-gl": "^3.33.0",
         "oauth4webapi": "3.8.8",
         "pinia": "^4.1.0",
         "tailwindcss": "^4.3.3",
