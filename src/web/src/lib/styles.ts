@@ -65,9 +65,36 @@ export function resolveMapPreset(variant: MapVariant, at: Date | number): MapLig
 }
 
 /**
- * Applies the lighting preset to the Standard basemap import. Safe to call
- * after every `style.load`, because a style switch resets the configuration.
+ * Satellite imagery is photographic, so the basemap's lighting preset cannot
+ * reach it: without this the tiles stay high-noon under `night`. The factors
+ * dim and desaturate the raster layers to match each preset.
+ */
+const SATELLITE_LIGHT: Record<MapLightPreset, { brightness: number; saturation: number }> = {
+    dawn: { brightness: 0.65, saturation: -0.1 },
+    day: { brightness: 1, saturation: 0 },
+    dusk: { brightness: 0.6, saturation: -0.05 },
+    night: { brightness: 0.45, saturation: -0.25 }
+};
+
+/**
+ * Applies the lighting preset to the Standard basemap import and dims any
+ * raster layers (Standard Satellite's imagery) to match. Safe to call after
+ * every `style.load`, because a style switch resets both.
  */
 export function applyStandardTheme(map: MapboxMap, preset: MapLightPreset): void {
-    map.setConfigProperty('basemap', 'lightPreset', preset);
+    try {
+        map.setConfigProperty('basemap', 'lightPreset', preset);
+    } catch {
+        // A style that does not expose the basemap import still gets the
+        // raster dimming below, so it respects the variant as far as it can.
+    }
+    const style = map.getStyle();
+    if (!style) return;
+    const light = SATELLITE_LIGHT[preset];
+    for (const layer of style.layers ?? []) {
+        if (layer.type !== 'raster') continue;
+        map.setPaintProperty(layer.id, 'raster-brightness-min', light.brightness);
+        map.setPaintProperty(layer.id, 'raster-brightness-max', light.brightness);
+        map.setPaintProperty(layer.id, 'raster-saturation', light.saturation);
+    }
 }

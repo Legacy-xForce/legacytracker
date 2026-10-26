@@ -91,14 +91,62 @@ describe('resolveMapPreset', () => {
 });
 
 describe('applyStandardTheme', () => {
-    it('sets the basemap light preset', () => {
+    function harness(configThrows = false) {
         const values: [string, string, unknown][] = [];
+        const paints: [string, string, unknown][] = [];
         const map = {
-            setConfigProperty: (scope: string, name: string, value: unknown) => values.push([scope, name, value])
+            setConfigProperty: (scope: string, name: string, value: unknown) => {
+                if (configThrows) throw new Error(`no import ${scope}`);
+                values.push([scope, name, value]);
+            },
+            getStyle: () => ({
+                layers: [
+                    { id: 'satellite', type: 'raster' },
+                    { id: 'roads', type: 'line' }
+                ]
+            }),
+            setPaintProperty: (layer: string, name: string, value: unknown) => paints.push([layer, name, value])
         } as unknown as MapboxMap;
+        return { map, values, paints };
+    }
+
+    it('sets the basemap light preset and dims the satellite imagery to match', () => {
+        const { map, values, paints } = harness();
 
         applyStandardTheme(map, 'dusk');
 
         expect(values).toEqual([['basemap', 'lightPreset', 'dusk']]);
+        // Only the raster layers take the dimming.
+        expect(paints).toEqual([
+            ['satellite', 'raster-brightness-min', 0.6],
+            ['satellite', 'raster-brightness-max', 0.6],
+            ['satellite', 'raster-saturation', -0.05]
+        ]);
+    });
+
+    it('restores the imagery at full brightness for day', () => {
+        const { map, paints } = harness();
+
+        applyStandardTheme(map, 'day');
+
+        expect(paints).toEqual([
+            ['satellite', 'raster-brightness-min', 1],
+            ['satellite', 'raster-brightness-max', 1],
+            ['satellite', 'raster-saturation', 0]
+        ]);
+    });
+
+    it('still dims the imagery when the style has no basemap import', () => {
+        const { map, values, paints } = harness(true);
+
+        applyStandardTheme(map, 'night');
+
+        expect(values).toEqual([]);
+        expect(paints.map(([, name]) => name)).toEqual([
+            'raster-brightness-min',
+            'raster-brightness-max',
+            'raster-saturation'
+        ]);
+        expect(paints).toContainEqual(['satellite', 'raster-brightness-max', 0.45]);
     });
 });
