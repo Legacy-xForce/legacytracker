@@ -201,6 +201,44 @@ class MarkerIconFactory extends ChangeNotifier {
       _clusterBubbleHeight + _clusterTailHeight + _clusterDotSize - 2;
   static const _clusterMaxFaces = 3;
 
+  /// Centres of the faces shown by a bubble of [memberCount] people, in
+  /// logical pixels relative to the annotation coordinate (the tail dot).
+  /// The `+N` overflow chip is deliberately not a face: on the web it zooms
+  /// like the rest of the bubble.
+  static List<Offset> clusterFaceOffsets(int memberCount) {
+    final faces = memberCount > _clusterMaxFaces
+        ? _clusterMaxFaces
+        : memberCount;
+    final slots = memberCount > _clusterMaxFaces
+        ? _clusterMaxFaces + 1
+        : memberCount;
+    final width =
+        _clusterPadding * 2 + _clusterFaceSize + (slots - 1) * _clusterFaceStep;
+    final dotCenterY = _clusterHeight - _clusterDotSize / 2;
+    final faceCenterY = _clusterPadding + _clusterFaceSize / 2;
+    return [
+      for (var i = 0; i < faces; i++)
+        Offset(
+          _clusterPadding +
+              i * _clusterFaceStep +
+              _clusterFaceSize / 2 -
+              width / 2,
+          faceCenterY - dotCenterY,
+        ),
+    ];
+  }
+
+  /// A fully transparent square the size of one cluster face. The native
+  /// annotation API names the tapped annotation but never says where on it
+  /// the finger landed, so each visible face gets its own hit area drawn
+  /// over the bubble and carrying that person's payload.
+  Future<MarkerImage> clusterFaceHitArea() async {
+    const id = 'cluster-face-hit';
+    final cached = _cached(id);
+    if (cached != null) return cached;
+    return _render(_clusterFaceSize, _clusterFaceSize, (canvas) {}, id: id);
+  }
+
   /// Several people close together: their faces in one white bubble with a
   /// tail dot on the shared location, as on the web.
   Future<MarkerImage> clusterMarker(List<MarkerPerson> members) async {

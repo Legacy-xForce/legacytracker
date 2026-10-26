@@ -103,6 +103,41 @@ void main() {
     expectPng(cluster);
   });
 
+  test('cluster face hit areas sit over the faces', () {
+    // Two people: an 82 px bubble, faces centred 15 px either side of the
+    // tail dot, and 40 px above it (face centre 26, dot centre 66).
+    final two = MarkerIconFactory.clusterFaceOffsets(2);
+    expect(two, hasLength(2));
+    expect(two[0], const Offset(-15, -40));
+    expect(two[1], const Offset(15, -40));
+
+    // Three people: a 112 px bubble, faces centred at -30, 0 and 30.
+    final three = MarkerIconFactory.clusterFaceOffsets(3);
+    expect(three.map((o) => o.dx), orderedEquals(<double>[-30, 0, 30]));
+
+    // Four people: 142 px wide, but the "+N" chip is not a person, so the
+    // three faces keep centring themselves at -45, -15 and 15.
+    final four = MarkerIconFactory.clusterFaceOffsets(4);
+    expect(four, hasLength(3));
+    expect(four.map((o) => o.dx), orderedEquals(<double>[-45, -15, 15]));
+    expect(four.every((o) => o.dy == -40), isTrue);
+  });
+
+  test('the cluster face hit area is one transparent face square', () async {
+    final factory = MarkerIconFactory();
+    addTearDown(factory.dispose);
+
+    final hit = await factory.clusterFaceHitArea();
+    // 42 logical px, the ClusterMarker face size, at 2x.
+    expect(hit.width, 84);
+    expect(hit.height, 84);
+    // Centred on its own coordinate offset, no bottom anchor.
+    expect(hit.anchorOffsetY, 0);
+    expectPng(hit);
+    // One image serves every face of every bubble: cached.
+    expect(identical(hit, await factory.clusterFaceHitArea()), isTrue);
+  });
+
   test('a checkpoint label is a small dark pill sized to its name', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);

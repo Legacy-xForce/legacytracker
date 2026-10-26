@@ -12,7 +12,7 @@ import 'tracking_map_layer.dart';
 /// Annotation layers in draw order. Checkpoint names sit under everything,
 /// beams and calendar events under people, checkpoints under all of them but
 /// the route.
-enum MapMarkerLayer { label, beam, pulse, base, event, cluster, user }
+enum MapMarkerLayer { label, beam, pulse, base, event, cluster, clusterFace, user }
 
 /// A bitmap marker the map renders through a native point annotation.
 class MapMarker {
@@ -23,6 +23,7 @@ class MapMarker {
     this.layer = MapMarkerLayer.user,
     this.rotation = 0,
     this.iconSize = 1,
+    this.iconOffset = Offset.zero,
     this.payload,
   });
 
@@ -34,6 +35,12 @@ class MapMarker {
   /// Clockwise rotation in degrees, used by heading beams.
   final double rotation;
   final double iconSize;
+
+  /// Shift of the icon from the annotation's coordinate, in logical pixels
+  /// (down-positive with the bottom anchor, so a centred icon shifts up with
+  /// a negative y). Used by the transparent hit areas over a cluster bubble's
+  /// faces, which must move exactly with the bubble.
+  final Offset iconOffset;
 
   /// Boxing-free hand-off to the tap callback (a peer, cluster or event).
   final Object? payload;
@@ -118,6 +125,7 @@ const _interactiveLayers = {
   MapMarkerLayer.base,
   MapMarkerLayer.event,
   MapMarkerLayer.cluster,
+  MapMarkerLayer.clusterFace,
   MapMarkerLayer.user,
 };
 
@@ -352,6 +360,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final baseManager = await map.annotations.createPointAnnotationManager();
     final eventManager = await map.annotations.createPointAnnotationManager();
     final clusterManager = await map.annotations.createPointAnnotationManager();
+    // Created after the bubbles so a face's hit area outranks the bubble it
+    // sits on: taps go to the topmost annotation only.
+    final clusterFaceManager = await map.annotations
+        .createPointAnnotationManager();
     final userManager = await map.annotations.createPointAnnotationManager();
 
     _lineManagers
@@ -364,6 +376,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       ..[MapMarkerLayer.base] = baseManager
       ..[MapMarkerLayer.event] = eventManager
       ..[MapMarkerLayer.cluster] = clusterManager
+      ..[MapMarkerLayer.clusterFace] = clusterFaceManager
       ..[MapMarkerLayer.user] = userManager;
 
     for (final entry in _pointManagers.entries) {
@@ -647,7 +660,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
 
   String _markerSpec(MapMarker marker) {
     return '${marker.position.latitude},${marker.position.longitude},'
-        '${marker.image.id},${marker.rotation},${marker.iconSize}';
+        '${marker.image.id},${marker.rotation},${marker.iconSize},'
+        '${marker.iconOffset.dx},${marker.iconOffset.dy}';
   }
 
   PointAnnotationOptions _pointOptions(MapMarker marker) {
@@ -658,7 +672,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       iconSize: marker.iconSize,
       iconRotate: marker.rotation,
       iconAnchor: anchored > 0 ? IconAnchor.BOTTOM : IconAnchor.CENTER,
-      iconOffset: [0, anchored],
+      iconOffset: [
+        marker.iconOffset.dx,
+        anchored + marker.iconOffset.dy,
+      ],
       customData: {'markerId': marker.id},
     );
   }
@@ -672,7 +689,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     annotation.iconAnchor = anchored > 0
         ? IconAnchor.BOTTOM
         : IconAnchor.CENTER;
-    annotation.iconOffset = [0, anchored];
+    annotation.iconOffset = [
+      marker.iconOffset.dx,
+      anchored + marker.iconOffset.dy,
+    ];
     annotation.customData = {'markerId': marker.id};
   }
 

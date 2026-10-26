@@ -848,6 +848,33 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               : [for (final m in group.members) m.value.profile],
         ),
       );
+      if (!single) {
+        // A face inside the bubble selects that person, like on the web.
+        // The tap callback names the annotation but never the touch point,
+        // so each visible face gets a transparent hit area over the bitmap;
+        // the bubble body keeps the zoom-to-separate tap. Right to left, so
+        // the leftmost zone ends up on top where neighbours overlap - the
+        // same stack order the web gives the faces.
+        final hit = _imageFor(
+          'cluster-face-hit',
+          () => _icons.clusterFaceHitArea(),
+        );
+        if (hit != null) {
+          final offsets = MarkerIconFactory.clusterFaceOffsets(persons.length);
+          for (var i = offsets.length - 1; i >= 0; i--) {
+            markers.add(
+              MapMarker(
+                id: 'cluster-face-${group.members[i].value.profile.id}',
+                position: group.center,
+                image: hit,
+                layer: MapMarkerLayer.clusterFace,
+                iconOffset: offsets[i],
+                payload: group.members[i].value.profile,
+              ),
+            );
+          }
+        }
+      }
     }
 
     if (events != null) {
@@ -933,6 +960,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           left.image.id != right.image.id ||
           left.iconSize != right.iconSize ||
           left.rotation != right.rotation ||
+          left.iconOffset != right.iconOffset ||
           left.position.latitude != right.position.latitude ||
           left.position.longitude != right.position.longitude) {
         return false;
