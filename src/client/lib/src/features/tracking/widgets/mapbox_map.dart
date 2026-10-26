@@ -335,9 +335,16 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     // `below` names the layer that must stay above this one, which pins the
     // dark casing under the coloured route in the style itself instead of
     // relying on whatever creation order happens to produce.
-    final casingManager = await map.annotations.createPolylineAnnotationManager(
-      below: routeManager.id,
-    );
+    PolylineAnnotationManager casingManager;
+    try {
+      casingManager = await map.annotations.createPolylineAnnotationManager(
+        below: routeManager.id,
+      );
+    } catch (_) {
+      // A native build that refuses the anchor still gets a casing over the
+      // route, but it is opaque black at 0.35, so the route shows through.
+      casingManager = await map.annotations.createPolylineAnnotationManager();
+    }
     final checkpointManager = await map.annotations
         .createPolygonAnnotationManager();
     final labelManager = await map.annotations.createPointAnnotationManager();

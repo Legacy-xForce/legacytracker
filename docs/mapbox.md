@@ -152,6 +152,8 @@ Two rules keep it from rendering as a plain black line:
   enough - after a style reload the SDK re-adds annotation layers itself - and
   `line-sort-key` is not either, because the native API also exposes it as a
   whole-layer constant (`setLineSortKey`), so a per-feature key is no promise.
+  A native build that refuses the anchor falls back to a plain manager, which
+  is survivable only because of the next rule.
 - The casing is opaque black at `lineOpacity` 0.35 rather than a translucent
   black colour, so even a wrong order can only tint the route.
 
