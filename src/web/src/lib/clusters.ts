@@ -5,15 +5,15 @@ export const PEER_MARKER_SIZE: [number, number] = [152, 168];
 export const CLUSTER = {
     /** At most this many faces are drawn; the rest fold into a "+N" face. */
     maxFaces: 3,
-    faceSize: 42,
-    /** Faces overlap by 12 px. */
-    faceStep: 30,
-    padding: 5,
-    bubbleHeight: 52,
-    tailHeight: 9,
-    tailHalfWidth: 8,
-    dotSize: 14,
-    height: 52 + 9 + 14 - 2
+    faceSize: 34,
+    /** Faces overlap by 10 px. */
+    faceStep: 24,
+    padding: 4,
+    bubbleHeight: 42,
+    tailHeight: 7,
+    tailHalfWidth: 6,
+    dotSize: 11,
+    height: 42 + 7 + 11 - 2
 } as const;
 
 export function clusterWidth(memberCount: number): number {
