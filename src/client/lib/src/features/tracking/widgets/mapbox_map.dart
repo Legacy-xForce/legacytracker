@@ -10,7 +10,7 @@ import 'tracking_map_layer.dart';
 /// Annotation layers in draw order. Checkpoint names sit under everything,
 /// beams and calendar events under people, checkpoints under all of them but
 /// the route.
-enum MapMarkerLayer { label, beam, base, event, cluster, user }
+enum MapMarkerLayer { label, beam, pulse, base, event, cluster, user }
 
 /// A bitmap marker the map renders through a native point annotation.
 class MapMarker {

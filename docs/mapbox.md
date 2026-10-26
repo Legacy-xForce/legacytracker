@@ -120,9 +120,13 @@ to an embedded token. The token request has no body and deliberately sends no
   id, so moving a marker only updates geometry, never the bitmap bytes.
 - Markers are the web client's design, drawn into the bitmap: the avatar in a
   60 px ring (white; the accent colour on your own marker; grey when stale), a
-  soft pulse while moving, a speed badge top-right (`km/h`) and a battery badge
-  under the avatar (dark pill, accent for yourself, grey when stale). Selection
-  and motion scale the annotation (1.18 / 1.08) rather than adding bitmaps.
+  speed badge top-right (`km/h`) and a battery badge under the avatar (dark
+  pill, accent for yourself, grey when stale). Selection and motion scale the
+  annotation (1.18 / 1.08) rather than adding bitmaps.
+- The moving pulse is its own annotation whose `iconSize` breathes between
+  0.725 and 1 every 1.2 s (16 steps of 150 ms), because it has to change over
+  time; the heading beam is a 56° cone reaching 77 px, rotated per annotation.
+  Neither re-renders a bitmap per frame.
 - Groups use the web's cluster bubble: up to three faces with a 2.5 px white
   ring, a `+N` overflow face and a tail dot on the shared location, at the web's
   52 / 9 / 14 px metrics. Clustering merges people only when they are within 96

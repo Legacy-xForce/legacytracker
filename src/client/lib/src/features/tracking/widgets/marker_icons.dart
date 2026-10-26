@@ -134,7 +134,6 @@ class MarkerIconFactory extends ChangeNotifier {
     if (cached != null) return cached;
 
     final avatar = _avatarFor(person);
-    final beam = person.isStale ? _staleGrey : markerAccentColor;
     final ring = person.isStale
         ? _staleGrey
         : person.isSelf
@@ -147,13 +146,6 @@ class MarkerIconFactory extends ChangeNotifier {
         : _badgeDark;
 
     return _render(_personWidth, _personHeight, (canvas) {
-      if (person.isMoving) {
-        canvas.drawCircle(
-          _personCenter,
-          40,
-          Paint()..color = beam.withValues(alpha: 0.22),
-        );
-      }
       final ringPath = Path()
         ..addOval(
           Rect.fromCircle(center: _personCenter, radius: _personRingSize / 2),
@@ -330,6 +322,21 @@ class MarkerIconFactory extends ChangeNotifier {
     return image;
   }
 
+  /// The soft pulse under a moving person, sized by the caller so it can breathe
+  /// without re-rendering anything: the web fades and scales this circle.
+  Future<MarkerImage> pulseMarker(Color color) async {
+    final id = 'pulse-${color.toARGB32()}';
+    final cached = _cached(id);
+    if (cached != null) return cached;
+    return _render(80, 80, (canvas) {
+      canvas.drawCircle(
+        const Offset(40, 40),
+        40,
+        Paint()..color = color.withValues(alpha: 0.22),
+      );
+    }, id: id);
+  }
+
   /// A rounded-square calendar pin in the event's colour.
   Future<MarkerImage> eventMarker(Color color) async {
     final id = 'event-${color.toARGB32()}';
@@ -386,9 +393,10 @@ class MarkerIconFactory extends ChangeNotifier {
     final id = 'beam-${color.toARGB32()}';
     final cached = _cached(id);
     if (cached != null) return cached;
-    return _render(120, 120, (canvas) {
-      final center = const Offset(60, 60);
-      const radius = 56.0;
+    // PeerMarker.vue's beam: a 56 degree cone reaching 77 px from the centre.
+    return _render(154, 154, (canvas) {
+      final center = const Offset(77, 77);
+      const radius = 77.0;
       const halfAngle = 28.0 * math.pi / 180;
       const up = -math.pi / 2;
       final rect = Rect.fromCircle(center: center, radius: radius);
