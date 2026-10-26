@@ -88,16 +88,106 @@ class SessionReplayScreen extends StatefulWidget {
   State<SessionReplayScreen> createState() => _SessionReplayScreenState();
 }
 
+/// One point on the replay clock: which recorded fix was last passed and
+/// where the marker is between it and the next.
+class ReplayFix {
+  const ReplayFix({required this.index, required this.point});
+
+  final int index;
+  final LatLng point;
+}
+
+/// Timing for a replay route, the web's `ReplayTrack` in miniature: the pace
+/// is a constant on-screen speed, so the whole trip covers roughly
+/// [targetPlayback] whatever it was recorded at, and each fix is reached at
+/// a known time. One clock drives the marker - dense fixes are passed
+/// continuously through [positionAt] instead of each playing as its own
+/// minimum-length animation, which is what made the old step-by-step player
+/// teleport through turns and stops.
+class ReplayTrack {
+  ReplayTrack(
+    List<LatLng> latLngs, {
+    Duration targetPlayback = const Duration(seconds: 40),
+    double minPaceMetersPerSecond = 5.0,
+    double minSegmentMs = 16.0,
+    double maxSegmentMs = 3000.0,
+  }) {
+    if (latLngs.length < 2) {
+      _starts = const [0];
+      return;
+    }
+    final distance = const Distance();
+    final meters = [
+      for (var i = 1; i < latLngs.length; i++)
+        distance.as(LengthUnit.Meter, latLngs[i - 1], latLngs[i]),
+    ];
+    final total = meters.fold<double>(0, (sum, m) => sum + m);
+    final pace = math.max(
+      total / targetPlayback.inSeconds,
+      minPaceMetersPerSecond,
+    );
+    final starts = <double>[0];
+    for (final m in meters) {
+      final ms = (m / pace * 1000).clamp(minSegmentMs, maxSegmentMs);
+      starts.add(starts.last + ms);
+    }
+    _starts = starts;
+  }
+
+  /// Playback time in ms (at 1x) at which each fix is reached.
+  late final List<double> _starts;
+
+  /// Total playback time at 1x pace, in ms.
+  double get durationMs => _starts.last;
+
+  /// The whole trip as one 1x duration.
+  Duration get duration => Duration(milliseconds: durationMs.round());
+
+  /// Where the marker is `elapsed` ms into playback (1x scale), interpolating
+  /// linearly between fixes like the web's `positionAt`.
+  ReplayFix positionAt(List<LatLng> latLngs, double elapsed) {
+    if (latLngs.isEmpty) return const ReplayFix(index: 0, point: LatLng(0, 0));
+    final last = latLngs.length - 1;
+    if (elapsed <= 0) {
+      return ReplayFix(index: 0, point: latLngs.first);
+    }
+    if (elapsed >= durationMs || last == 0) {
+      return ReplayFix(index: last, point: latLngs[last]);
+    }
+    // Binary search for the segment containing `elapsed`.
+    var low = 0;
+    var high = last - 1;
+    while (low < high) {
+      final mid = (low + high + 1) >> 1;
+      if (_starts[mid] <= elapsed) {
+        low = mid;
+      } else {
+        high = mid - 1;
+      }
+    }
+    final a = latLngs[low];
+    final b = latLngs[low + 1];
+    final span = _starts[low + 1] - _starts[low];
+    final t = span > 0 ? (elapsed - _starts[low]) / span : 1.0;
+    return ReplayFix(
+      index: low,
+      point: LatLng(
+        a.latitude + (b.latitude - a.latitude) * t,
+        a.longitude + (b.longitude - a.longitude) * t,
+      ),
+    );
+  }
+
+  /// The fix at [fraction] of the trip (0..1), for seeking.
+  ReplayFix positionAtFraction(List<LatLng> latLngs, double fraction) =>
+      positionAt(latLngs, fraction.clamp(0.0, 1.0) * durationMs);
+}
+
 class _SessionReplayScreenState extends State<SessionReplayScreen>
     with SingleTickerProviderStateMixin {
-  // Constant on-screen speed, independent of the recorded real speed. Points
-  // are stored adaptively — dense through turns, sparse on straights — so
-  // each glide lasts in proportion to the distance it covers.
-  static const _targetPlayback = Duration(seconds: 40);
+  // Constant on-screen speed, independent of the recorded real speed; the
+  // per-fix timings live in [ReplayTrack].
   static const _baseSpeed = 2.0;
-  static const _minPaceMetersPerSecond = 5.0;
-  static const _minSegmentMs = 16.0;
-  static const _maxSegmentMs = 3000.0;
 
   final MarkerIconFactory _icons = MarkerIconFactory();
   final Map<String, MarkerImage> _images = {};
@@ -109,21 +199,26 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
   late final List<LocationPoint> _route;
   late final List<LatLng> _latLngs;
-  late final List<double> _segmentMeters;
-  late final double _paceMetersPerSecond;
+  late final ReplayTrack _track;
 
-  late final AnimationController _segmentController;
+  late final AnimationController _playController;
   late final MapboxTokenService _tokenService;
   late MapLayer _selectedLayer;
 
   MapboxMap? _map;
   double _currentZoom = 15;
   double _playbackSpeed = 1.0;
-  int _segmentStart = 0;
+  int _currentIndex = 0;
   LatLng? _displayedPoint;
   bool _isPlaying = false;
   bool _initialized = false;
   DateTime? _lastTick;
+
+  /// The clock and speed text, refreshed only when the displayed value
+  /// changes, so a dense stretch of fixes cannot rebuild the screen per
+  /// frame.
+  String _clockText = '';
+  String _speedText = '';
 
   /// The route and the moving marker. Playback updates this ~20x a second, so
   /// it lives here rather than in the widget tree.
@@ -137,20 +232,13 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     _latLngs = [
       for (final point in _route) LatLng(point.latitude, point.longitude),
     ];
-    _segmentMeters = [
-      for (var i = 1; i < _latLngs.length; i++)
-        const Distance().as(LengthUnit.Meter, _latLngs[i - 1], _latLngs[i]),
-    ];
-    _paceMetersPerSecond = math.max(
-      _segmentMeters.fold<double>(0, (sum, meters) => sum + meters) /
-          _targetPlayback.inSeconds,
-      _minPaceMetersPerSecond,
-    );
+    _track = ReplayTrack(_latLngs);
     _scene.polylines = _buildRouteLines();
-    _segmentController = AnimationController(vsync: this)
-      ..addListener(_handleSegmentTick)
-      ..addStatusListener(_handleSegmentStatus);
+    _playController = AnimationController(vsync: this, duration: _track.duration)
+      ..addListener(_handleTick)
+      ..addStatusListener(_handleStatus);
     _displayedPoint = _latLngs.isNotEmpty ? _latLngs.first : null;
+    _syncReadout();
     _icons.addListener(_handleIconsChanged);
   }
 
@@ -172,7 +260,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       ..removeListener(_handleIconsChanged)
       ..dispose();
     _scene.dispose();
-    _segmentController.dispose();
+    _playController.dispose();
     _tokenService.dispose();
     super.dispose();
   }
@@ -181,7 +269,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   /// and speed change continuously, so they go through the scene.
   void _syncScene() {
     if (_latLngs.isEmpty) return;
-    final index = _segmentStart.clamp(0, _route.length - 1);
+    final index = _currentIndex.clamp(0, _route.length - 1);
     final current = _route[index];
     final currentPoint = _displayedPoint ?? _latLngs[index];
     final moving = current.isMoving;
@@ -271,15 +359,6 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     speedsMps: [for (final point in _route) point.speed],
   );
 
-  Duration _segmentDuration(int index) {
-    final meters = index < _segmentMeters.length ? _segmentMeters[index] : 0.0;
-    final ms = (meters / _paceMetersPerSecond * 1000).clamp(
-      _minSegmentMs,
-      _maxSegmentMs,
-    );
-    return Duration(milliseconds: (ms / (_playbackSpeed * _baseSpeed)).round());
-  }
-
   void _togglePlay() {
     if (_route.length < 2) return;
     if (_isPlaying) {
@@ -291,35 +370,31 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
   void _play() {
     if (_route.length < 2) return;
-    if (_segmentStart >= _route.length - 1) {
-      _segmentStart = 0;
+    if (_playController.isCompleted) {
+      _playController.value = 0;
+      _currentIndex = 0;
       _displayedPoint = _latLngs.first;
+      _syncReadout();
     }
     setState(() => _isPlaying = true);
-    _playSegment();
+    _applySpeed();
+    _playController.forward();
   }
 
-  void _playSegment() {
-    if (_segmentStart >= _latLngs.length - 1) {
-      _pause();
-      return;
-    }
-    final start = _displayedPoint ?? _latLngs[_segmentStart];
-    final end = _latLngs[_segmentStart + 1];
-    _segmentController
-      ..stop()
-      ..duration = _segmentDuration(_segmentStart)
-      ..forward(from: 0);
-    _segmentAnimation = _LatLngTween(begin: start, end: end).animate(
-      CurvedAnimation(parent: _segmentController, curve: Curves.linear),
+  /// The wall-clock duration for the current speed option. The controller's
+  /// value is always the trip fraction, so changing speed mid-playback keeps
+  /// the playhead where it is and only alters the rate.
+  void _applySpeed() {
+    _playController.duration = Duration(
+      milliseconds:
+          (_track.durationMs / (_playbackSpeed * _baseSpeed))
+              .round()
+              .clamp(1, 1 << 31),
     );
   }
 
-  Animation<LatLng>? _segmentAnimation;
-
-  void _handleSegmentTick() {
-    final animated = _segmentAnimation?.value;
-    if (animated == null || !mounted) return;
+  void _handleTick() {
+    if (!mounted || _latLngs.isEmpty) return;
     final now = DateTime.now();
     final last = _lastTick;
     if (last != null &&
@@ -327,48 +402,74 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       return;
     }
     _lastTick = now;
-    _displayedPoint = animated;
+    final fix = _track.positionAt(
+      _latLngs,
+      _playController.value * _track.durationMs,
+    );
+    _displayedPoint = fix.point;
+    final moved = fix.index != _currentIndex;
+    if (moved) _currentIndex = fix.index;
     // The route and the marker live in the scene, so playback does not rebuild
     // the screen 20 times a second.
     _syncScene();
     _map?.setCamera(
       CameraOptions(
         center: Point(
-          coordinates: Position(animated.longitude, animated.latitude),
+          coordinates: Position(fix.point.longitude, fix.point.latitude),
         ),
         zoom: _currentZoom,
       ),
     );
+    if (moved) _syncReadout();
   }
 
-  void _handleSegmentStatus(AnimationStatus status) {
+  void _handleStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
-    _segmentStart++;
-    if (_segmentStart < _latLngs.length) {
-      _displayedPoint = _latLngs[_segmentStart];
-    }
-    // The clock and speed read-out follow the segment, so this refreshes once
-    // per segment rather than once per frame.
-    if (mounted) setState(() {});
-    if (_isPlaying) {
-      _playSegment();
-    }
-  }
-
-  void _pause() {
-    _segmentController.stop();
+    _currentIndex = _latLngs.length - 1;
+    _displayedPoint = _latLngs.last;
+    _syncScene();
+    _syncReadout();
     if (mounted) setState(() => _isPlaying = false);
   }
 
-  void _seek(double value) {
+  void _pause() {
+    _playController.stop();
+    if (mounted) setState(() => _isPlaying = false);
+  }
+
+  void _seekFraction(double fraction) {
     _pause();
-    final index = value.round().clamp(0, _latLngs.length - 1);
+    final clamped = fraction.clamp(0.0, 1.0);
+    _playController.value = clamped;
+    final fix = _track.positionAtFraction(_latLngs, clamped);
     setState(() {
-      _segmentStart = index;
-      _displayedPoint = _latLngs[index];
+      _currentIndex = fix.index;
+      _displayedPoint = fix.point;
     });
     _syncScene();
-    _centerOn(_latLngs[index]);
+    _syncReadout();
+    _centerOn(fix.point);
+  }
+
+  /// Refresh the clock and speed text, rebuilding only when what is displayed
+  /// actually changed: during a dense stretch of fixes the index moves many
+  /// times a second while the minute-resolution clock and the rounded km/h
+  /// usually do not.
+  void _syncReadout() {
+    if (_route.isEmpty) return;
+    final current = _route[_currentIndex.clamp(0, _route.length - 1)];
+    final clock = formatClock(current.timestamp);
+    final speed = '${(current.speed * 3.6).round()} km/h';
+    if (clock == _clockText && speed == _speedText) return;
+    if (mounted) {
+      setState(() {
+        _clockText = clock;
+        _speedText = speed;
+      });
+    } else {
+      _clockText = clock;
+      _speedText = speed;
+    }
   }
 
   void _centerOn(LatLng point) {
@@ -382,6 +483,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
   void _setPlaybackSpeed(double speed) {
     setState(() => _playbackSpeed = speed);
+    _applySpeed();
   }
 
   void _onCameraChanged(CameraState state) {
@@ -390,7 +492,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
   Future<void> _fitRoute(MapboxMap map) async {
     if (_latLngs.isEmpty) return;
-    if (_segmentStart > 0 || _isPlaying) {
+    if (_currentIndex > 0 || _playController.value > 0) {
       _centerOn(_displayedPoint ?? _latLngs.first);
       return;
     }
@@ -477,9 +579,6 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     }
 
     _syncScene();
-    final currentIndex = _segmentStart.clamp(0, _route.length - 1);
-    final current = _route[currentIndex];
-    final speedKmh = current.speed * 3.6;
 
     return Scaffold(
       appBar: _appBar(theme),
@@ -524,14 +623,12 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           ),
           _PlaybackBar(
             isPlaying: _isPlaying,
-            progress: currentIndex.toDouble(),
-            max: math.max(1, _route.length - 1).toDouble(),
-            divisions: math.max(1, _route.length - 1),
-            currentTime: formatClock(current.timestamp),
-            speedKmh: speedKmh,
+            position: _playController,
+            currentTime: _clockText,
+            speedText: _speedText,
             speed: _playbackSpeed,
             onPlay: _route.length > 1 ? _togglePlay : null,
-            onSeek: _route.length > 1 ? _seek : (_) {},
+            onSeek: _route.length > 1 ? _seekFraction : (_) {},
             onSpeedChanged: _setPlaybackSpeed,
           ),
         ],
@@ -543,11 +640,9 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 class _PlaybackBar extends StatelessWidget {
   const _PlaybackBar({
     required this.isPlaying,
-    required this.progress,
-    required this.max,
-    required this.divisions,
+    required this.position,
     required this.currentTime,
-    required this.speedKmh,
+    required this.speedText,
     required this.speed,
     required this.onPlay,
     required this.onSeek,
@@ -555,11 +650,13 @@ class _PlaybackBar extends StatelessWidget {
   });
 
   final bool isPlaying;
-  final double progress;
-  final double max;
-  final int divisions;
+
+  /// The playhead, 0..1 across the trip. The slider listens to it directly,
+  /// so playback can glide while the rest of the screen rebuilds only when
+  /// the read-out changes.
+  final Animation<double> position;
   final String currentTime;
-  final double speedKmh;
+  final String speedText;
   final double speed;
   final VoidCallback? onPlay;
   final ValueChanged<double> onSeek;
@@ -588,7 +685,7 @@ class _PlaybackBar extends StatelessWidget {
                   ),
                   const Spacer(),
                   Text(
-                    '${speedKmh.toStringAsFixed(0)} km/h',
+                    speedText,
                     style: theme.textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w700,
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -603,12 +700,14 @@ class _PlaybackBar extends StatelessWidget {
                 ),
                 child: Padding(
                   padding: const EdgeInsets.symmetric(vertical: 12),
-                  child: Slider(
-                    value: progress.clamp(0, max),
-                    min: 0,
-                    max: max,
-                    divisions: divisions,
-                    onChanged: onSeek,
+                  child: AnimatedBuilder(
+                    animation: position,
+                    builder: (context, child) => Slider(
+                      value: position.value.clamp(0.0, 1.0),
+                      min: 0,
+                      max: 1,
+                      onChanged: onSeek,
+                    ),
                   ),
                 ),
               ),
@@ -647,19 +746,6 @@ class _PlaybackBar extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _LatLngTween extends Tween<LatLng> {
-  _LatLngTween({required LatLng begin, required LatLng end})
-    : super(begin: begin, end: end);
-
-  @override
-  LatLng lerp(double t) {
-    return LatLng(
-      begin!.latitude + (end!.latitude - begin!.latitude) * t,
-      begin!.longitude + (end!.longitude - begin!.longitude) * t,
     );
   }
 }

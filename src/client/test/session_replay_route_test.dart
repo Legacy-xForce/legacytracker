@@ -112,4 +112,62 @@ void main() {
       expect(runs.first.color, isNot(const Color(0xFF000000)));
     });
   });
+
+  group('ReplayTrack', () {
+    // 40 fixes, ~11 m apart: at the 40 s target every segment stays inside
+    // the [16, 3000] ms clamps, so the sum is exactly the target.
+    final straight = [
+      for (var i = 0; i < 40; i++) LatLng(0, i * 0.0001),
+    ];
+
+    test('covers the whole trip in about the target time', () {
+      final replay = ReplayTrack(straight);
+      expect(replay.durationMs, closeTo(40000, 200));
+    });
+
+    test('dense identical fixes still advance a step each', () {
+      final still = List.generate(10, (_) => const LatLng(45.07, 7.69));
+      final replay = ReplayTrack(still);
+      expect(replay.durationMs, closeTo(16.0 * 9, 0.001));
+    });
+
+    test('a sparse straight is capped per segment', () {
+      final replay = ReplayTrack([const LatLng(0, 0), const LatLng(0, 0.9)]);
+      expect(replay.durationMs, closeTo(3000, 0.001));
+    });
+
+    test('positionAt interpolates and reports the last fix passed', () {
+      final replay = ReplayTrack(straight);
+      final step = replay.durationMs / 39;
+      final mid = replay.positionAt(straight, step * 1.5);
+      expect(mid.index, 1);
+      expect(mid.point.longitude, closeTo(0.00015, 1e-9));
+
+      expect(replay.positionAt(straight, -5).index, 0);
+      expect(replay.positionAt(straight, -5).point.longitude, 0);
+      final end = replay.positionAt(straight, replay.durationMs + 5);
+      expect(end.index, straight.length - 1);
+      expect(end.point.longitude, closeTo(0.0039, 1e-12));
+    });
+
+    test('fraction seeks land on the same fix as the clock', () {
+      final replay = ReplayTrack(straight);
+      final byFraction = replay.positionAtFraction(straight, 0.5);
+      final byClock = replay.positionAt(straight, replay.durationMs * 0.5);
+      expect(byFraction.index, byClock.index);
+      expect(
+        byFraction.point.longitude,
+        closeTo(byClock.point.longitude, 1e-12),
+      );
+    });
+
+    test('a single fix has no clock but still positions', () {
+      const one = [LatLng(45.07, 7.69)];
+      final replay = ReplayTrack(one);
+      expect(replay.durationMs, 0);
+      final fix = replay.positionAt(one, 100);
+      expect(fix.index, 0);
+      expect(fix.point.latitude, 45.07);
+    });
+  });
 }
