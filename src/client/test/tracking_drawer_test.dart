@@ -19,6 +19,10 @@ import 'package:provider/provider.dart';
 /// screen, so closing the detail pane has to clear it there too. Otherwise the
 /// person stays ringed on the map (and highlighted in the list) after the user
 /// goes back to everyone.
+///
+/// The people used outside the host below have no fix and share with the user,
+/// so they are not listed and the detail pane (which needs the app's auth
+/// providers) never builds - those tests are about the sheet opening.
 void main() {
   setUp(() {
     SharedPreferences.setMockInitialValues({});
@@ -38,6 +42,8 @@ void main() {
               height: 800,
               child: TrackingUsersDrawer(
                 selfProfile: UserProfile(id: 'me', name: 'Me'),
+                // No fix and sharing with the user: filtered out of the list,
+                // so the detail pane (and its auth providers) never builds.
                 peers: [UserProfile(id: 'bob', name: 'Bob')],
                 selfTrackingPaused: false,
                 selfMissingPermissions: false,
@@ -57,6 +63,51 @@ void main() {
     expect(sizes, isNotEmpty);
     expect(sizes.last, greaterThan(0));
     expect(sizes.last, lessThan(TrackingUsersDrawer.expandedSize));
+  });
+
+  testWidgets('a selection from the map opens the detail on the first update', (
+    tester,
+  ) async {
+    final selected = <String>[];
+    final sizes = <double>[];
+
+    Widget build({String? selectedUserId, int tick = 0}) {
+      return MultiProvider(
+        providers: [Provider<LocalAvatarStore?>.value(value: null)],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 800,
+              child: TrackingUsersDrawer(
+                selfProfile: UserProfile(id: 'me', name: 'Me'),
+                // No fix and sharing with the user: filtered out of the list,
+                // so the detail pane (with its auth providers) never builds.
+                peers: [UserProfile(id: 'bob', name: 'Bob')],
+                selfTrackingPaused: false,
+                selfMissingPermissions: false,
+                selfBatterySavingEnabled: false,
+                selectedUserId: selectedUserId,
+                selectionTick: tick,
+                onUserSelected: (user) => selected.add(user.id),
+                onSelectionCleared: () {},
+                onExtentChanged: sizes.add,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(build());
+    await tester.pump();
+    final collapsed = sizes.last;
+
+    await tester.pumpWidget(build(selectedUserId: 'bob', tick: 1));
+    await tester.pumpAndSettle();
+    // The sheet animates on a timer; advance past its 240 ms.
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(sizes.last, greaterThan(collapsed));
   });
 
   testWidgets('going back to all people clears the selection', (tester) async {
@@ -108,8 +159,7 @@ Future<void> _expand(WidgetTester tester) async {
 }
 
 class _DrawerHost {
-  _DrawerHost({String? initialSelection})
-    : selectedUserId = initialSelection;
+  _DrawerHost({String? initialSelection}) : selectedUserId = initialSelection;
 
   String? selectedUserId;
   String? lastSelectedId;

@@ -48,7 +48,7 @@ cd android && ./gradlew testDebugUnitTest                    # Kotlin engine tes
 ```
 `test-location.mjs` (repo root) simulates a GPS drive against a server (`--server http://localhost:3000`).
 
-Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`, then `scripts/release-android.sh` (or the `Release Android` workflow). Phones only install a higher build number, and every release must be signed with the same key (`android/release-signing-cert.sha256`).
+Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`, then run the `Release Android and iOS` workflow (or `scripts/release-android.sh`). The workflow also attaches an unsigned iOS IPA to the release; locally, pass `--ipa PATH`. Phones only install a higher build number, and every release must be signed with the same key (`android/release-signing-cert.sha256`).
 
 ## Architecture
 

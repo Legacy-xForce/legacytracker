@@ -85,9 +85,11 @@ secret or a minted token.
 
 `src/web/src/config.ts` reads `VITE_MAPBOX_TOKEN`. The style IDs are
 `mapbox://styles/mapbox/standard` and
-`mapbox://styles/mapbox/standard-satellite`. The app applies the Standard
-`lightPreset` (`day`/`night`) to match the light or dark theme and keeps
-rotation and pitch disabled.
+`mapbox://styles/mapbox/standard-satellite`. Both styles use Mapbox's
+`lightPreset`. Lighting is a per-device preference in the web Appearance
+dialog: **Auto** (the default) follows the local clock — dawn 05:00–08:00, day
+08:00–17:00, dusk 17:00–20:00, night otherwise — and Dawn, Day, Dusk and Night
+pin a preset. Rotation and pitch stay disabled.
 
 The production build fails when `VITE_MAPBOX_TOKEN` is missing, rather than
 shipping a map that cannot load a style. CI provides it via the `MAPBOX_TOKEN_WEB`
@@ -220,6 +222,12 @@ rule is satisfiable:
   after the first frame, and the map reports again when it is first laid out.
   Until both are known the inset is 0 - never a guess from the screen height,
   which used to lift the logo into the middle of the map on startup.
+- The sheet opens on its own 15 ms timer stepping `jumpTo`: while a selection
+  rebuilds the sheet under it, `DraggableScrollableController.animateTo`'s
+  future can stay pending and the sheet silently never opens. A selection made
+  on the map also calls `openPerson` on the drawer directly, so it does not
+  depend on that prop update landing before the frame. `test/tracking_drawer_test.dart`
+  pins the extent report, the direct open and the prop-driven open.
 - The scale bar is switched off. It defaulted to the top-left corner, collided
   with the status pill and viewer row, and Mapbox does not require it.
 
@@ -341,7 +349,7 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 201 passed |
+| `flutter test` | 204 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |

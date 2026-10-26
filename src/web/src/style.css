@@ -284,6 +284,18 @@ html[data-theme='adaptive'] {
     font-family: var(--font-sans);
 }
 
+/* Keep Mapbox's logo and attribution out from under the people panel, the
+   right-hand controls and the bottom sheet. PeersMap sets the insets. */
+.mapboxgl-ctrl-bottom-left {
+    left: var(--lt-map-left-inset, 0px);
+    bottom: var(--lt-map-bottom-inset, 0px);
+}
+
+.mapboxgl-ctrl-bottom-right {
+    right: var(--lt-map-right-inset, 0px);
+    bottom: var(--lt-map-bottom-inset, 0px);
+}
+
 .mapboxgl-ctrl-attrib {
     background: color-mix(in srgb, var(--color-surface) 70%, transparent) !important;
     color: var(--color-on-surface-variant) !important;
@@ -297,6 +309,12 @@ html[data-theme='adaptive'] {
 
 .mapboxgl-ctrl-attrib-button {
     background-color: color-mix(in srgb, var(--color-surface) 70%, transparent);
+}
+
+/* Popups sit above every marker (people use up to z-index 1000), so the tip is
+   never hidden by the pin that opened it. */
+.mapboxgl-popup {
+    z-index: 1001;
 }
 
 .mapboxgl-popup-content {

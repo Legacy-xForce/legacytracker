@@ -131,5 +131,7 @@ pushes to every registered device.
 
 `public/_redirects` sends every path to `index.html`, so deep links work.
 
-Legacy Auth allows any origin; the tracker server and Legacy Calendar echo the
-request origin, so the Pages domain and preview URLs need no CORS changes.
+Legacy Auth allows any origin and the tracker server echoes the request origin.
+Legacy Calendar uses an allowlist (`FRONTEND_URL`); it also trusts the tracker
+web origin (`https://legacytracker.pages.dev`) and its preview subdomains, so
+the Pages domain needs no extra CORS configuration.
