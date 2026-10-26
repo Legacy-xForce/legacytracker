@@ -152,6 +152,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   final Map<String, PolylineAnnotation> _lineAnnotations = {};
   final Map<String, String> _lineSpecs = {};
   final Set<String> _addedImages = {};
+  final Set<String> _failedImages = {};
+  String? _lastSyncError;
 
   Future<void>? _managerSetup;
   bool _managersReady = false;
@@ -255,6 +257,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     // and repopulate rather than creating a second set of layers.
     await _clearAnnotations();
     _addedImages.clear();
+    _failedImages.clear();
     _styleReady = true;
     await _applyLightPreset();
     await _syncAll();
@@ -377,9 +380,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         _dirty = false;
         await _syncOnce();
       } while (_dirty);
-    } catch (_) {
-      // A style switch can race an in-flight sync; the next style.load or
-      // widget update retries from a clean state.
+    } catch (error) {
+      _logSyncError('sync', error);
     } finally {
       _syncing = false;
     }
@@ -390,7 +392,14 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       for (final marker in widget.markers) marker.image.id,
     };
     for (final marker in widget.markers) {
-      await _ensureImage(marker.image);
+      try {
+        await _ensureImage(marker.image);
+        _failedImages.remove(marker.image.id);
+      } catch (error) {
+        // One bad icon must not take down labels, checkpoints or routes.
+        _failedImages.add(marker.image.id);
+        _logSyncError('image ${marker.image.id}', error);
+      }
     }
 
     await _syncPointLayer(MapMarkerLayer.beam, MapMarkerLayer.beam);
@@ -404,14 +413,24 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     await _removeUnusedImages(usedImages);
   }
 
+  void _logSyncError(String context, Object error) {
+    final message = '$context: $error';
+    if (message == _lastSyncError) return;
+    _lastSyncError = message;
+    debugPrint('Mapbox annotation sync failed — $message');
+  }
+
   Future<void> _ensureImage(MarkerImage image) async {
-    if (_addedImages.contains(image.id) || image.rgba.isEmpty) return;
+    if (_addedImages.contains(image.id)) return;
+    if (image.png.isEmpty) {
+      throw StateError('marker image ${image.id} has no PNG data');
+    }
     final map = _map;
     if (map == null) return;
     await map.style.addStyleImage(
       image.id,
       image.scale,
-      MbxImage(width: image.width, height: image.height, data: image.rgba),
+      MbxImage(width: image.width, height: image.height, data: image.png),
       false,
       const [],
       const [],
@@ -442,7 +461,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     if (manager == null) return;
     final desired = <String, MapMarker>{
       for (final marker in widget.markers)
-        if (marker.layer == source) '${layer.name}:${marker.id}': marker,
+        if (marker.layer == source && !_failedImages.contains(marker.image.id))
+          '${layer.name}:${marker.id}': marker,
     };
     final existingKeys = _annotations.keys
         .where((key) => key.startsWith('${layer.name}:'))

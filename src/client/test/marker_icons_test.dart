@@ -16,7 +16,7 @@ void main() {
     expect(image.scale, 2.0);
     expect(image.width, greaterThan(0));
     expect(image.height, greaterThan(image.width));
-    expect(image.rgba.length, image.width * image.height * 4);
+    expectPng(image);
     // The dot sits 7 logical px above the image edge.
     expect(image.anchorOffsetY, closeTo(7, 1e-9));
   });
@@ -77,7 +77,23 @@ void main() {
     final beam = await factory.headingBeam(markerAccentColor);
 
     for (final image in [replay, event, beam]) {
-      expect(image.rgba.length, image.width * image.height * 4);
+      expectPng(image);
     }
   });
+}
+
+/// Mapbox's native addStyleImage decodes encoded image bytes on both
+/// platforms, so every generated icon must be a PNG.
+void expectPng(MarkerImage image) {
+  expect(image.png.length, greaterThan(8));
+  expect(image.png.sublist(0, 8), <int>[
+    0x89,
+    0x50,
+    0x4E,
+    0x47,
+    0x0D,
+    0x0A,
+    0x1A,
+    0x0A,
+  ]);
 }

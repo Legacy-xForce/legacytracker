@@ -17,7 +17,7 @@ class MarkerImage {
     required this.width,
     required this.height,
     required this.scale,
-    required this.rgba,
+    required this.png,
     this.anchorOffsetY = 0,
   });
 
@@ -31,8 +31,9 @@ class MarkerImage {
   /// this, so a 2x bitmap stays sharp without changing its logical size.
   final double scale;
 
-  /// Uncompressed premultiplied RGBA, exactly `4 * width * height` bytes.
-  final Uint8List rgba;
+  /// Encoded PNG bytes. Mapbox decodes these natively (Android
+  /// `BitmapFactory`, iOS `UIImage`); raw RGBA is not accepted here.
+  final Uint8List png;
 
   /// Downward shift applied with a bottom anchor so the tail dot, not the
   /// image edge, sits on the coordinate.
@@ -416,7 +417,7 @@ class MarkerIconFactory extends ChangeNotifier {
       (logicalWidth * pixelRatio).round(),
       (logicalHeight * pixelRatio).round(),
     );
-    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
     image.dispose();
     picture.dispose();
     final bytes = data?.buffer.asUint8List() ?? Uint8List(0);
@@ -425,7 +426,7 @@ class MarkerIconFactory extends ChangeNotifier {
       width: (logicalWidth * pixelRatio).round(),
       height: (logicalHeight * pixelRatio).round(),
       scale: pixelRatio,
-      rgba: bytes,
+      png: bytes,
       anchorOffsetY: anchorOffsetY,
     );
     _store(marker);
