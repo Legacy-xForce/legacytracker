@@ -104,8 +104,20 @@ class MapScene extends ChangeNotifier {
   List<MapCheckpointOverlay> checkpoints = const [];
   List<MapPolyline> polylines = const [];
 
+  /// How much of the map's bottom edge app chrome (a sheet, a bar) covers.
+  /// Mapbox requires its logo and attribution to stay visible, so the native
+  /// ornaments are lifted above this band instead of sitting under it.
+  double bottomInset = 0;
+
   void markChanged() => notifyListeners();
 }
+
+/// The gap the Mapbox SDK leaves between an ornament and the map edge; the
+/// widgets keep it above any covered band instead of at the raw edge.
+const double _ornamentGap = 4;
+
+/// How far the attribution icon sits from the left edge, clear of the logo.
+const double _attributionLeftGap = 92;
 
 /// Mapbox-powered map surface shared by live tracking, replay and the
 /// checkpoint editor.
@@ -169,6 +181,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   final Map<String, String> _lineSpecs = {};
   final Set<String> _addedImages = {};
   final Set<String> _failedImages = {};
+  double _appliedInset = -1;
   String? _lastSyncError;
 
   Future<void>? _managerSetup;
@@ -287,6 +300,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     await _clearAnnotations();
     _addedImages.clear();
     _failedImages.clear();
+    _appliedInset = -1;
     _styleReady = true;
     await _applyLightPreset();
     await _syncAll();
@@ -404,6 +418,60 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     }
   }
 
+  /// Mapbox's attribution rules need the logo and the attribution to be on
+  /// screen and legible whenever the map is, so both are pinned to the bottom
+  /// left and lifted above whatever app chrome covers that strip - the
+  /// collapsed tracking sheet sits exactly where the SDK puts them by default.
+  /// The scale bar, which the old map never drew and Mapbox does not require,
+  /// goes away. Margins are logical pixels; the native side converts them.
+  ///
+  /// Every field is passed even when it matches the default: iOS releases
+  /// before 2.31.1 reset omitted fields to their defaults on a partial update,
+  /// which would drop the ornaments back to the raw bottom edge.
+  Future<void> _applyOrnaments() async {
+    final map = _map;
+    if (map == null || !_styleReady) return;
+    final inset = widget.scene.bottomInset;
+    if (inset == _appliedInset) return;
+    _appliedInset = inset;
+    final margin = (inset < 0 ? 0 : inset) + _ornamentGap;
+    try {
+      await map.scaleBar.updateSettings(
+        ScaleBarSettings(
+          enabled: false,
+          position: OrnamentPosition.TOP_LEFT,
+          marginLeft: _ornamentGap,
+          marginTop: _ornamentGap,
+          marginRight: _ornamentGap,
+          marginBottom: _ornamentGap,
+        ),
+      );
+      await map.logo.updateSettings(
+        LogoSettings(
+          enabled: true,
+          position: OrnamentPosition.BOTTOM_LEFT,
+          marginLeft: _ornamentGap,
+          marginTop: _ornamentGap,
+          marginRight: _ornamentGap,
+          marginBottom: margin,
+        ),
+      );
+      await map.attribution.updateSettings(
+        AttributionSettings(
+          enabled: true,
+          clickable: true,
+          position: OrnamentPosition.BOTTOM_LEFT,
+          marginLeft: _attributionLeftGap,
+          marginTop: _ornamentGap,
+          marginRight: _ornamentGap,
+          marginBottom: margin,
+        ),
+      );
+    } catch (error) {
+      _logSyncError('ornaments', error);
+    }
+  }
+
   Future<void> _syncAll() async {
     if (!_styleReady || _map == null) return;
     if (_syncing) {
@@ -424,6 +492,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   }
 
   Future<void> _syncOnce() async {
+    await _applyOrnaments();
     final usedImages = <String>{
       for (final marker in widget.scene.markers) marker.image.id,
     };

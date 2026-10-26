@@ -153,6 +153,32 @@ the pass. Before this, one rejected style image skipped every later layer, so a
 single bad icon silently removed checkpoint names and the whole route. Failures
 are printed once per distinct message as `Mapbox annotation sync failed …`.
 
+### Attribution, logo and scale bar
+
+Mapbox requires the logo and the text attribution to be on screen and legible
+whenever its map is, and never obscured by app UI. Disabling either is a
+Restricted API, so the app keeps both enabled and instead moves them where the
+rule is satisfiable:
+
+- The SDK default is the logo at bottom-left with a 4 px margin and the
+  attribution icon 92 px from the left, both 4 px above the bottom edge —
+  precisely the strip the collapsed tracking sheet paints over, which is why
+  nothing was visible. `MapScene.bottomInset` carries the covered height and
+  `_applyOrnaments` lifts both ornaments above it, keeping the 4 px gap. The
+  drawer pushes a new inset on every extent change without a Flutter rebuild.
+- The full text (`© Mapbox`, `© OpenStreetMap`, *Improve this map*) opens from
+  that icon's dialog, the same compact treatment the web client uses
+  (`PeersMap.vue` passes `attributionControl: false` and adds a compact
+  `AttributionControl`).
+- The scale bar is switched off. It defaulted to the top-left corner, collided
+  with the status pill and viewer row, and Mapbox does not require it.
+
+Every field is passed on each `updateSettings`, including the ones that already
+match the default: iOS releases before 2.31.1 reset omitted fields to their
+defaults on a partial update, which would drop the ornaments back to the raw
+bottom edge. Margins are logical pixels — the native mapping converts them with
+`toDevicePixels`.
+
 ### Keeping the map cheap
 
 The map is a platform view, so rebuilding the Flutter subtree around it to move
@@ -286,10 +312,11 @@ pattern above). The only `tk.*` value the app ever handles is the one fetched
 at runtime.
 
 Device QA still to record on real hardware: marker glide smoothness with
-several peers, cluster split, follow camera with the expanded sheet,
-Standard/Satellite switching, light/dark `lightPreset`, replay playback, the
-checkpoint radius at different zooms, and token refresh over a full expiry
-window. Use `main_mapcheck.dart` and the status card described above.
+several peers, cluster split, follow camera with the expanded sheet, the logo
+and attribution icon staying visible while the sheet slides between collapsed
+and expanded, Standard/Satellite switching, light/dark `lightPreset`, replay
+playback, the checkpoint radius at different zooms, and token refresh over a
+full expiry window. Use `main_mapcheck.dart` and the status card described above.
 
 Two things cannot be checked from the current aarch64 development box, so the
 release APK has to come from CI:

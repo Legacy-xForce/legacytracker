@@ -309,7 +309,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     });
     final map = _map;
     if (map == null) return;
-    final covered = _sheetFraction * _mapHeight;
+    final covered = _coveredSheetHeight;
     unawaited(
       map
           .cameraForCoordinatesPadding(
@@ -575,13 +575,25 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               onExtentChanged: (fraction) {
                 final changed = fraction != _sheetFraction;
                 _sheetFraction = fraction;
-                if (changed && _autoFollow) _syncMapCameraToFollowedUser();
+                if (!changed) return;
+                _publishInset();
+                if (_autoFollow) _syncMapCameraToFollowedUser();
               },
             ),
           ],
         );
       },
     );
+  }
+
+  /// Keeps the Mapbox logo and attribution above the sheet: Mapbox requires
+  /// both to stay visible, and the collapsed drawer paints over the strip the
+  /// SDK puts them in by default.
+  void _publishInset() {
+    final inset = _coveredSheetHeight;
+    if (inset == _scene.bottomInset) return;
+    _scene.bottomInset = inset;
+    _scene.markChanged();
   }
 
   void _publishScene() {
@@ -618,15 +630,24 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
     // Skip the notify when nothing moved: the drawer rebuilds for other
     // reasons, and re-syncing identical annotations is pure overhead.
+    final inset = _coveredSheetHeight;
     if (_sameMarkers(_scene.markers, markers) &&
-        _sameOverlays(_scene.checkpoints, overlays)) {
+        _sameOverlays(_scene.checkpoints, overlays) &&
+        inset == _scene.bottomInset) {
       return;
     }
     _scene
       ..markers = markers
       ..checkpoints = overlays
+      ..bottomInset = inset
       ..markChanged();
   }
+
+  /// The band of map the drawer paints over, which is where Mapbox insists its
+  /// logo and attribution must not be. Clamped so the ornaments stay in view
+  /// even with the sheet opened over the whole map.
+  double get _coveredSheetHeight =>
+      (_sheetFraction * _mapHeight).clamp(0.0, _mapHeight).roundToDouble();
 
   /// Self plus every peer with a fix, grouped into bubbles at the current
   /// zoom. Positions come from the glide animations, so markers move smoothly
