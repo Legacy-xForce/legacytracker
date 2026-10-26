@@ -220,13 +220,13 @@ Run locally on the migration branch:
 | `npm test` (web) | 185 passed (one API-docs timeout when run beside a Gradle build; clean when rerun alone) |
 | `npm run build` (web, placeholder token) | built |
 
-Release APK measured from the CI artifact for commit `78a129d`
+Release APK measured from the CI artifact for commit `258b2d7`
 (`android-apk`, universal):
 
 | | Pre-Mapbox build | Mapbox build |
 |---|---|---|
-| APK on disk | 56 MB | 128 MB |
-| CI artifact (zip) | 27.4 MB | 58.0 MB |
+| APK on disk | 56 MB | 129 MB |
+| CI artifact (zip) | 27.4 MB | 60.1 MB |
 
 The growth is the Mapbox Maps SDK plus its native libraries, accepted in #69
 in exchange for keeping one universal APK. Token scan on the extracted release
