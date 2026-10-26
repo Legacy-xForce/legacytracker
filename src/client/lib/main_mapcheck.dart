@@ -80,6 +80,11 @@ class _MapCheckScreen extends StatefulWidget {
 
 class _MapCheckScreenState extends State<_MapCheckScreen> {
   static const _start = LatLng(45.07031, 7.68688); // Piazza Castello, Turin
+  // The camera the map opens with. Separate from [_zoom], which follows the
+  // map's own camera events: by the time onMapCreated fires the SDK has
+  // already reported its style-default camera, so reusing that value here
+  // would open the map on the globe instead of on the start point.
+  static const _initialZoom = 14.0;
   static const _token = String.fromEnvironment('MAPBOX_TOKEN');
   static const _altToken = String.fromEnvironment('MAPBOX_TOKEN_ALT');
 
@@ -96,7 +101,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
   String _activeToken = _token;
   MapLayer _layer = MapLayer.standard;
   MapboxMap? _map;
-  double _zoom = 14;
+  double _zoom = _initialZoom;
 
   late final List<_Peer> _peers;
 
@@ -302,6 +307,12 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
     setState(() {});
   }
 
+  void _zoomBy(double delta) {
+    final zoom = (_zoom + delta).clamp(1.0, 22.0);
+    _zoom = zoom;
+    _map?.setCamera(CameraOptions(zoom: zoom));
+  }
+
   void _applyTokenInPlace() {
     final token = _altToken.isNotEmpty && _activeToken != _altToken
         ? _altToken
@@ -355,7 +366,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
             key: ValueKey('spike-map-$_mapKey'),
             accessToken: _activeToken,
             initialCenter: _start,
-            initialZoom: _zoom,
+            initialZoom: _initialZoom,
             style: _layer,
             darkMode: theme.brightness == Brightness.dark,
             scene: _scene,
@@ -366,7 +377,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
                   center: Point(
                     coordinates: Position(_start.longitude, _start.latitude),
                   ),
-                  zoom: _zoom,
+                  zoom: _initialZoom,
                 ),
               );
             },
@@ -408,6 +419,8 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
                       : MapLayer.standard;
                   _status = 'Loading ${_layer.name}…';
                 }),
+                onZoomIn: () => _zoomBy(1),
+                onZoomOut: () => _zoomBy(-1),
               ),
             ),
           ),
@@ -428,6 +441,8 @@ class _SpikeStatus extends StatelessWidget {
     required this.onApplyToken,
     required this.onRecreate,
     required this.onToggleStyle,
+    required this.onZoomIn,
+    required this.onZoomOut,
   });
 
   final String token;
@@ -439,6 +454,8 @@ class _SpikeStatus extends StatelessWidget {
   final VoidCallback onApplyToken;
   final VoidCallback onRecreate;
   final VoidCallback onToggleStyle;
+  final VoidCallback onZoomIn;
+  final VoidCallback onZoomOut;
 
   @override
   Widget build(BuildContext context) {
@@ -491,6 +508,8 @@ class _SpikeStatus extends StatelessWidget {
                     layer == MapLayer.standard ? 'Satellite' : 'Standard',
                   ),
                 ),
+                OutlinedButton(onPressed: onZoomIn, child: const Text('Zoom +')),
+                OutlinedButton(onPressed: onZoomOut, child: const Text('Zoom −')),
               ],
             ),
           ],
