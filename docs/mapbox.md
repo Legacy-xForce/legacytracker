@@ -144,9 +144,10 @@ to an embedded token. The token request has no body and deliberately sends no
   replay routes are native polylines coloured by recorded speed.
 - No Flutter view annotations are used anywhere.
 - Mapbox delivers a tap only to the **topmost** annotation, so only the people,
-  cluster, cluster-face, event and replay-endpoint layers subscribe to taps;
-  beams, pulses and checkpoint name pills are decoration and must never sit
-  between a finger and a person.
+  cluster, cluster-face, event and replay-endpoint layers subscribe to taps,
+  plus the checkpoint polygon manager (tapping a circle opens that checkpoint's
+  editor); beams, pulses and checkpoint name pills are decoration and must
+  never sit between a finger and a person.
 - Annotation managers are created once per map. On every `style.load` the
   widget re-adds style images and repopulates the managers: the sprite is wiped
   by a style switch, while the SDK re-adds the annotation layers themselves.

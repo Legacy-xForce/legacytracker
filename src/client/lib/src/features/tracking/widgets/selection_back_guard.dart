@@ -1,26 +1,32 @@
 import 'package:flutter/material.dart';
 
-/// Keeps the Android back gesture inside the people sheet while someone is
-/// selected: the first back returns to the list of everyone, and only the next
-/// one leaves the screen.
+/// Keeps Android back presses inside the tracking screen while they have
+/// something to undo there: from the Travel/Profile tab it returns to the
+/// map, and on the map with someone selected the first back returns to the
+/// list of everyone. Only once neither is true does a press leave the
+/// screen.
 class SelectionBackGuard extends StatelessWidget {
   const SelectionBackGuard({
     super.key,
-    required this.selectionActive,
-    required this.onClearSelection,
+    required this.consumeBack,
+    required this.onBack,
     required this.child,
   });
 
-  final bool selectionActive;
-  final VoidCallback onClearSelection;
+  /// Whether the next back press belongs to this screen's own state.
+  final bool consumeBack;
+
+  /// Steps the screen's state back one level.
+  final VoidCallback onBack;
+
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
     return PopScope(
-      canPop: !selectionActive,
+      canPop: !consumeBack,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop && selectionActive) onClearSelection();
+        if (!didPop && consumeBack) onBack();
       },
       child: child,
     );

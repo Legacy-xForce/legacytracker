@@ -18,6 +18,7 @@ import '../../../data/network/mapbox_token_gate.dart';
 import '../../../data/network/mapbox_token_service.dart';
 import '../../calendar/calendar_events_provider.dart';
 import '../../calendar/event_marker.dart';
+import '../../checkpoints/checkpoint_editor_screen.dart';
 import '../../checkpoints/checkpoints_provider.dart';
 import '../local_avatar_store.dart';
 import 'map_geometry.dart';
@@ -45,6 +46,7 @@ class TrackingMapTab extends StatefulWidget {
     super.key,
     required this.isActive,
     required this.center,
+    required this.centerIsKnown,
     required this.selectedLayer,
     required this.peers,
     required this.selfProfile,
@@ -63,6 +65,11 @@ class TrackingMapTab extends StatefulWidget {
 
   final bool isActive;
   final LatLng center;
+
+  /// Whether `center` is a real place - a live fix or the one cached from the
+  /// last session - rather than the app's fallback. The map opens at the
+  /// neighbourhood zoom only when it is.
+  final bool centerIsKnown;
   final MapLayer selectedLayer;
   final List<UserProfile> peers;
   final UserProfile selfProfile;
@@ -136,14 +143,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   void initState() {
     super.initState();
     _cameraCenter = widget.center;
-    // Open on ourselves at the "where am I" zoom, not at the world-spanning
-    // default: the map is there to show where you are the moment it appears.
-    final selfFix = widget.selfProfile.lastLocation;
-    if (selfFix != null &&
-        selfFix.latitude.isFinite &&
-        selfFix.longitude.isFinite) {
-      _cameraZoom = _recenterZoom;
-    }
+    // Open on ourselves (live fix or the one cached from last time) at the
+    // neighbourhood zoom, not at the world-spanning default.
+    if (widget.centerIsKnown) _cameraZoom = _startZoom;
     _icons.addListener(_handleIconsChanged);
     _syncMarkerMotions();
   }
@@ -186,10 +188,12 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       return;
     }
     if (_pointerLocations.isNotEmpty) return;
-    _didJumpToInitialFix = true;
+    // The cached fix from the last session moves the camera too, but it does
+    // not retire the jump: the first live fix from the engine still earns one.
+    if (widget.selfProfile.lastLocation != null) _didJumpToInitialFix = true;
     _moveCamera(
       widget.center,
-      _recenterZoom,
+      _startZoom,
       animate: false,
       sheetFraction: _sheetFraction,
     );
@@ -215,8 +219,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
+  /// The view the map opens with: roughly 15 km across a phone's width -
+  /// far enough to see the neighbourhood, close enough to place yourself in
+  /// it. Selecting someone still zooms to the street level of [_recenterZoom].
+  double get _startZoom => 11.5;
+
   /// Street-level enough to recognise where you are, the zoom the "where am
-  /// I" button and the opening camera aim for; the web focuses at ≥ 16.
+  /// I" button and selecting a person aim for; the web focuses at ≥ 16.
   double get _recenterZoom =>
       math.min(AppConstants.maxZoom, AppConstants.defaultZoom + 3.5);
 
@@ -486,6 +495,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       darkMode: Theme.of(context).brightness == Brightness.dark,
       scene: _scene,
       onMarkerTap: _onMarkerTap,
+      onCheckpointTap: _openCheckpoint,
       onCameraChanged: _onCameraChanged,
       onLoadError: (_) => session.recover(),
       onMapCreated: (map) {
@@ -944,6 +954,31 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     } else if (payload is CalendarEvent) {
       showEventDetails(context, payload);
     }
+  }
+
+  /// Tapping a checkpoint circle opens that checkpoint, the same way its row
+  /// in the checkpoints list does.
+  void _openCheckpoint(MapCheckpointOverlay overlay) {
+    final provider = context.read<CheckpointsProvider?>();
+    if (provider == null) return;
+    Checkpoint? checkpoint;
+    for (final candidate in provider.checkpoints) {
+      if (candidate.id == overlay.id) {
+        checkpoint = candidate;
+        break;
+      }
+    }
+    if (checkpoint == null) return;
+    unawaited(
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => CheckpointEditorScreen(
+            checkpoint: checkpoint,
+            mapLayer: widget.selectedLayer,
+          ),
+        ),
+      ),
+    );
   }
 
   MarkerImage? _imageFor(String key, Future<MarkerImage> Function() build) {

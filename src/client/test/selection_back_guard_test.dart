@@ -4,15 +4,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:legacytracker/src/features/tracking/widgets/selection_back_guard.dart';
 
 void main() {
-  testWidgets('back clears the selected person instead of leaving the map', (
+  testWidgets("back steps the screen's state back instead of leaving", (
     tester,
   ) async {
-    var cleared = 0;
+    var consumed = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: SelectionBackGuard(
-          selectionActive: true,
-          onClearSelection: () => cleared++,
+          consumeBack: true,
+          onBack: () => consumed++,
           child: const Scaffold(body: Text('map')),
         ),
       ),
@@ -21,18 +21,20 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pump();
 
-    expect(cleared, 1);
+    expect(consumed, 1);
     // The screen is still there: the back press was consumed.
     expect(find.text('map'), findsOneWidget);
   });
 
-  testWidgets('with nobody selected back is left alone', (tester) async {
-    var cleared = 0;
+  testWidgets('with nothing to step back to, the press is left alone', (
+    tester,
+  ) async {
+    var consumed = 0;
     await tester.pumpWidget(
       MaterialApp(
         home: SelectionBackGuard(
-          selectionActive: false,
-          onClearSelection: () => cleared++,
+          consumeBack: false,
+          onBack: () => consumed++,
           child: const Scaffold(body: Text('map')),
         ),
       ),
@@ -41,6 +43,6 @@ void main() {
     await tester.binding.handlePopRoute();
     await tester.pump();
 
-    expect(cleared, 0);
+    expect(consumed, 0);
   });
 }

@@ -152,6 +152,7 @@ class MapboxMapWidget extends StatefulWidget {
     required this.scene,
     this.darkMode = true,
     this.onMarkerTap,
+    this.onCheckpointTap,
     this.onMapCreated,
     this.onStyleLoaded,
     this.onCameraChanged,
@@ -167,6 +168,9 @@ class MapboxMapWidget extends StatefulWidget {
   final MapScene scene;
   final bool darkMode;
   final ValueChanged<MapMarker>? onMarkerTap;
+
+  /// A checkpoint circle was tapped (the polygon itself, not its name pill).
+  final ValueChanged<MapCheckpointOverlay>? onCheckpointTap;
   final ValueChanged<MapboxMap>? onMapCreated;
   final VoidCallback? onStyleLoaded;
   final ValueChanged<CameraState>? onCameraChanged;
@@ -178,7 +182,6 @@ class MapboxMapWidget extends StatefulWidget {
 
 class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   MapboxMap? _map;
-  late final ViewportState _viewport;
 
   final Map<MapPolylineLayer, PolylineAnnotationManager> _lineManagers = {};
   PolygonAnnotationManager? _checkpointManager;
@@ -212,17 +215,20 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   @override
   void initState() {
     super.initState();
-    _viewport = CameraViewportState(
-      center: _point(widget.initialCenter),
-      zoom: widget.initialZoom,
-    );
     widget.scene.addListener(_onSceneChanged);
     if (widget.accessToken.isNotEmpty) {
       MapboxOptions.setAccessToken(widget.accessToken);
     }
     _surface = MapWidget(
       styleUri: mapboxStyleUri(widget.style),
-      viewport: _viewport,
+      // The initial camera must be `cameraOptions`: a viewport state is
+      // resolved asynchronously by the viewport system, which is how the map
+      // flashed the whole globe before jumping to the requested view.
+      // ignore: deprecated_member_use
+      cameraOptions: CameraOptions(
+        center: _point(widget.initialCenter),
+        zoom: widget.initialZoom,
+      ),
       onMapCreated: _onMapCreated,
       onStyleLoadedListener: (_) => _onStyleLoaded(),
       onMapLoadErrorListener: (error) => widget.onLoadError?.call(error),
@@ -355,6 +361,21 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     }
     final checkpointManager = await map.annotations
         .createPolygonAnnotationManager();
+    // The circle itself opens its checkpoint; the name pill stays decoration.
+    _tapSubscriptions.add(
+      checkpointManager.tapEvents(
+        onTap: (annotation) {
+          final id = annotation.customData?['checkpointId'] as String?;
+          if (id == null) return;
+          for (final checkpoint in widget.scene.checkpoints) {
+            if (checkpoint.id == id) {
+              widget.onCheckpointTap?.call(checkpoint);
+              return;
+            }
+          }
+        },
+      ),
+    );
     final labelManager = await map.annotations.createPointAnnotationManager();
     final beamManager = await map.annotations.createPointAnnotationManager();
     final baseManager = await map.annotations.createPointAnnotationManager();
@@ -717,6 +738,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
             fillColor: overlay.color.withValues(alpha: 0.14).toARGB32(),
             fillOutlineColor: overlay.color.toARGB32(),
             fillOpacity: 1,
+            customData: {'checkpointId': overlay.id},
           ),
         );
         _checkpointAnnotations[entry.key] = created;

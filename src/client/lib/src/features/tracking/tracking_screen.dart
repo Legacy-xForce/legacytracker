@@ -102,8 +102,14 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   : Brightness.dark,
             ),
         child: SelectionBackGuard(
-          selectionActive: _selectedIndex == _mapTab && _selectedUserId != null,
-          onClearSelection: _clearSelection,
+          consumeBack: _selectedIndex != _mapTab || _selectedUserId != null,
+          onBack: () {
+            if (_selectedIndex != _mapTab) {
+              _selectTab(_mapTab);
+            } else {
+              _clearSelection();
+            }
+          },
           child: Scaffold(
             body: Consumer2<TrackingController, MapSettings>(
               builder: (context, controller, mapSettings, child) {
@@ -113,6 +119,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                     TrackingMapTab(
                       isActive: _selectedIndex == _mapTab,
                       center: controller.mapCenter,
+                      centerIsKnown: controller.hasKnownLocation,
                       selectedLayer:
                           _layerOverride ?? mapSettings.defaultLayer,
                       peers: controller.peers,
