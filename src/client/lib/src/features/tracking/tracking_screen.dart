@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -8,6 +10,7 @@ import '../auth/auth_provider.dart';
 import '../travel/travel_tab.dart';
 import 'local_avatar_store.dart';
 import 'map_settings.dart';
+import 'map_variant.dart';
 import 'widgets/selection_back_guard.dart';
 import 'widgets/tracking_map_layer.dart';
 import 'widgets/tracking_map_tab.dart';
@@ -39,6 +42,11 @@ class _TrackingScreenState extends State<TrackingScreen> {
   final GlobalKey<TrackingMapTabState> _mapTabKey =
       GlobalKey<TrackingMapTabState>();
 
+  /// Auto's time band is re-checked every minute, so the map drifts from
+  /// dusk into night on its own while it stays open.
+  Timer? _variantTicker;
+  DateTime _now = DateTime.now();
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -53,6 +61,9 @@ class _TrackingScreenState extends State<TrackingScreen> {
         baseUrl: controller.baseUrl,
         getAccessToken: () => context.read<AuthProvider>().accessToken,
       );
+      _variantTicker = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (mounted) setState(() => _now = DateTime.now());
+      });
       _initialized = true;
     }
 
@@ -67,6 +78,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
 
   @override
   void dispose() {
+    _variantTicker?.cancel();
     _mapboxTokenService.dispose();
     _mapSettings.removeListener(_followDefaultLayer);
     _avatarStore.dispose();
@@ -132,6 +144,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       centerIsKnown: controller.hasKnownLocation,
                       selectedLayer:
                           _layerOverride ?? mapSettings.defaultLayer,
+                      lightPreset: resolveMapPreset(
+                        mapSettings.mapVariant,
+                        _now,
+                      ),
                       peers: controller.peers,
                       selfProfile: controller.selfProfile,
                       selfTrackingPaused: !controller.isTracking,

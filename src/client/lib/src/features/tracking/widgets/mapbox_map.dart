@@ -5,6 +5,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
 
 import '../../../core/constants.dart';
+import '../map_variant.dart';
 import 'map_geometry.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
@@ -162,7 +163,7 @@ class MapboxMapWidget extends StatefulWidget {
     required this.initialZoom,
     required this.style,
     required this.scene,
-    this.darkMode = true,
+    this.lightPreset = MapLightPreset.day,
     this.onMarkerTap,
     this.onCheckpointTap,
     this.onMapCreated,
@@ -178,7 +179,10 @@ class MapboxMapWidget extends StatefulWidget {
 
   /// Owned by the caller; this widget only listens.
   final MapScene scene;
-  final bool darkMode;
+
+  /// The basemap lighting: the app theme (or the picked map variant) resolved
+  /// to one of Mapbox Standard's four presets.
+  final MapLightPreset lightPreset;
   final ValueChanged<MapMarker>? onMarkerTap;
 
   /// A checkpoint circle was tapped (the polygon itself, not its name pill).
@@ -268,7 +272,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         map.loadStyleURI(mapboxStyleUri(widget.style));
       }
     }
-    if (widget.darkMode != oldWidget.darkMode) {
+    if (widget.lightPreset != oldWidget.lightPreset) {
       _applyLightPreset();
     }
     _syncAll();
@@ -493,11 +497,43 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       await map.style.setStyleImportConfigProperty(
         'basemap',
         'lightPreset',
-        widget.darkMode ? 'night' : 'day',
+        widget.lightPreset.name,
       );
     } catch (_) {
       // Standard Satellite and older style versions may not expose the
       // property; the map still renders, just without theme matching.
+    }
+    await _applySatelliteLight();
+  }
+
+  /// Satellite tiles are photographic - the basemap preset cannot darken
+  /// them - so the raster layers are dimmed and desaturated to match the
+  /// preset, the same compensation the web map applies.
+  Future<void> _applySatelliteLight() async {
+    final map = _map;
+    if (map == null) return;
+    final light = satelliteLightFor(widget.lightPreset);
+    try {
+      for (final layer in await map.style.getStyleLayers()) {
+        if (layer == null || layer.type != 'raster') continue;
+        await map.style.setStyleLayerProperty(
+          layer.id,
+          'raster-brightness-min',
+          light.brightness,
+        );
+        await map.style.setStyleLayerProperty(
+          layer.id,
+          'raster-brightness-max',
+          light.brightness,
+        );
+        await map.style.setStyleLayerProperty(
+          layer.id,
+          'raster-saturation',
+          light.saturation,
+        );
+      }
+    } catch (_) {
+      // An older SDK without the raw style API just keeps the imagery.
     }
   }
 

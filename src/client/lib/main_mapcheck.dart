@@ -19,6 +19,7 @@ import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 
+import 'src/features/tracking/map_variant.dart';
 import 'src/features/tracking/widgets/map_geometry.dart';
 import 'src/features/tracking/widgets/mapbox_map.dart';
 import 'src/features/tracking/widgets/marker_icons.dart';
@@ -368,7 +369,9 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
             initialCenter: _start,
             initialZoom: _initialZoom,
             style: _layer,
-            darkMode: theme.brightness == Brightness.dark,
+            lightPreset: theme.brightness == Brightness.dark
+                ? MapLightPreset.night
+                : MapLightPreset.day,
             scene: _scene,
             onMapCreated: (map) {
               _map = map;

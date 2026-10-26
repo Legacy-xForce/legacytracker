@@ -89,7 +89,9 @@ secret or a minted token.
 `lightPreset`. Lighting is a per-device preference in the web Appearance
 dialog: **Auto** (the default) follows the local clock — dawn 05:00–08:00, day
 08:00–17:00, dusk 17:00–20:00, night otherwise — and Dawn, Day, Dusk and Night
-pin a preset. Rotation and pitch stay disabled.
+pin a preset. Satellite imagery is photographic, so `applyStandardTheme` also
+dims and desaturates the raster layers to match the preset. Rotation and pitch
+stay disabled.
 
 The production build fails when `VITE_MAPBOX_TOKEN` is missing, rather than
 shipping a map that cannot load a style. CI provides it via the `MAPBOX_TOKEN_WEB`
@@ -160,8 +162,16 @@ to an embedded token. The token request has no body and deliberately sends no
   The map listens for `style.load` through one controller, so switching
   Standard/Satellite does not leak or duplicate marker layers.
 
-The Standard basemap follows the app theme (`lightPreset` `day`/`night`).
-Rotation and pitch gestures are disabled on both clients.
+The Standard basemap lighting is a per-device preference in the app too
+(issue #86): the profile tab's Map section offers **Auto** (the default,
+following the local clock with the web's bands), Dawn, Day, Dusk and Night -
+`MapVariant` in `features/tracking/map_variant.dart`, persisted by
+`MapSettings` under `map_variant`, re-resolved every minute while the map is
+open. The resolved preset drives `lightPreset` on every map surface, and
+because satellite tiles are photographic, the raster layers are dimmed and
+desaturated to match (`satelliteLightFor`, the same factors as the web's
+`applyStandardTheme`). Rotation and pitch gestures are disabled on both
+clients.
 
 ### Draw order and error isolation
 

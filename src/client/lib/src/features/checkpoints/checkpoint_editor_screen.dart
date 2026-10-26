@@ -12,6 +12,8 @@ import '../../data/network/mapbox_token_gate.dart';
 import '../../data/network/mapbox_token_service.dart';
 import '../../data/network/place_search_service.dart';
 import '../auth/auth_provider.dart';
+import '../tracking/map_settings.dart';
+import '../tracking/map_variant.dart';
 import '../tracking/widgets/mapbox_map.dart';
 import '../tracking/widgets/tracking_map_layer.dart';
 import 'checkpoints_provider.dart';
@@ -237,7 +239,10 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
                     initialCenter: _center,
                     initialZoom: 16,
                     style: widget.mapLayer,
-                    darkMode: theme.brightness == Brightness.dark,
+                    lightPreset: resolveMapPreset(
+                      context.watch<MapSettings>().mapVariant,
+                      DateTime.now(),
+                    ),
                     scene: _scene,
                     onCameraChanged: _onCameraChanged,
                     onLoadError: (_) => session.recover(),

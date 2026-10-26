@@ -21,6 +21,7 @@ import '../../calendar/event_marker.dart';
 import '../../checkpoints/checkpoint_editor_screen.dart';
 import '../../checkpoints/checkpoints_provider.dart';
 import '../local_avatar_store.dart';
+import '../map_variant.dart';
 import 'map_geometry.dart';
 import 'map_layers.dart';
 import 'map_viewers_row.dart';
@@ -48,6 +49,7 @@ class TrackingMapTab extends StatefulWidget {
     required this.center,
     required this.centerIsKnown,
     required this.selectedLayer,
+    required this.lightPreset,
     required this.peers,
     required this.selfProfile,
     required this.selfTrackingPaused,
@@ -71,6 +73,9 @@ class TrackingMapTab extends StatefulWidget {
   /// neighbourhood zoom only when it is.
   final bool centerIsKnown;
   final MapLayer selectedLayer;
+
+  /// The basemap lighting, resolved by the screen from the picked map variant.
+  final MapLightPreset lightPreset;
   final List<UserProfile> peers;
   final UserProfile selfProfile;
   final bool selfTrackingPaused;
@@ -505,7 +510,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
       initialCenter: _cameraCenter,
       initialZoom: _cameraZoom,
       style: widget.selectedLayer,
-      darkMode: Theme.of(context).brightness == Brightness.dark,
+      lightPreset: widget.lightPreset,
       scene: _scene,
       onMarkerTap: _onMarkerTap,
       onCheckpointTap: _openCheckpoint,

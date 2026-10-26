@@ -15,6 +15,7 @@ import '../../../data/network/mapbox_token_gate.dart';
 import '../../../data/network/mapbox_token_service.dart';
 import '../../auth/auth_provider.dart';
 import '../map_settings.dart';
+import '../map_variant.dart';
 import 'map_layers.dart';
 import 'mapbox_map.dart';
 import 'marker_icons.dart';
@@ -653,7 +654,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                     initialCenter: _latLngs.first,
                     initialZoom: _currentZoom,
                     style: _selectedLayer,
-                    darkMode: theme.brightness == Brightness.dark,
+                    lightPreset: resolveMapPreset(
+                      context.watch<MapSettings>().mapVariant,
+                      DateTime.now(),
+                    ),
                     scene: _scene,
                     onCameraChanged: _onCameraChanged,
                     onLoadError: (_) => session.recover(),
