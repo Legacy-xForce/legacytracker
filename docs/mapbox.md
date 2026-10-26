@@ -135,6 +135,49 @@ to an embedded token. The token request has no body and deliberately sends no
 The Standard basemap follows the app theme (`lightPreset` `day`/`night`).
 Rotation and pitch gestures are disabled on both clients.
 
+### Draw order and error isolation
+
+A Mapbox annotation manager is one style layer, and a layer added later paints
+above the earlier ones, so the widget creates its managers in draw order:
+route casing, route lines, checkpoint polygons, checkpoint labels, heading
+beams, base markers, events, clusters, people. Route casing therefore gets its
+own manager instead of a `line-sort-key` value: the native API also exposes
+`line-sort-key` as a whole-layer constant, so a per-feature sort key is not a
+promise that the dark 8 px casing stays under the coloured 5 px route. Two
+managers make the order structural — that ordering is what kept a travel
+details route from rendering entirely black.
+
+Every layer syncs through its own `try`/`catch` (`_attempt`), and a marker
+whose bitmap fails to encode is parked in `_failedImages` rather than aborting
+the pass. Before this, one rejected style image skipped every later layer, so a
+single bad icon silently removed checkpoint names and the whole route. Failures
+are printed once per distinct message as `Mapbox annotation sync failed …`.
+
+### Keeping the map cheap
+
+The map is a platform view, so rebuilding the Flutter subtree around it to move
+a pin costs far more than the move. Three rules avoid that:
+
+- `MapboxMapWidget` builds its `MapWidget` once in `initState` and `build()`
+  returns that cached instance, so no ancestor `setState` can re-mount it.
+- Annotations live in a mutable `MapScene` (`ChangeNotifier`) that the caller
+  owns. Position ticks update the lists and call `markChanged()`; the widget
+  listens and diffs the annotations itself. Live tracking never calls
+  `setState` for a moving peer, and the camera/sheet callbacks do the same.
+- Motion ticks are throttled to 100 ms, camera publishes to 120 ms and only
+  when the zoom moved ≥ 0.12 or a label threshold was crossed, and every
+  annotation is compared against a spec string before it is written to native.
+
+### Profile pictures
+
+Legacy Auth serves `https://auth.legacy-group.tech/auth/profile-picture/<uuid>`,
+but the tracker still carries an older `avatar_url` for accounts that set one
+before Legacy Auth took over. Those legacy paths answer `200` with the single
+page app's HTML, which decodes as a broken image, so nobody's photo shows.
+`avatarCandidateUrls` lists the stored URL first and the Legacy Auth URL after
+it, and both `UserAvatar` (`_FallbackNetworkImage`) and the map markers
+(`MarkerIconFactory._loadAvatar`) walk the list until one decodes.
+
 ### Spike harness
 
 The standalone harness renders the real map with moving peers, a cluster, a
@@ -213,7 +256,7 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 188 passed |
+| `flutter test` | 190 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |
@@ -242,11 +285,26 @@ No `pk.`/`sk.`/`tk.` token was found in any dex, native library or asset
 pattern above). The only `tk.*` value the app ever handles is the one fetched
 at runtime.
 
-Device QA still to record on hardware (CI cannot run a map): marker glide
-smoothness with several peers, cluster split, follow camera with the expanded
-sheet, Standard/Satellite switching, light/dark `lightPreset`, replay playback,
-the checkpoint radius at different zooms, and token refresh over a full expiry
+Device QA still to record on real hardware: marker glide smoothness with
+several peers, cluster split, follow camera with the expanded sheet,
+Standard/Satellite switching, light/dark `lightPreset`, replay playback, the
+checkpoint radius at different zooms, and token refresh over a full expiry
 window. Use `main_mapcheck.dart` and the status card described above.
+
+Two things cannot be checked from the current aarch64 development box, so the
+release APK has to come from CI:
+
+- No emulator. `sdkmanager` offers no `emulator` package for `aarch64` (Google
+  ships it for x86_64 only) and there is no `/dev/kvm`, so a virtual device
+  cannot run here even with the system image installed. A physical Android
+  device over ADB is the way to do the list above.
+- No local release build. The snap Flutter channel downloads
+  `…/android-*-release/linux-x64/gen_snapshot` but the AOT step looks for
+  `linux-arm64/gen_snapshot`, so `flutter build apk --release` fails on this
+  host (`flutter build apk --debug` and `flutter test` are fine). The
+  `android-apk` CI job is the release gate; download its artifact for the
+  token scan above. SDK licences, NDK 28.2.13676358, platform 36, build-tools
+  36 and platform-tools are installed under `~/Android/Sdk`.
 
 Flutter targets are now Android and iOS only; the `linux`, `macos`, `windows`
 and `web` runner directories were removed along with the unused desktop/web
