@@ -1,7 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { beforeEach, describe, expect, it } from 'vitest';
-import AppearanceDialog from '../components/ui/AppearanceDialog.vue';
+import MapVariantPicker from '../components/ui/MapVariantPicker.vue';
 import { MAP_VARIANT_STORAGE_KEY } from '../lib/styles';
 import { useAppearanceStore } from '../stores/appearance';
 
@@ -16,22 +16,19 @@ function radio(label: string): HTMLElement {
     return found;
 }
 
-describe('AppearanceDialog', () => {
+describe('MapVariantPicker', () => {
     beforeEach(() => {
         localStorage.clear();
         document.body.replaceChildren();
         setActivePinia(createPinia());
     });
 
-    function mountDialog() {
-        return mount(AppearanceDialog, {
-            attachTo: document.body,
-            props: { modelValue: true, 'onUpdate:modelValue': () => {} }
-        });
+    function mountPicker() {
+        return mount(MapVariantPicker, { attachTo: document.body });
     }
 
     it('offers Auto plus the four map variants, selecting Auto by default', () => {
-        const wrapper = mountDialog();
+        const wrapper = mountPicker();
 
         expect(mapRadios().map((option) => option.getAttribute('aria-label'))).toEqual([
             'Auto, follows the time of day',
@@ -45,7 +42,7 @@ describe('AppearanceDialog', () => {
     });
 
     it('persists the chosen variant for this device', async () => {
-        const wrapper = mountDialog();
+        const wrapper = mountPicker();
 
         radio('Night').click();
         await wrapper.vm.$nextTick();

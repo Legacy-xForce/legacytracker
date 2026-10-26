@@ -19,6 +19,7 @@ import PersonRow from '../components/people/PersonRow.vue';
 import AppearanceDialog from '../components/ui/AppearanceDialog.vue';
 import Icon from '../components/ui/Icon.vue';
 import MenuItem from '../components/ui/MenuItem.vue';
+import MapVariantPicker from '../components/ui/MapVariantPicker.vue';
 import PopoverMenu from '../components/ui/PopoverMenu.vue';
 import Spinner from '../components/ui/Spinner.vue';
 import { useMediaQuery } from '../composables/useMediaQuery';
@@ -309,6 +310,13 @@ watch(replaying, (isReplaying) => {
                         :checked="option.id === mapStyle"
                         @click="chooseStyle(option.id)"
                     />
+                    <div class="bg-outline-variant mx-3 my-2 h-px" />
+                    <p class="type-body-sm text-on-surface-variant px-4 pb-2">
+                        Map lighting &middot; Auto follows the time of day
+                    </p>
+                    <div class="px-4 pb-4">
+                        <MapVariantPicker />
+                    </div>
                 </PopoverMenu>
                 <MapControlButton
                     v-if="self && hasPosition(self)"
