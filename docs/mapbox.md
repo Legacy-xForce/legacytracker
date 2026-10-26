@@ -85,9 +85,11 @@ secret or a minted token.
 
 `src/web/src/config.ts` reads `VITE_MAPBOX_TOKEN`. The style IDs are
 `mapbox://styles/mapbox/standard` and
-`mapbox://styles/mapbox/standard-satellite`. The app applies the Standard
-`lightPreset` (`day`/`night`) to match the light or dark theme and keeps
-rotation and pitch disabled.
+`mapbox://styles/mapbox/standard-satellite`. Both styles use Mapbox's
+`lightPreset`. Lighting is a per-device preference in the web Appearance
+dialog: **Auto** (the default) follows the local clock — dawn 05:00–08:00, day
+08:00–17:00, dusk 17:00–20:00, night otherwise — and Dawn, Day, Dusk and Night
+pin a preset. Rotation and pitch stay disabled.
 
 The production build fails when `VITE_MAPBOX_TOKEN` is missing, rather than
 shipping a map that cannot load a style. CI provides it via the `MAPBOX_TOKEN_WEB`

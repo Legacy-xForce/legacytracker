@@ -29,8 +29,7 @@ import { decodeJwt } from '../lib/jwt';
 import { hasPosition } from '../lib/peers';
 import { storage } from '../lib/storage';
 import { useAppearanceStore } from '../stores/appearance';
-import { getTheme } from '../theme/themes';
-import { lightPresetFor, MAP_STYLES, type MapStyle } from '../lib/styles';
+import { resolveMapPreset, MAP_STYLES, type MapStyle } from '../lib/styles';
 import { useCheckpointsStore } from '../stores/checkpoints';
 import { useEventsStore } from '../stores/events';
 import { useHistoryStore } from '../stores/history';
@@ -57,7 +56,6 @@ let eventsTimer: ReturnType<typeof setInterval> | undefined;
 
 const mapView = ref<InstanceType<typeof PeersMap> | null>(null);
 const wide = useMediaQuery('(min-width: 768px)');
-const systemDark = useMediaQuery('(prefers-color-scheme: dark)');
 const viewportHeight = ref(window.innerHeight);
 // Markers re-check staleness every few seconds; the panel's counters tick every second.
 const mapNow = useNow();
@@ -65,10 +63,8 @@ const now = useNow(1_000);
 
 const showCheckpoints = ref(storage.get(CHECKPOINTS_KEY) !== 'false');
 const mapStyle = ref<MapStyle>(readStyle());
-const lightPreset = computed(() => {
-    const mode = getTheme(appearance.theme).mode;
-    return lightPresetFor(mode === 'system' ? (systemDark.value ? 'dark' : 'light') : mode);
-});
+// Re-evaluated as `now` ticks, so Auto crosses into dawn/day/dusk/night on its own.
+const lightPreset = computed(() => resolveMapPreset(appearance.mapVariant, now.value));
 const styleMenu = ref(false);
 const accountMenu = ref(false);
 const appearanceOpen = ref(false);
