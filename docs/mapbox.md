@@ -121,10 +121,11 @@ to an embedded token. The token request has no body and deliberately sends no
   style with `StyleManager.addStyleImage`. Point annotations reference the image
   id, so moving a marker only updates geometry, never the bitmap bytes.
 - Markers are the web client's design, drawn into the bitmap: the avatar in a
-  60 px ring (white; the accent colour on your own marker; grey when stale), a
-  speed badge top-right (`km/h`) and a battery badge under the avatar (dark
-  pill, accent for yourself, grey when stale). Selection and motion scale the
-  annotation (1.18 / 1.08) rather than adding bitmaps.
+  ring that leaves a 2 px band (57 px ring around the 53 px avatar; white; the
+  accent colour on your own marker; grey when stale), a speed badge top-right
+  (`km/h`) and a battery badge under the avatar (dark pill, accent for
+  yourself, grey when stale). Selection and motion scale the annotation
+  (1.18 / 1.08) rather than adding bitmaps.
 - The moving pulse is its own annotation whose `iconSize` breathes between
   0.725 and 1 every 1.2 s (16 steps of 150 ms), because it has to change over
   time; the heading beam is a 56° cone reaching 77 px, rotated per annotation.
@@ -132,16 +133,20 @@ to an embedded token. The token request has no body and deliberately sends no
 - Groups use the web's cluster bubble: up to three faces with a 2.5 px white
   ring, a `+N` overflow face and a tail dot on the shared location, at the web's
   52 / 9 / 14 px metrics. Clustering merges people only when they are within 96
-  screen pixels **and** 100 m at the current zoom.
+  screen pixels **and** 100 m at the current zoom. The tap callback names the
+  annotation but never the touch point, so each visible face also gets a
+  transparent hit-area annotation (`clusterFace` layer, created above the
+  bubbles, stacked leftmost-on-top like the web): tapping a face opens that
+  person, anywhere else on the bubble keeps the zoom-to-separate tap.
 - Calendar events use a rounded-square pin in the event colour; checkpoints are
   geodesic polygons whose radius is respected in metres, with the web's name
   pill (dark, pin glyph, 12 px semibold) as an image marker from zoom 13;
   replay routes are native polylines coloured by recorded speed.
 - No Flutter view annotations are used anywhere.
 - Mapbox delivers a tap only to the **topmost** annotation, so only the people,
-  cluster, event and replay-endpoint layers subscribe to taps; beams, pulses and
-  checkpoint name pills are decoration and must never sit between a finger and a
-  person.
+  cluster, cluster-face, event and replay-endpoint layers subscribe to taps;
+  beams, pulses and checkpoint name pills are decoration and must never sit
+  between a finger and a person.
 - Annotation managers are created once per map. On every `style.load` the
   widget re-adds style images and repopulates the managers: the sprite is wiped
   by a style switch, while the SDK re-adds the annotation layers themselves.
@@ -156,7 +161,7 @@ Rotation and pitch gestures are disabled on both clients.
 A Mapbox annotation manager is one style layer: markers, labels, checkpoint
 circles and each route layer get their own, created in draw order - route
 casing, route lines, checkpoint polygons, checkpoint name pills, heading beams,
-base markers, events, clusters, people.
+base markers, events, clusters, cluster-face hit areas, people.
 
 The replay route is a dark casing under speed-coloured runs, mirroring the
 working web layer (`src/web/src/components/ReplayLayer.vue`: `line-color`
@@ -190,6 +195,15 @@ Two further rules keep the casing from ever replacing the route:
 `buildSpeedRoute` produces one coloured run per speed band, each sharing its
 boundary point with the next so the line has no gaps
 (`test/session_replay_route_test.dart`).
+
+**Playback runs on one clock.** `ReplayTrack` mirrors the web module of that
+name: every fix gets a playback time (1x) from a constant on-screen pace -
+40 s per trip, a 5 m/s floor, 16..3000 ms per segment - and the marker position
+is interpolated linearly against elapsed time. Playing each fix as its own
+animation made the marker race through dense stretches (turns, stops) and
+teleport between raw fixes. The controller's value is the trip fraction, so
+the slider, seeks and the speed options all work on the same monotonic clock,
+and the clock/km-h read-outs rebuild only when the displayed value changes.
 
 Every layer syncs through its own `try`/`catch` (`_attempt`), and a marker
 whose bitmap fails to encode is parked in `_failedImages` rather than aborting
@@ -349,11 +363,11 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 204 passed |
+| `flutter test` | 215 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |
-| `npm test` (web) | 185 passed (one API-docs timeout when run beside a Gradle build; clean when rerun alone) |
+| `npm test` (web) | 194 passed (one API-docs timeout when run beside a Gradle build; clean when rerun alone) |
 | `npm run build` (web, placeholder token) | built |
 
 Release APK measured from the CI artifact for commit `258b2d7`
