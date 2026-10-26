@@ -182,6 +182,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   final Set<String> _addedImages = {};
   final Set<String> _failedImages = {};
   double _appliedInset = -1;
+  bool _scaleBarHidden = false;
   String? _lastSyncError;
 
   Future<void>? _managerSetup;
@@ -301,6 +302,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     _addedImages.clear();
     _failedImages.clear();
     _appliedInset = -1;
+    _scaleBarHidden = false;
     _styleReady = true;
     await _applyLightPreset();
     await _syncAll();
@@ -431,21 +433,24 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   Future<void> _applyOrnaments() async {
     final map = _map;
     if (map == null || !_styleReady) return;
-    final inset = widget.scene.bottomInset;
-    if (inset == _appliedInset) return;
-    _appliedInset = inset;
-    final margin = (inset < 0 ? 0 : inset) + _ornamentGap;
     try {
-      await map.scaleBar.updateSettings(
-        ScaleBarSettings(
-          enabled: false,
-          position: OrnamentPosition.TOP_LEFT,
-          marginLeft: _ornamentGap,
-          marginTop: _ornamentGap,
-          marginRight: _ornamentGap,
-          marginBottom: _ornamentGap,
-        ),
-      );
+      if (!_scaleBarHidden) {
+        _scaleBarHidden = true;
+        await map.scaleBar.updateSettings(
+          ScaleBarSettings(
+            enabled: false,
+            position: OrnamentPosition.TOP_LEFT,
+            marginLeft: _ornamentGap,
+            marginTop: _ornamentGap,
+            marginRight: _ornamentGap,
+            marginBottom: _ornamentGap,
+          ),
+        );
+      }
+      final inset = widget.scene.bottomInset;
+      if (inset == _appliedInset) return;
+      _appliedInset = inset;
+      final margin = (inset < 0 ? 0 : inset) + _ornamentGap;
       await map.logo.updateSettings(
         LogoSettings(
           enabled: true,
