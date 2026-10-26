@@ -39,6 +39,20 @@ void main() {
       }
     });
 
+    test('every line is emissive so the night preset cannot blacken it', () {
+      // line-emissive-strength defaults to 0: under the style's night lighting
+      // that drains a route to black even though its colour is a bright red.
+      final lines = buildSpeedRoute(
+        points: track(5),
+        speedsMps: const [0, 5, 10, 15, 20],
+      );
+
+      expect(lines, isNotEmpty);
+      for (final line in lines) {
+        expect(line.emissiveStrength, 1);
+      }
+    });
+
     test('the casing is opaque black at 0.35, never a translucent colour', () {
       final lines = buildSpeedRoute(
         points: track(4),

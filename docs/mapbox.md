@@ -145,7 +145,18 @@ base markers, events, clusters, people.
 The replay route is a dark casing under speed-coloured runs, mirroring the
 working web layer (`src/web/src/components/ReplayLayer.vue`: `line-color`
 `#000` with `line-opacity` 0.35 at width 8, then `['get','color']` at width 5).
-Two rules keep it from rendering as a plain black line:
+
+**The black path was lighting, not ordering.** `line-emissive-strength` defaults
+to **0** on line annotations (and `fill-emissive-strength` on polygon ones),
+while point annotations default their icon and text emission to **1**. With the
+Standard style the scene lighting multiplies a non-emissive layer down, so in a
+dark theme (`lightPreset: night`) the route rendered as a black line while the
+markers stayed bright - and switching styles showed the real colours for a
+moment, until the night lighting settled. Every route line now carries
+`emissiveStrength: 1` and the checkpoint manager is set to
+`setFillEmissiveStrength(1)`, which is what marker icons already do implicitly.
+
+Two further rules keep the casing from ever replacing the route:
 
 - The casing manager is created with `below: routeManager.id`, so the style is
   told to keep the coloured route above it. Creation order alone is not
@@ -308,7 +319,7 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 196 passed |
+| `flutter test` | 197 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |
@@ -341,8 +352,9 @@ Device QA still to record on real hardware: marker glide smoothness with
 several peers, cluster split, follow camera with the expanded sheet, the logo
 and attribution icon staying visible while the sheet slides between collapsed
 and expanded, Standard/Satellite switching, light/dark `lightPreset`, replay
-playback, the checkpoint radius at different zooms, and token refresh over a
-full expiry window. Use `main_mapcheck.dart` and the status card described above.
+playback with the route still coloured under a dark theme, the checkpoint
+radius at different zooms, and token refresh over a full expiry window. Use
+`main_mapcheck.dart` and the status card described above.
 
 Two things cannot be checked from the current aarch64 development box, so the
 release APK has to come from CI:

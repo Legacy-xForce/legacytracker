@@ -83,6 +83,7 @@ class MapPolyline {
     required this.color,
     required this.width,
     this.opacity = 1,
+    this.emissiveStrength = 1,
     this.layer = MapPolylineLayer.route,
   });
 
@@ -95,6 +96,13 @@ class MapPolyline {
   /// edge as opaque black at 0.35, and a casing that ever ends up on top then
   /// tints the route instead of replacing it.
   final double opacity;
+
+  /// How much the line emits its own light. The Mapbox style's lighting dims
+  /// lines to black at night unless this is 1, which is the default for marker
+  /// icons and labels; a replay route has to keep its recorded speeds readable
+  /// in a dark theme.
+  final double emissiveStrength;
+
   final MapPolylineLayer layer;
 }
 
@@ -375,6 +383,13 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     await labelManager.setIconAllowOverlap(true);
     await labelManager.setIconIgnorePlacement(true);
     await labelManager.setTextAllowOverlap(true);
+    try {
+      // Fills are lit like lines and default to no emission, which drains a
+      // checkpoint circle to black under the night preset. Icons default to 1.
+      await checkpointManager.setFillEmissiveStrength(1);
+    } catch (_) {
+      // Older native builds may not expose the property; circles still draw.
+    }
     _managersReady = true;
   }
 
@@ -789,8 +804,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       final key = entry.key;
       final line = entry.value;
       final spec =
-          '${line.color.toARGB32()},${line.opacity},${line.width},'
-          '${wantedCounts[key]}';
+          '${line.color.toARGB32()},${line.opacity},'
+          '${line.emissiveStrength},${line.width},${wantedCounts[key]}';
       final annotation = _lineAnnotations[key];
       if (annotation == null) {
         try {
@@ -805,6 +820,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
           annotation.geometry = _lineGeometry(line);
           annotation.lineColor = line.color.toARGB32();
           annotation.lineOpacity = line.opacity;
+          annotation.lineEmissiveStrength = line.emissiveStrength;
           annotation.lineWidth = line.width;
           await manager.update(annotation);
           _lineSpecs[key] = spec;
@@ -826,6 +842,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       geometry: _lineGeometry(line),
       lineColor: line.color.toARGB32(),
       lineOpacity: line.opacity,
+      lineEmissiveStrength: line.emissiveStrength,
       lineWidth: line.width,
       lineJoin: LineJoin.ROUND,
     );
