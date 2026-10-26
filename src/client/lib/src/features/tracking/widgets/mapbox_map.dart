@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
@@ -108,6 +110,16 @@ class MapScene extends ChangeNotifier {
 
   void markChanged() => notifyListeners();
 }
+
+/// Layers whose annotations open something when tapped. Everything else is
+/// decoration, and a tap on decoration would otherwise swallow the tap on the
+/// person behind it.
+const _interactiveLayers = {
+  MapMarkerLayer.base,
+  MapMarkerLayer.event,
+  MapMarkerLayer.cluster,
+  MapMarkerLayer.user,
+};
 
 /// The gap the Mapbox SDK leaves between an ornament and the map edge; the
 /// widgets keep it above any covered band instead of at the raw edge.
@@ -275,6 +287,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       // Older native SDKs may not expose gesture settings.
     }
     if (!mounted) return;
+    _appliedInset = -1;
+    unawaited(_applyOrnaments());
     widget.onMapCreated?.call(map);
   }
 
@@ -352,11 +366,14 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       ..[MapMarkerLayer.cluster] = clusterManager
       ..[MapMarkerLayer.user] = userManager;
 
-    for (final manager in _pointManagers.values) {
+    for (final entry in _pointManagers.entries) {
+      final manager = entry.value;
       await manager.setIconAllowOverlap(true);
       await manager.setIconIgnorePlacement(true);
       await manager.setTextAllowOverlap(true);
-      _registerTaps(manager);
+      // Mapbox delivers a tap only to the topmost annotation, so the beam,
+      // pulse and name pills must not compete with the people underneath.
+      if (_interactiveLayers.contains(entry.key)) _registerTaps(manager);
     }
     await labelManager.setIconAllowOverlap(true);
     await labelManager.setIconIgnorePlacement(true);
@@ -447,7 +464,9 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   /// which would drop the ornaments back to the raw bottom edge.
   Future<void> _applyOrnaments() async {
     final map = _map;
-    if (map == null || !_styleReady) return;
+    // Ornaments are view-level, not style-level: pin them as soon as the map
+    // exists so the logo is never drawn at the SDK's default edge first.
+    if (map == null) return;
     try {
       if (!_scaleBarHidden) {
         _scaleBarHidden = true;

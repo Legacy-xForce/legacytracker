@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
@@ -270,16 +271,25 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   }
 
   void _handlePointerMove(PointerMoveEvent event) {
-    _pointerLocations[event.pointer] = event.position;
-    if (_autoFollow) {
-      setState(() {
-        _autoFollow = false;
-        _followedUserId = null;
-      });
-    }
+    if (!_autoFollow) return;
+    final origin = _pointerLocations[event.pointer];
+    if (origin == null) return;
+    // A tap also reports a pixel or two of jitter. Rebuilding the tab on that
+    // lands in the middle of the gesture, so only a real drag stops the camera.
+    if ((event.position - origin).distance < kTouchSlop) return;
+    setState(() {
+      _autoFollow = false;
+      _followedUserId = null;
+    });
   }
 
   void _handlePointerUp(PointerUpEvent event) {
+    _pointerLocations.remove(event.pointer);
+  }
+
+  /// A cancelled gesture would otherwise leave a pointer recorded forever,
+  /// and the follow camera would stop moving.
+  void _handlePointerCancel(PointerCancelEvent event) {
     _pointerLocations.remove(event.pointer);
   }
 
@@ -478,13 +488,18 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        _mapSize = constraints.biggest;
+        final size = constraints.biggest;
+        if (size != _mapSize) {
+          _mapSize = size;
+          WidgetsBinding.instance.addPostFrameCallback((_) => _publishInset());
+        }
         return Stack(
           children: [
             Listener(
               onPointerDown: _handlePointerDown,
               onPointerMove: _handlePointerMove,
               onPointerUp: _handlePointerUp,
+              onPointerCancel: _handlePointerCancel,
               child: MapboxTokenGate(
                 service: widget.mapboxTokenService,
                 devToken: const String.fromEnvironment('MAPBOX_TOKEN'),
@@ -694,9 +709,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   /// The band of map the drawer paints over, which is where Mapbox insists its
   /// logo and attribution must not be. Clamped so the ornaments stay in view
-  /// even with the sheet opened over the whole map.
-  double get _coveredSheetHeight =>
-      coveredMapHeight(_sheetFraction, _mapHeight).roundToDouble();
+  /// even with the sheet opened over the whole map, and 0 until the map has
+  /// been laid out - never a guess from the screen height.
+  double get _coveredSheetHeight {
+    final height = _mapSize?.height;
+    if (height == null || height <= 0) return 0;
+    return coveredMapHeight(_sheetFraction, height).roundToDouble();
+  }
 
   /// Self plus every peer with a fix, grouped into bubbles at the current
   /// zoom. Positions come from the glide animations, so markers move smoothly

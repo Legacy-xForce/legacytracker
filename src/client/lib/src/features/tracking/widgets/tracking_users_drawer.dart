@@ -82,6 +82,13 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     super.initState();
     _sheetController.addListener(_handleSheetChanged);
     _detailUserId = widget.selectedUserId;
+    // The controller does not notify for its initial size, so the map would
+    // keep an inset of 0 (and paint its logo under the sheet) until the first
+    // drag. Report the real extent once the sheet is laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sheetController.isAttached) return;
+      widget.onExtentChanged?.call(_sheetController.size);
+    });
   }
 
   @override
@@ -262,6 +269,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                         users: users,
                         showingDetail: detailUser != null && !_isCollapsed,
                         onBack: _closeDetail,
+                        onSelect: _openDetail,
                       ),
                     ),
                     Expanded(
@@ -318,12 +326,14 @@ class _SheetHeader extends StatelessWidget {
     required this.users,
     required this.showingDetail,
     required this.onBack,
+    required this.onSelect,
   });
 
   final double height;
   final List<_DrawerUser> users;
   final bool showingDetail;
   final VoidCallback onBack;
+  final ValueChanged<UserProfile> onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -386,7 +396,8 @@ class _SheetHeader extends StatelessWidget {
                     ),
                   ],
                   const Spacer(),
-                  if (!showingDetail) _AvatarStack(users: users),
+                  if (!showingDetail)
+                    _AvatarStack(users: users, onSelect: onSelect),
                 ],
               ),
             ),
@@ -397,9 +408,12 @@ class _SheetHeader extends StatelessWidget {
   }
 }
 
-/// A few overlapping faces in the header — a glance at who's sharing.
+/// A few overlapping faces in the header — a glance at who's sharing. Tapping
+/// one opens that person, so the collapsed sheet is a single tap away.
 class _AvatarStack extends StatelessWidget {
-  const _AvatarStack({required this.users});
+  const _AvatarStack({required this.users, this.onSelect});
+
+  final ValueChanged<UserProfile>? onSelect;
 
   final List<_DrawerUser> users;
 
@@ -419,15 +433,20 @@ class _AvatarStack extends StatelessWidget {
           for (var i = shown.length - 1; i >= 0; i--)
             Positioned(
               left: i * _step,
-              child: UserAvatar(
-                userId: shown[i].profile.id,
-                name: shown[i].profile.name,
-                avatarUrl: shown[i].profile.avatarUrl,
-                imageBytes: shown[i].avatarBytes,
-                size: _size,
-                ringColor: ring,
-                ringWidth: 2,
-                dimmed: shown[i].isStale,
+              child: GestureDetector(
+                onTap: onSelect == null
+                    ? null
+                    : () => onSelect!(shown[i].profile),
+                child: UserAvatar(
+                  userId: shown[i].profile.id,
+                  name: shown[i].profile.name,
+                  avatarUrl: shown[i].profile.avatarUrl,
+                  imageBytes: shown[i].avatarBytes,
+                  size: _size,
+                  ringColor: ring,
+                  ringWidth: 2,
+                  dimmed: shown[i].isStale,
+                ),
               ),
             ),
         ],

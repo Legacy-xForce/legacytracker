@@ -136,6 +136,10 @@ to an embedded token. The token request has no body and deliberately sends no
   pill (dark, pin glyph, 12 px semibold) as an image marker from zoom 13;
   replay routes are native polylines coloured by recorded speed.
 - No Flutter view annotations are used anywhere.
+- Mapbox delivers a tap only to the **topmost** annotation, so only the people,
+  cluster, event and replay-endpoint layers subscribe to taps; beams, pulses and
+  checkpoint name pills are decoration and must never sit between a finger and a
+  person.
 - Annotation managers are created once per map. On every `style.load` the
   widget re-adds style images and repopulates the managers: the sprite is wiped
   by a style switch, while the SDK re-adds the annotation layers themselves.
@@ -211,6 +215,11 @@ rule is satisfiable:
   that icon's dialog, the same compact treatment the web client uses
   (`PeersMap.vue` passes `attributionControl: false` and adds a compact
   `AttributionControl`).
+- The band comes from the sheet's real size: `DraggableScrollableController`
+  does not notify for its initial size, so the drawer reports its extent once
+  after the first frame, and the map reports again when it is first laid out.
+  Until both are known the inset is 0 - never a guess from the screen height,
+  which used to lift the logo into the middle of the map on startup.
 - The scale bar is switched off. It defaulted to the top-left corner, collided
   with the status pill and viewer row, and Mapbox does not require it.
 
