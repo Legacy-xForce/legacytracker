@@ -3,13 +3,14 @@
 # from the tracker server within minutes and install it in the background —
 # see docs/app-updates.md.
 #
-#   scripts/release-android.sh [--notes "What changed"] [--prerelease] [--allow-dirty] [--yes]
+#   scripts/release-android.sh [--notes "What changed"] [--ipa PATH] [--prerelease] [--allow-dirty] [--yes]
 #
 # The version comes from src/client/pubspec.yaml (`version: 1.2.0+12`). Bump
 # the build number after the `+` for every release: phones only install a
 # higher one.
 #
 #   --notes TEXT    release notes, shown in the app's update card
+#   --ipa PATH      unsigned iOS IPA to attach to the same release
 #   --prerelease    upload without rolling out (the server ignores
 #                   prereleases); roll out later with
 #                   gh release edit <tag> --prerelease=false
@@ -24,12 +25,14 @@ repo="${ANDROID_RELEASES_REPO:-Legacy-xForce/legacytracker}"
 cert_file="$client/android/release-signing-cert.sha256"
 
 notes=""
+ipa=""
 prerelease=()
 allow_dirty=false
 assume_yes=false
 while (($#)); do
   case "$1" in
     --notes) notes="${2:?--notes needs a value}"; shift 2 ;;
+    --ipa) ipa="${2:?--ipa needs a value}"; shift 2 ;;
     --prerelease) prerelease=(--prerelease); shift ;;
     --allow-dirty) allow_dirty=true; shift ;;
     --yes) assume_yes=true; shift ;;
@@ -93,10 +96,23 @@ if [[ -f "$cert_file" ]]; then
 fi
 
 sha="$(sha256sum "$asset" | cut -d' ' -f1)"
+
+ipa_asset=""
+ipa_sha=""
+if [[ -n "$ipa" ]]; then
+  [[ -f "$ipa" ]] || die "IPA not found: $ipa"
+  ipa_asset="$client/build/legacytracker-$name-$code.ipa"
+  cp "$ipa" "$ipa_asset"
+  ipa_sha="$(sha256sum "$ipa_asset" | cut -d' ' -f1)"
+fi
+
 echo
 echo "Release    $tag${prerelease[*]:+ (prerelease)} → $repo"
 echo "Commit     ${commit:0:12}$($allow_dirty && echo ' + uncommitted changes' || true)"
 echo "APK        ${asset#"$root"/} ($(du -h "$asset" | cut -f1)), sha256 $sha"
+if [[ -n "$ipa_asset" ]]; then
+  echo "IPA        ${ipa_asset#"$root"/} ($(du -h "$ipa_asset" | cut -f1)), sha256 $ipa_sha"
+fi
 echo "Signed by  $subject"
 echo "           $fingerprint"
 if [[ "$subject" == *"CN=Android Debug"* ]]; then
@@ -111,12 +127,23 @@ if ! $assume_yes; then
 fi
 
 # ── Publish ──────────────────────────────────────────────────────────────────
-gh release create "$tag" "$asset" -R "$repo" --target "$commit" \
-  --title "Android $name ($code)" --notes "$notes" ${prerelease[@]+"${prerelease[@]}"}
+assets=("$asset")
+title="Android $name ($code)"
+if [[ -n "$ipa_asset" ]]; then
+  assets+=("$ipa_asset")
+  title="Android + iOS $name ($code)"
+fi
+gh release create "$tag" "${assets[@]}" -R "$repo" --target "$commit" \
+  --title "$title" --notes "$notes" ${prerelease[@]+"${prerelease[@]}"}
 
 digest="$(gh api "repos/$repo/releases/tags/${tag//+/%2B}" \
   --jq '.assets[] | select(.name | endswith(".apk")) | .digest')"
 [[ "$digest" == "sha256:$sha" ]] || die "GitHub reports '$digest' for the uploaded APK, expected sha256:$sha"
+if [[ -n "$ipa_asset" ]]; then
+  ipa_digest="$(gh api "repos/$repo/releases/tags/${tag//+/%2B}" \
+    --jq '.assets[] | select(.name | endswith(".ipa")) | .digest')"
+  [[ "$ipa_digest" == "sha256:$ipa_sha" ]] || die "GitHub reports '$ipa_digest' for the uploaded IPA, expected sha256:$ipa_sha"
+fi
 
 if [[ ! -f "$cert_file" ]]; then
   echo "$fingerprint" >"$cert_file"

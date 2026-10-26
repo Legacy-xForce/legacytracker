@@ -20,6 +20,15 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get --enforce-lockfile
         working-directory: src/client
+      - name: Cache Gradle
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('src/client/android/**/*.gradle*', 'src/client/android/**/gradle-wrapper.properties', 'src/client/pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
       - name: Build release APK
         run: flutter build apk --release
         working-directory: src/client
@@ -42,6 +51,13 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get --enforce-lockfile
         working-directory: src/client
+      - name: Cache Swift Package Manager
+        uses: actions/cache@v6
+        with:
+          path: ~/Library/Caches/org.swift.swiftpm
+          key: spm-${{ runner.os }}-${{ hashFiles('src/client/pubspec.lock', 'src/client/ios/Runner.xcodeproj/project.pbxproj') }}
+          restore-keys: |
+            spm-${{ runner.os }}-
       - name: Build iOS release app without code signing
         run: flutter build ios --release --no-codesign
         working-directory: src/client
