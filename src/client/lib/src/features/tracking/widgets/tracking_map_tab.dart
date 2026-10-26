@@ -755,7 +755,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           '${person.id}|${person.name}|${person.avatarUrl}|'
               '${identityHashCode(person.avatarBytes)}|'
               '${person.isStale}|${person.isSelf}|${person.isMoving}|'
-              '${(person.speedKmh / 5).round()}|${person.batteryLevel}|'
+              '${person.speedKmh.round()}|${person.batteryLevel}|'
               '${person.isCharging}',
       ].join(',');
       final image = _imageFor(

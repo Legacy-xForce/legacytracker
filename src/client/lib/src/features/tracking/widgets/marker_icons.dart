@@ -125,9 +125,12 @@ class MarkerIconFactory extends ChangeNotifier {
   /// a speed badge while moving, and the battery badge below. Selection and
   /// motion scaling are applied by the caller as the annotation's icon size.
   Future<MarkerImage> personMarker(MarkerPerson person) async {
+    // The badge text and the cache id use the same rounded speed, so a cached
+    // bitmap can never show an older speed.
+    final speed = person.speedKmh.round();
     final id =
         'person-${_personToken(person)}'
-        '-${person.isMoving ? (person.speedKmh / 5).round() * 5 : 'parked'}'
+        '-${person.isMoving ? speed : 'parked'}'
         '-${person.batteryLevel ?? '-'}'
         '${person.isCharging ? 'c' : ''}';
     final cached = _cached(id);
@@ -164,7 +167,7 @@ class MarkerIconFactory extends ChangeNotifier {
         _badge(
           canvas,
           icon: Icons.speed_rounded,
-          text: '${person.speedKmh.round()} km/h',
+          text: '$speed km/h',
           right: _personWidth - 18,
           top: 48,
           background: badge,
