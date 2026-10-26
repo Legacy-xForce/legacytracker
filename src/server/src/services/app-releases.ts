@@ -1,7 +1,8 @@
 /**
  * Android builds are distributed outside the Play Store as GitHub releases
  * tagged `android-v<versionName>+<versionCode>` (the pubspec `version:`
- * format), each carrying one .apk asset — see scripts/release-android.sh.
+ * format), each carrying one .apk asset plus an unsigned .ipa — see
+ * scripts/release-android.sh.
  *
  * Devices ask this server rather than GitHub which release is current: one
  * cached lookup serves every phone (GitHub allows 60 unauthenticated API
