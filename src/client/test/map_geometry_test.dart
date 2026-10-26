@@ -7,6 +7,7 @@ import 'package:legacytracker/src/features/tracking/widgets/tracking_map_layer.d
 
 void main() {
   _styleMappingTests();
+  _cameraBandTests();
 
   group('clusterMarkers', () {
     test('groups neighbouring markers and leaves far ones alone', () {
@@ -133,6 +134,25 @@ void _styleMappingTests() {
         'standard',
         'satellite',
       ]);
+    });
+  });
+}
+
+void _cameraBandTests() {
+  group('coveredMapHeight', () {
+    test('is the covered fraction of the map height', () {
+      expect(coveredMapHeight(0, 800), 0);
+      expect(coveredMapHeight(0.4, 800), 320);
+      expect(coveredMapHeight(0.35, 900), closeTo(315, 0.001));
+      expect(coveredMapHeight(1, 800), 800);
+    });
+
+    test('never reports more than the map or a negative band', () {
+      // A sheet dragged past the top, or a not-yet-laid-out map, must not turn
+      // into camera padding bigger than the view.
+      expect(coveredMapHeight(1.3, 800), 800);
+      expect(coveredMapHeight(-0.2, 800), 0);
+      expect(coveredMapHeight(0.5, 0), 0);
     });
   });
 }

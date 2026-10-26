@@ -39,6 +39,12 @@ double distanceMeters(LatLng a, LatLng b) {
   return 2 * _earthRadiusMeters * math.asin(math.min(1.0, math.sqrt(h)));
 }
 
+/// Height of the map that app chrome covers at the bottom, clamped to the map:
+/// the camera keeps the followed person centred in the band that remains, and
+/// the Mapbox ornaments are lifted above the same band.
+double coveredMapHeight(double fraction, double mapHeight) =>
+    (fraction * mapHeight).clamp(0.0, mapHeight).toDouble();
+
 /// Average of a set of coordinates. Used for cluster bubbles, which sit at the
 /// running centroid of their members.
 LatLng averagePosition(Iterable<LatLng> points) {

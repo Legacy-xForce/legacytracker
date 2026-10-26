@@ -322,7 +322,7 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 197 passed |
+| `flutter test` | 199 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |

@@ -219,9 +219,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _cameraZoom = clampedZoom;
     final map = _map;
     if (map == null) return;
-    final covered = (sheetFraction * _mapHeight)
-        .clamp(0.0, _mapHeight)
-        .toDouble();
+    final covered = coveredMapHeight(sheetFraction, _mapHeight);
     final camera = CameraOptions(
       center: Point(coordinates: Position(target.longitude, target.latitude)),
       zoom: clampedZoom,
@@ -653,7 +651,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// logo and attribution must not be. Clamped so the ornaments stay in view
   /// even with the sheet opened over the whole map.
   double get _coveredSheetHeight =>
-      (_sheetFraction * _mapHeight).clamp(0.0, _mapHeight).roundToDouble();
+      coveredMapHeight(_sheetFraction, _mapHeight).roundToDouble();
 
   /// Self plus every peer with a fix, grouped into bubbles at the current
   /// zoom. Positions come from the glide animations, so markers move smoothly
