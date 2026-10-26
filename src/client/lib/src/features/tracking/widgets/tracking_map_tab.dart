@@ -820,10 +820,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       ].join(',');
       final image = _imageFor(
         single
-            ? 'person:$signature'
+            ? 'person:${_personStyle.id}:$signature'
             : 'cluster:${_clusterStyle.id}:$signature',
         () => single
-            ? _icons.personMarker(persons.first)
+            ? _icons.personMarker(persons.first, style: _personStyle)
             : _icons.clusterMarker(persons, style: _clusterStyle),
       );
       if (image == null) continue;
@@ -850,6 +850,14 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           );
         }
       }
+      // The web scales the whole marker: selected 1.18, moving 1.08.
+      final markerScale = single
+          ? person.isSelected
+                ? 1.18
+                : person.isMoving
+                ? 1.08
+                : 1.0
+          : 1.0;
       markers.add(
         MapMarker(
           id: single
@@ -857,20 +865,31 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               : 'cluster-${group.members.map((m) => m.value.profile.id).join('-')}',
           position: single ? group.members.first.point : group.center,
           image: image,
-          layer: single ? MapMarkerLayer.user : MapMarkerLayer.cluster,
-          // The web scales the whole marker: selected 1.18, moving 1.08.
-          iconSize: single
-              ? person.isSelected
-                    ? 1.18
-                    : person.isMoving
-                    ? 1.08
-                    : 1
-              : 1,
-          payload: single
-              ? member.profile
-              : [for (final m in group.members) m.value.profile],
+          layer: single ? MapMarkerLayer.person : MapMarkerLayer.cluster,
+          iconSize: markerScale,
+          // The person bitmap is decoration: its 152x168 box is the beam's
+          // footprint, and Mapbox hit-tests that whole box, so the payload
+          // lives on a tight avatar-sized hit area instead (below). The
+          // cluster bitmap keeps its payload: the bubble body is the
+          // zoom-to-separate target.
+          payload: single ? null : [for (final m in group.members) m.value.profile],
         ),
       );
+      if (single) {
+        final hit = _imageFor('person-hit', () => _icons.personHitArea());
+        if (hit != null) {
+          markers.add(
+            MapMarker(
+              id: 'user-hit-${member.profile.id}',
+              position: group.members.first.point,
+              image: hit,
+              layer: MapMarkerLayer.user,
+              iconSize: markerScale,
+              payload: member.profile,
+            ),
+          );
+        }
+      }
       if (!single) {
         // A face inside the bubble selects that person, like on the web.
         // The tap callback names the annotation but never the touch point,
@@ -936,6 +955,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       chipText: scheme.surface,
     );
   }
+
+  /// Your ring is the theme accent, everyone else's the secondary grey of
+  /// the rest of the UI - white only reads well on a light map.
+  PersonStyle get _personStyle =>
+      personStyleFor(Theme.of(context).colorScheme);
 
   /// Greyed out when we haven't heard from the device in a while. Uses the
   /// server's last-seen time, not the position's age: a parked user's last

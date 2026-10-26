@@ -40,6 +40,31 @@ class MarkerImage {
   final double anchorOffsetY;
 }
 
+/// Ring colours for a person marker, taken from the app theme: your own ring
+/// is the accent, everyone else's the secondary grey that matches the rest of
+/// the UI (white only reads well on a light map).
+class PersonStyle {
+  const PersonStyle({required this.selfRing, required this.peerRing});
+
+  final Color selfRing;
+  final Color peerRing;
+
+  static const light = PersonStyle(
+    selfRing: markerAccentColor,
+    peerRing: Colors.white,
+  );
+
+  String get id => '${selfRing.toARGB32()}-${peerRing.toARGB32()}';
+}
+
+/// The theme a person marker's ring should use.
+PersonStyle personStyleFor(ColorScheme scheme) => PersonStyle(
+  selfRing: scheme.primary,
+  peerRing: scheme.brightness == Brightness.light
+      ? Colors.white
+      : scheme.onSurfaceVariant,
+);
+
 /// One person drawn on the map. Mirrors the web client's `PeerMarker`: an
 /// avatar in a ring, a speed badge while moving and a battery badge below.
 class MarkerPerson {
@@ -150,13 +175,16 @@ class MarkerIconFactory extends ChangeNotifier {
   /// The web client's person marker: the avatar inside a ring, a soft pulse and
   /// a speed badge while moving, and the battery badge below. Selection and
   /// motion scaling are applied by the caller as the annotation's icon size.
-  Future<MarkerImage> personMarker(MarkerPerson person) async {
+  Future<MarkerImage> personMarker(
+    MarkerPerson person, {
+    PersonStyle style = PersonStyle.light,
+  }) async {
     // Badge text and cache id share one 5 km/h bucket: that bounds how often a
     // 304x336 bitmap is re-rendered (roughly twice a second at motorway speed)
     // while still matching the web's rounded readout closely.
     final speed = person.isMoving ? (person.speedKmh / 5).round() * 5 : 0;
     final id =
-        'person-${_personToken(person)}'
+        'person-${style.id}-${_personToken(person)}'
         '-${person.isMoving ? speed : 'parked'}'
         '-${person.batteryLevel ?? '-'}'
         '${person.isCharging ? 'c' : ''}';
@@ -167,8 +195,8 @@ class MarkerIconFactory extends ChangeNotifier {
     final ring = person.isStale
         ? _staleGrey
         : person.isSelf
-        ? markerAccentColor
-        : Colors.white;
+        ? style.selfRing
+        : style.peerRing;
     final badge = person.isStale
         ? _badgeStale
         : person.isSelf
@@ -256,11 +284,20 @@ class MarkerIconFactory extends ChangeNotifier {
   /// annotation API names the tapped annotation but never says where on it
   /// the finger landed, so each visible face gets its own hit area drawn
   /// over the bubble and carrying that person's payload.
-  Future<MarkerImage> clusterFaceHitArea() async {
-    const id = 'cluster-face-hit';
+  Future<MarkerImage> clusterFaceHitArea() => hitArea(_clusterFaceSize);
+
+  /// The tight hit area for a person marker. The marker bitmap itself is
+  /// 152x168 logical pixels - the beam's footprint, mostly transparent - and
+  /// Mapbox hit-tests that whole box, so without a tight square of its own
+  /// ([_personRingSize], the visible avatar) a tap near one person can land
+  /// on another's transparent margin and open the wrong one.
+  Future<MarkerImage> personHitArea() => hitArea(_personRingSize);
+
+  Future<MarkerImage> hitArea(double size) async {
+    final id = 'hit-${size.round()}';
     final cached = _cached(id);
     if (cached != null) return cached;
-    return _render(_clusterFaceSize, _clusterFaceSize, (canvas) {}, id: id);
+    return _render(size, size, (canvas) {}, id: id);
   }
 
   /// Several people close together: their faces in one theme-coloured bubble

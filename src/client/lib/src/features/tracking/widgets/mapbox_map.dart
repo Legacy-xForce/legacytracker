@@ -11,8 +11,20 @@ import 'tracking_map_layer.dart';
 
 /// Annotation layers in draw order. Checkpoint names sit under everything,
 /// beams and calendar events under people, checkpoints under all of them but
-/// the route.
-enum MapMarkerLayer { label, beam, pulse, base, event, cluster, clusterFace, user }
+/// the route. The person *bitmap* is decoration (`person`, no taps — its box
+/// is the beam's footprint and would steal taps from whoever stands under a
+/// transparent margin); the tight `user` layer above it carries the hit areas.
+enum MapMarkerLayer {
+  label,
+  beam,
+  pulse,
+  base,
+  event,
+  person,
+  cluster,
+  clusterFace,
+  user
+}
 
 /// A bitmap marker the map renders through a native point annotation.
 class MapMarker {
@@ -380,6 +392,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final beamManager = await map.annotations.createPointAnnotationManager();
     final baseManager = await map.annotations.createPointAnnotationManager();
     final eventManager = await map.annotations.createPointAnnotationManager();
+    final personManager = await map.annotations
+        .createPointAnnotationManager();
     final clusterManager = await map.annotations.createPointAnnotationManager();
     // Created after the bubbles so a face's hit area outranks the bubble it
     // sits on: taps go to the topmost annotation only.
@@ -396,6 +410,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       ..[MapMarkerLayer.beam] = beamManager
       ..[MapMarkerLayer.base] = baseManager
       ..[MapMarkerLayer.event] = eventManager
+      ..[MapMarkerLayer.person] = personManager
       ..[MapMarkerLayer.cluster] = clusterManager
       ..[MapMarkerLayer.clusterFace] = clusterFaceManager
       ..[MapMarkerLayer.user] = userManager;

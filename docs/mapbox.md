@@ -121,8 +121,9 @@ to an embedded token. The token request has no body and deliberately sends no
   style with `StyleManager.addStyleImage`. Point annotations reference the image
   id, so moving a marker only updates geometry, never the bitmap bytes.
 - Markers are the web client's design, drawn into the bitmap: the avatar in a
-  ring that leaves a 2 px band (57 px ring around the 53 px avatar; white; the
-  accent colour on your own marker; grey when stale), a speed badge top-right
+  ring that leaves a 2 px band (57 px ring around the 53 px avatar; the theme
+  accent on your own marker, the theme's secondary grey on everyone else -
+  white only on a light theme; grey when stale), a speed badge top-right
   (`km/h`) and a battery badge under the avatar (dark pill, accent for
   yourself, grey when stale). Selection and motion scale the annotation
   (1.18 / 1.08) rather than adding bitmaps.
@@ -143,11 +144,16 @@ to an embedded token. The token request has no body and deliberately sends no
   pill (dark, pin glyph, 12 px semibold) as an image marker from zoom 13;
   replay routes are native polylines coloured by recorded speed.
 - No Flutter view annotations are used anywhere.
-- Mapbox delivers a tap only to the **topmost** annotation, so only the people,
-  cluster, cluster-face, event and replay-endpoint layers subscribe to taps,
-  plus the checkpoint polygon manager (tapping a circle opens that checkpoint's
-  editor); beams, pulses and checkpoint name pills are decoration and must
-  never sit between a finger and a person.
+- Mapbox delivers a tap only to the **topmost** annotation, and it hit-tests
+  the whole symbol box - alpha is irrelevant. The person bitmap is therefore
+  decoration in the `person` layer: its 152x168 box is the beam's footprint,
+  and letting it take taps opened whoever's transparent margin happened to sit
+  over the avatar you aimed at. A tight avatar-sized hit area in the `user`
+  layer carries the payload instead, so a tap resolves to the person you can
+  actually see. The cluster, cluster-face, event and replay-endpoint layers
+  subscribe as well, plus the checkpoint polygon manager (tapping a circle
+  opens that checkpoint's editor); beams, pulses and checkpoint name pills are
+  decoration and must never sit between a finger and a person.
 - Annotation managers are created once per map. On every `style.load` the
   widget re-adds style images and repopulates the managers: the sprite is wiped
   by a style switch, while the SDK re-adds the annotation layers themselves.
@@ -162,7 +168,8 @@ Rotation and pitch gestures are disabled on both clients.
 A Mapbox annotation manager is one style layer: markers, labels, checkpoint
 circles and each route layer get their own, created in draw order - route
 casing, route lines, checkpoint polygons, checkpoint name pills, heading beams,
-base markers, events, clusters, cluster-face hit areas, people.
+base markers, events, person bitmaps, clusters, cluster-face hit areas, person
+hit areas.
 
 The replay route is a dark casing under speed-coloured runs, mirroring the
 working web layer (`src/web/src/components/ReplayLayer.vue`: `line-color`

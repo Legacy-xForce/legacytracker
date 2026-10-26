@@ -319,8 +319,9 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final heading = _displayedHeading ?? current.heading;
     final showBeam = moving && heading != null && heading.isFinite;
 
+    final personStyle = personStyleFor(Theme.of(context).colorScheme);
     final markerImage = _imageFor(
-      'replay:${widget.userId}:$speedBucket',
+      'replay:${personStyle.id}:$speedBucket',
       () => _icons.personMarker(
         MarkerPerson(
           id: widget.userId,
@@ -328,6 +329,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           isMoving: moving,
           speedKmh: speedKmh,
         ),
+        style: personStyle,
       ),
     );
     final beamImage = showBeam

@@ -144,6 +144,36 @@ void main() {
     expect(identical(hit, await factory.clusterFaceHitArea()), isTrue);
   });
 
+  test('the person hit area covers just the visible avatar', () async {
+    final factory = MarkerIconFactory();
+    addTearDown(factory.dispose);
+
+    final hit = await factory.personHitArea();
+    // 57 logical px - the ring the avatar shows - at 2x, not the 152x168
+    // bitmap box the beam's footprint needs.
+    expect(hit.width, 114);
+    expect(hit.height, 114);
+    expect(hit.anchorOffsetY, 0);
+    expectPng(hit);
+  });
+
+  test('a different ring style is a different icon', () async {
+    final factory = MarkerIconFactory();
+    addTearDown(factory.dispose);
+
+    const person = MarkerPerson(id: 'a', name: 'Ada');
+    final themed = await factory.personMarker(
+      person,
+      style: const PersonStyle(
+        selfRing: Color(0xFF82D5C8),
+        peerRing: Color(0xFFBEC9C6),
+      ),
+    );
+    final plain = await factory.personMarker(person);
+    expect(themed.id, isNot(plain.id));
+    expectPng(themed);
+  });
+
   test('a checkpoint label is a small dark pill sized to its name', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);
