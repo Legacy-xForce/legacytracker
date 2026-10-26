@@ -44,6 +44,8 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
   late double _radius;
   MapboxMap? _map;
   MapboxTokenService? _tokenService;
+  final MapScene _scene = MapScene();
+  String? _sceneSpec;
   bool _initialized = false;
 
   Timer? _debounce;
@@ -73,11 +75,31 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
       getAccessToken: () => context.read<AuthProvider>().accessToken,
     );
     _initialized = true;
+    _syncScene();
+  }
+
+  /// The circle follows the crosshair, which moves on every pan; pushing it
+  /// through the scene keeps the map from rebuilding while the user drags.
+  void _syncScene() {
+    final overlay = MapCheckpointOverlay(
+      id: widget.checkpoint?.id ?? 'editor',
+      center: _readOnly ? widget.checkpoint!.center : _center,
+      radiusMeters: _radius,
+      color: Theme.of(context).colorScheme.primary,
+    );
+    final spec =
+        '${overlay.center.latitude},${overlay.center.longitude},'
+        '${overlay.radiusMeters},${overlay.color.toARGB32()}';
+    if (spec == _sceneSpec) return;
+    _sceneSpec = spec;
+    _scene.checkpoints = [overlay];
+    _scene.markChanged();
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
+    _scene.dispose();
     _tokenService?.dispose();
     _nameController.dispose();
     _searchController.dispose();
@@ -116,10 +138,9 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
 
   void _pick(PlaceResult place) {
     FocusScope.of(context).unfocus();
-    setState(() {
-      _results = const [];
-      _center = place.point;
-    });
+    setState(() => _results = const []);
+    _center = place.point;
+    _syncScene();
     _map?.setCamera(
       CameraOptions(
         center: Point(
@@ -141,7 +162,8 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
         next.longitude == _center.longitude) {
       return;
     }
-    setState(() => _center = next);
+    _center = next;
+    _syncScene();
   }
 
   Future<void> _save() async {
@@ -197,12 +219,8 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
         : _readOnly
         ? 'Checkpoint'
         : 'Edit checkpoint';
-    final overlay = MapCheckpointOverlay(
-      id: widget.checkpoint?.id ?? 'editor',
-      center: _readOnly ? widget.checkpoint!.center : _center,
-      radiusMeters: _radius,
-      color: theme.colorScheme.primary,
-    );
+    // Covers the radius slider and any other change that rebuilds this screen.
+    _syncScene();
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -220,7 +238,7 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
                     initialZoom: 16,
                     style: widget.mapLayer,
                     darkMode: theme.brightness == Brightness.dark,
-                    checkpoints: [overlay],
+                    scene: _scene,
                     onCameraChanged: _onCameraChanged,
                     onLoadError: (_) => session.recover(),
                     onMapCreated: (map) {

@@ -55,7 +55,6 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   late final List<LatLng> _latLngs;
   late final List<double> _segmentMeters;
   late final double _paceMetersPerSecond;
-  late final List<MapPolyline> _routeLines;
 
   late final AnimationController _segmentController;
   late final MapboxTokenService _tokenService;
@@ -69,6 +68,11 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   bool _isPlaying = false;
   bool _initialized = false;
   DateTime? _lastTick;
+
+  /// The route and the moving marker. Playback updates this ~20x a second, so
+  /// it lives here rather than in the widget tree.
+  final MapScene _scene = MapScene();
+  String? _sceneSpec;
 
   @override
   void initState() {
@@ -86,7 +90,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           _targetPlayback.inSeconds,
       _minPaceMetersPerSecond,
     );
-    _routeLines = _buildRouteLines();
+    _scene.polylines = _buildRouteLines();
     _segmentController = AnimationController(vsync: this)
       ..addListener(_handleSegmentTick)
       ..addStatusListener(_handleSegmentStatus);
@@ -111,14 +115,92 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     _icons
       ..removeListener(_handleIconsChanged)
       ..dispose();
+    _scene.dispose();
     _segmentController.dispose();
     _tokenService.dispose();
     super.dispose();
   }
 
+  /// The route plus the moving marker (and its beam and endpoints). Positions
+  /// and speed change continuously, so they go through the scene.
+  void _syncScene() {
+    if (_latLngs.isEmpty) return;
+    final index = _segmentStart.clamp(0, _route.length - 1);
+    final current = _route[index];
+    final currentPoint = _displayedPoint ?? _latLngs[index];
+    final moving = current.isMoving;
+    final speedKmh = current.speed * 3.6;
+    final speedBucket = moving ? (speedKmh / 5).round() * 5 : -1;
+    final heading = current.heading;
+    final showBeam = moving && heading != null && heading.isFinite;
+
+    final markerImage = _imageFor(
+      'replay:${widget.userId}:$speedBucket',
+      () => _icons.replayMarker(
+        person: MarkerPerson(id: widget.userId, name: widget.userName),
+        speedKmh: speedKmh,
+        isMoving: moving,
+      ),
+    );
+    final beamImage = showBeam
+        ? _imageFor('beam', () => _icons.headingBeam(markerAccentColor))
+        : null;
+    final startImage = _imageFor(
+      'start',
+      () => _icons.endpointMarker(const Color(0xFF34C759)),
+    );
+    final endImage = _imageFor(
+      'end',
+      () => _icons.endpointMarker(const Color(0xFFFF453A)),
+    );
+
+    final markers = <MapMarker>[
+      if (beamImage != null)
+        MapMarker(
+          id: 'moving-beam',
+          position: currentPoint,
+          image: beamImage,
+          layer: MapMarkerLayer.beam,
+          rotation: heading!,
+        ),
+      if (startImage != null)
+        MapMarker(
+          id: 'route-start',
+          position: _latLngs.first,
+          image: startImage,
+          layer: MapMarkerLayer.base,
+        ),
+      if (endImage != null)
+        MapMarker(
+          id: 'route-end',
+          position: _latLngs.last,
+          image: endImage,
+          layer: MapMarkerLayer.base,
+        ),
+      if (markerImage != null)
+        MapMarker(
+          id: 'replay-marker',
+          position: currentPoint,
+          image: markerImage,
+          layer: MapMarkerLayer.user,
+        ),
+    ];
+
+    final spec = [
+      for (final marker in markers)
+        '${marker.id}@${marker.position.latitude},${marker.position.longitude}'
+            ',${marker.image.id},${marker.rotation}',
+    ].join('|');
+    if (spec == _sceneSpec) return;
+    _sceneSpec = spec;
+    _scene.markers = markers;
+    _scene.markChanged();
+  }
+
   void _handleIconsChanged() {
     if (!mounted) return;
-    setState(() => _images.clear());
+    _images.clear();
+    _syncScene();
   }
 
   List<MapPolyline> _buildRouteLines() {
@@ -129,6 +211,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
         points: _latLngs,
         color: Colors.black.withValues(alpha: 0.35),
         width: 8,
+        layer: MapPolylineLayer.casing,
       ),
     ];
     var run = <LatLng>[_latLngs.first];
@@ -146,6 +229,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
               points: List.of(run),
               color: runColor,
               width: 5,
+              layer: MapPolylineLayer.route,
             ),
           );
           runIndex++;
@@ -162,6 +246,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           points: List.of(run),
           color: runColor,
           width: 5,
+          layer: MapPolylineLayer.route,
         ),
       );
     }
@@ -224,7 +309,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       return;
     }
     _lastTick = now;
-    setState(() => _displayedPoint = animated);
+    _displayedPoint = animated;
+    // The route and the marker live in the scene, so playback does not rebuild
+    // the screen 20 times a second.
+    _syncScene();
     _map?.setCamera(
       CameraOptions(
         center: Point(
@@ -241,6 +329,9 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     if (_segmentStart < _latLngs.length) {
       _displayedPoint = _latLngs[_segmentStart];
     }
+    // The clock and speed read-out follow the segment, so this refreshes once
+    // per segment rather than once per frame.
+    if (mounted) setState(() {});
     if (_isPlaying) {
       _playSegment();
     }
@@ -258,6 +349,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       _segmentStart = index;
       _displayedPoint = _latLngs[index];
     });
+    _syncScene();
     _centerOn(_latLngs[index]);
   }
 
@@ -322,7 +414,8 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
             .then((image) {
               _pendingImages.remove(key);
               if (!mounted) return;
-              setState(() => _images[key] = image);
+              _images[key] = image;
+              _syncScene();
             })
             .catchError((_) {
               _pendingImages.remove(key);
@@ -361,65 +454,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       );
     }
 
+    _syncScene();
     final currentIndex = _segmentStart.clamp(0, _route.length - 1);
     final current = _route[currentIndex];
-    final currentPoint = _displayedPoint ?? _latLngs[currentIndex];
-    final moving = current.isMoving;
     final speedKmh = current.speed * 3.6;
-    final person = MarkerPerson(id: widget.userId, name: widget.userName);
-    final speedBucket = moving ? (speedKmh / 5).round() * 5 : -1;
-    final markerImage = _imageFor(
-      'replay:${widget.userId}:$speedBucket',
-      () => _icons.replayMarker(
-        person: person,
-        speedKmh: speedKmh,
-        isMoving: moving,
-      ),
-    );
-    final heading = current.heading;
-    final beamImage = moving && heading != null && heading.isFinite
-        ? _imageFor('beam', () => _icons.headingBeam(markerAccentColor))
-        : null;
-    final startImage = _imageFor(
-      'start',
-      () => _icons.endpointMarker(const Color(0xFF34C759)),
-    );
-    final endImage = _imageFor(
-      'end',
-      () => _icons.endpointMarker(const Color(0xFFFF453A)),
-    );
-
-    final markers = <MapMarker>[
-      if (beamImage != null)
-        MapMarker(
-          id: 'moving-beam',
-          position: currentPoint,
-          image: beamImage,
-          layer: MapMarkerLayer.beam,
-          rotation: heading!,
-        ),
-      if (startImage != null)
-        MapMarker(
-          id: 'route-start',
-          position: _latLngs.first,
-          image: startImage,
-          layer: MapMarkerLayer.base,
-        ),
-      if (endImage != null)
-        MapMarker(
-          id: 'route-end',
-          position: _latLngs.last,
-          image: endImage,
-          layer: MapMarkerLayer.base,
-        ),
-      if (markerImage != null)
-        MapMarker(
-          id: 'replay-marker',
-          position: currentPoint,
-          image: markerImage,
-          layer: MapMarkerLayer.user,
-        ),
-    ];
 
     return Scaffold(
       appBar: _appBar(theme),
@@ -437,8 +475,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
                     initialZoom: _currentZoom,
                     style: _selectedLayer,
                     darkMode: theme.brightness == Brightness.dark,
-                    markers: markers,
-                    polylines: _routeLines,
+                    scene: _scene,
                     onCameraChanged: _onCameraChanged,
                     onLoadError: (_) => session.recover(),
                     onMapCreated: (map) {

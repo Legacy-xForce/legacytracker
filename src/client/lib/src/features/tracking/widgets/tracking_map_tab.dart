@@ -30,6 +30,15 @@ import 'tracking_users_drawer.dart';
 /// Zoomed out further, checkpoint names would pile up into noise; circles stay.
 const double _checkpointLabelsFromZoom = 13;
 
+/// Screen-pixel distance under which two markers fold into one bubble. Sized
+/// to the bubble's visual footprint, so two icons never overlap unnoticed.
+const double _clusterPixelRadius = 96;
+
+/// Real-world distance under which markers may be folded together. The pixel
+/// limit alone shrinks in metres as the map zooms out, which would merge
+/// people kilometres apart; this keeps a cluster meaning "actually together".
+const double _clusterMaxMeters = 100;
+
 class TrackingMapTab extends StatefulWidget {
   const TrackingMapTab({
     super.key,
@@ -58,11 +67,17 @@ class TrackingMapTab extends StatefulWidget {
   final bool selfTrackingPaused;
   final bool selfMissingPermissions;
   final bool selfBatterySavingEnabled;
+
+  /// Someone is watching the map, so devices are streaming in realtime.
   final bool selfLive;
+
+  /// Who has the live map open right now, us included.
   final List<MapViewer> viewers;
   final String? selectedUserId;
   final ValueChanged<MapLayer> onLayerSelected;
   final ValueChanged<UserProfile> onUserSelected;
+
+  /// The sharing-status pill was tapped (opens the sharing settings).
   final VoidCallback onStatusTap;
   final MapboxTokenService? mapboxTokenService;
 
@@ -75,6 +90,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   final MarkerIconFactory _icons = MarkerIconFactory();
   final Map<String, MarkerImage> _images = {};
   final Set<String> _pendingImages = {};
+
+  /// What the map draws. Marker positions change ~10x a second; rebuilding the
+  /// drawer and the control column alongside them is what made the map
+  /// stutter, so motion updates this scene and the map re-syncs on its own.
+  final MapScene _scene = MapScene();
 
   MapboxMap? _map;
   Size? _mapSize;
@@ -117,6 +137,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _icons
       ..removeListener(_handleIconsChanged)
       ..dispose();
+    _scene.dispose();
     for (final motion in _motions.values) {
       motion.dispose();
     }
@@ -126,7 +147,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
 
   void _handleIconsChanged() {
     if (!mounted) return;
-    setState(() => _images.clear());
+    // An avatar finished loading: every cached icon keyed on "no photo yet"
+    // has to be rebuilt with the photo.
+    _images.clear();
+    _publishScene();
   }
 
   void _jumpToInitialFixIfNeeded(TrackingMapTab oldWidget) {
@@ -195,6 +219,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     final camera = CameraOptions(
       center: Point(coordinates: Position(target.longitude, target.latitude)),
       zoom: clampedZoom,
+      // Padding puts the target in the middle of the part of the map the
+      // people sheet leaves visible, rather than behind it.
       padding: MbxEdgeInsets(top: 0, left: 0, bottom: covered, right: 0),
     );
     if (animate) {
@@ -309,6 +335,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
+  /// Centers on ourselves without opening our details: the button means "where
+  /// am I", not "show me my stats".
   void _recenterOnSelf() {
     final location = widget.selfProfile.lastLocation;
     if (location != null &&
@@ -327,26 +355,26 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       _autoFollow = true;
       _followedUserId = profile.id;
     });
+    _sheetFraction = sheetFraction;
     _animateMapTo(
       LatLng(location.latitude, location.longitude),
       zoomTarget: _currentZoomForSelection,
       sheetFraction: sheetFraction,
     );
-    _sheetFraction = sheetFraction;
   }
 
   void _handleMotionTick() {
     if (!mounted) return;
     final now = DateTime.now();
     final last = _lastMotionBuild;
-    // Native annotation updates cross a platform channel; ~12 fps keeps the
+    // Native annotation updates cross a platform channel; ~10 fps keeps the
     // glide smooth without flooding it.
     if (last != null &&
-        now.difference(last) < const Duration(milliseconds: 80)) {
+        now.difference(last) < const Duration(milliseconds: 100)) {
       return;
     }
     _lastMotionBuild = now;
-    setState(() {});
+    _publishScene();
     _syncMapCameraToFollowedUser();
   }
 
@@ -356,6 +384,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     // Let a deliberate focus animation finish before the motion tick takes
     // over camera control.
     if (_cameraAnimating) return;
+    // Never move the camera while the user is touching the map.
     if (_pointerLocations.isNotEmpty) return;
     final followedId =
         _followedUserId ?? widget.selectedUserId ?? widget.selfProfile.id;
@@ -379,10 +408,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       state.center.coordinates.lng.toDouble(),
     );
     final labelsAfter = zoom >= _checkpointLabelsFromZoom;
-    // Crossing the label threshold must rebuild even if the zoom change was
-    // small; otherwise a slow pinch can stop just short of updating them.
+    // Clusters and checkpoint labels depend on zoom, so a zoom change
+    // republishes the scene. The control icons do not, so the rest of the
+    // screen stays put.
     if (labelsBefore != labelsAfter) {
-      setState(() {});
+      _publishScene();
       return;
     }
     if (delta < 0.12) return;
@@ -393,15 +423,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       return;
     }
     _lastClusterBuild = now;
-    setState(() {});
+    _publishScene();
   }
 
-  MapboxMapWidget _mapWidget(
-    BuildContext context,
-    MapboxTokenSession session,
-    List<MapMarker> markers,
-    List<MapCheckpointOverlay> checkpoints,
-  ) {
+  Widget _mapWidget(BuildContext context, MapboxTokenSession session) {
     return MapboxMapWidget(
       key: ValueKey('tracking-map-${session.generation}'),
       accessToken: session.token,
@@ -409,8 +434,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       initialZoom: _cameraZoom,
       style: widget.selectedLayer,
       darkMode: Theme.of(context).brightness == Brightness.dark,
-      markers: markers,
-      checkpoints: checkpoints,
+      scene: _scene,
       showCheckpointLabels: true,
       onMarkerTap: _onMarkerTap,
       onCameraChanged: _onCameraChanged,
@@ -433,27 +457,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     final topInset = MediaQuery.paddingOf(context).top;
     final events = context.watch<CalendarEventsProvider?>();
     final checkpointsProvider = context.watch<CheckpointsProvider?>();
-    final checkpoints = (checkpointsProvider?.showOnMap ?? true)
-        ? checkpointsProvider?.checkpoints ?? const <Checkpoint>[]
-        : const <Checkpoint>[];
     final selfAvatarBytes = context.watch<LocalAvatarStore?>()?.bytes;
 
-    final markers = _buildMarkers(
-      context,
+    // Provider changes flow through this build; marker motion publishes the
+    // scene directly so it never rebuilds the drawer or the controls.
+    _refreshScene(
       events: events,
+      checkpointsProvider: checkpointsProvider,
       selfAvatarBytes: selfAvatarBytes,
     );
-    final checkpointOverlays = <MapCheckpointOverlay>[
-      for (final checkpoint in checkpoints)
-        MapCheckpointOverlay(
-          id: checkpoint.id,
-          center: checkpoint.center,
-          radiusMeters: checkpoint.radiusM.toDouble(),
-          label: _cameraZoom >= _checkpointLabelsFromZoom
-              ? checkpoint.name
-              : null,
-        ),
-    ];
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -467,8 +479,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               child: MapboxTokenGate(
                 service: widget.mapboxTokenService,
                 devToken: const String.fromEnvironment('MAPBOX_TOKEN'),
-                builder: (context, session) =>
-                    _mapWidget(context, session, markers, checkpointOverlays),
+                builder: (context, session) => _mapWidget(context, session),
               ),
             ),
             Positioned(
@@ -573,42 +584,86 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
-  List<MapMarker> _buildMarkers(
-    BuildContext context, {
+  void _publishScene() {
+    if (!mounted) return;
+    _refreshScene(
+      events: context.read<CalendarEventsProvider?>(),
+      checkpointsProvider: context.read<CheckpointsProvider?>(),
+      selfAvatarBytes: context.read<LocalAvatarStore?>()?.bytes,
+    );
+  }
+
+  void _refreshScene({
+    required CalendarEventsProvider? events,
+    required CheckpointsProvider? checkpointsProvider,
+    required Uint8List? selfAvatarBytes,
+  }) {
+    final markers = _buildMarkers(
+      events: events,
+      selfAvatarBytes: selfAvatarBytes,
+    );
+    final checkpoints = (checkpointsProvider?.showOnMap ?? true)
+        ? checkpointsProvider?.checkpoints ?? const <Checkpoint>[]
+        : const <Checkpoint>[];
+    final showLabels = _cameraZoom >= _checkpointLabelsFromZoom;
+    final overlays = [
+      for (final checkpoint in checkpoints)
+        MapCheckpointOverlay(
+          id: checkpoint.id,
+          center: checkpoint.center,
+          radiusMeters: checkpoint.radiusM.toDouble(),
+          label: showLabels ? checkpoint.name : null,
+        ),
+    ];
+
+    // Skip the notify when nothing moved: the drawer rebuilds for other
+    // reasons, and re-syncing identical annotations is pure overhead.
+    if (_sameMarkers(_scene.markers, markers) &&
+        _sameOverlays(_scene.checkpoints, overlays)) {
+      return;
+    }
+    _scene
+      ..markers = markers
+      ..checkpoints = overlays
+      ..markChanged();
+  }
+
+  /// Self plus every peer with a fix, grouped into bubbles at the current
+  /// zoom. Positions come from the glide animations, so markers move smoothly
+  /// between fixes instead of teleporting.
+  List<MapMarker> _buildMarkers({
     required CalendarEventsProvider? events,
     required Uint8List? selfAvatarBytes,
   }) {
-    final markers = <MapMarker>[];
-
     final entries = <ClusterInput<_TrackedUser>>[];
-    final selfLocation = widget.selfProfile.lastLocation;
-    if (_validLocation(selfLocation)) {
+    void add(UserProfile profile, {required bool isSelf}) {
+      final location = profile.lastLocation;
+      if (location == null ||
+          !location.latitude.isFinite ||
+          !location.longitude.isFinite) {
+        return;
+      }
       entries.add(
         ClusterInput(
-          value: _TrackedUser(widget.selfProfile, isSelf: true),
-          point: _animatedPoint(widget.selfProfile.id, selfLocation!),
-        ),
-      );
-    }
-    for (final peer in widget.peers) {
-      final location = peer.lastLocation;
-      if (!_validLocation(location)) continue;
-      entries.add(
-        ClusterInput(
-          value: _TrackedUser(peer, isSelf: false),
-          point: _animatedPoint(peer.id, location!),
+          value: _TrackedUser(profile, isSelf: isSelf),
+          point: _animatedPoint(profile.id, location),
         ),
       );
     }
 
-    final groups = clusterMarkers(
+    add(widget.selfProfile, isSelf: true);
+    for (final peer in widget.peers) {
+      add(peer, isSelf: false);
+    }
+
+    final markers = <MapMarker>[];
+    for (final group in clusterMarkers(
       entries,
       zoom: _cameraZoom,
-      pixelRadius: 96,
-      maxMeters: 100,
-    );
-    for (final group in groups) {
-      final persons = <MarkerPerson>[
+      pixelRadius: _clusterPixelRadius,
+      maxMeters: _clusterMaxMeters,
+    )) {
+      final persons = [
         for (final member in group.members)
           MarkerPerson(
             id: member.value.profile.id,
@@ -651,7 +706,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     if (events != null) {
       for (final event in events.visibleEvents) {
         final point = event.point;
-        if (point == null) continue;
+        if (point == null || !point.latitude.isFinite) continue;
         final color = event.color ?? eventFallbackColor;
         final image = _imageFor(
           'event:${color.toARGB32()}',
@@ -671,6 +726,14 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     return markers;
+  }
+
+  /// Greyed out when we haven't heard from the device in a while. Uses the
+  /// server's last-seen time, not the position's age: a parked user's last
+  /// point is old by design yet they are still online.
+  bool _isStale(UserProfile profile) {
+    if (profile.id == widget.selfProfile.id) return false;
+    return profile.isStale;
   }
 
   void _onMarkerTap(MapMarker marker) {
@@ -693,7 +756,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
             .then((image) {
               _pendingImages.remove(key);
               if (!mounted) return;
-              setState(() => _images[key] = image);
+              _images[key] = image;
+              // Only the annotations need to know a finished icon exists.
+              _publishScene();
             })
             .catchError((_) {
               _pendingImages.remove(key);
@@ -707,20 +772,47 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     return _motions[id]?.value ?? LatLng(fallback.latitude, fallback.longitude);
   }
 
-  bool _validLocation(LocationPoint? location) =>
-      location != null &&
-      location.latitude.isFinite &&
-      location.longitude.isFinite;
+  bool _sameMarkers(List<MapMarker> a, List<MapMarker> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.id != right.id ||
+          left.layer != right.layer ||
+          left.image.id != right.image.id ||
+          left.position.latitude != right.position.latitude ||
+          left.position.longitude != right.position.longitude) {
+        return false;
+      }
+    }
+    return true;
+  }
 
-  bool _isStale(UserProfile profile) {
-    if (profile.id == widget.selfProfile.id) return false;
-    return profile.isStale;
+  bool _sameOverlays(
+    List<MapCheckpointOverlay> a,
+    List<MapCheckpointOverlay> b,
+  ) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      final left = a[i];
+      final right = b[i];
+      if (left.id != right.id ||
+          left.radiusMeters != right.radiusMeters ||
+          left.label != right.label ||
+          left.center.latitude != right.center.latitude ||
+          left.center.longitude != right.center.longitude) {
+        return false;
+      }
+    }
+    return true;
   }
 
   Point _point(LatLng point) =>
       Point(coordinates: Position(point.longitude, point.latitude));
 }
 
+/// A trackable user (self or peer), used as the unit clustering groups
+/// together.
 class _TrackedUser {
   const _TrackedUser(this.profile, {required this.isSelf});
 
@@ -736,6 +828,8 @@ class _MarkerMotion {
       ..addStatusListener(_handleStatus);
   }
 
+  // Glide bounds: long enough that movement reads as continuous, short enough
+  // that a late update doesn't leave the marker crawling far behind reality.
   static const Duration _minGlide = Duration(milliseconds: 300);
   static const Duration _maxGlide = Duration(seconds: 4);
   static const Duration _defaultGlide = Duration(milliseconds: 1000);
@@ -748,8 +842,15 @@ class _MarkerMotion {
   LatLng? _lastTarget;
   DateTime? _lastUpdateAt;
 
+  /// The position the marker should currently be drawn at, or null until a
+  /// valid location has been seen.
   LatLng? get value => _displayed;
 
+  /// Tweens towards [location], reusing the previous position as the start
+  /// point so the marker glides rather than teleports. Movement is keyed on
+  /// the coordinates rather than the timestamp: peer timestamps come from the
+  /// server's `recorded_at`, which can repeat across updates, whereas a
+  /// changed position is exactly what should trigger a glide.
   void update(LocationPoint? location) {
     if (location == null ||
         !location.latitude.isFinite ||
@@ -791,10 +892,10 @@ class _MarkerMotion {
       ..forward(from: 0);
   }
 
+  /// Spreads the glide across the measured time between updates so the marker
+  /// arrives roughly as the next fix lands, clamped to sane bounds.
   Duration _glideDuration(Duration? interval) {
-    if (interval == null) {
-      return _defaultGlide;
-    }
+    if (interval == null) return _defaultGlide;
     if (interval < _minGlide) return _minGlide;
     if (interval > _maxGlide) return _maxGlide;
     return interval;
@@ -802,20 +903,15 @@ class _MarkerMotion {
 
   void _handleTick() {
     final animated = _animation?.value;
-    if (animated == null) {
-      return;
-    }
+    if (animated == null) return;
     _displayed = animated;
     onTick();
   }
 
   void _handleStatus(AnimationStatus status) {
-    if (status == AnimationStatus.completed) {
-      if (_animation != null) {
-        _displayed = _animation!.value;
-      }
-      _animation = null;
-    }
+    if (status != AnimationStatus.completed) return;
+    if (_animation != null) _displayed = _animation!.value;
+    _animation = null;
   }
 
   void dispose() {
@@ -825,9 +921,8 @@ class _MarkerMotion {
       ..dispose();
   }
 
-  static bool _sameLatLng(LatLng a, LatLng b) {
-    return a.latitude == b.latitude && a.longitude == b.longitude;
-  }
+  static bool _sameLatLng(LatLng a, LatLng b) =>
+      a.latitude == b.latitude && a.longitude == b.longitude;
 }
 
 class _LatLngTween extends Tween<LatLng> {
@@ -835,14 +930,14 @@ class _LatLngTween extends Tween<LatLng> {
     : super(begin: begin, end: end);
 
   @override
-  LatLng lerp(double t) {
-    return LatLng(
-      begin!.latitude + (end!.latitude - begin!.latitude) * t,
-      begin!.longitude + (end!.longitude - begin!.longitude) * t,
-    );
-  }
+  LatLng lerp(double t) => LatLng(
+    begin!.latitude + (end!.latitude - begin!.latitude) * t,
+    begin!.longitude + (end!.longitude - begin!.longitude) * t,
+  );
 }
 
+/// Whether we're sharing our location, at a glance; tapping it opens the
+/// sharing settings.
 class _SharingStatusPill extends StatelessWidget {
   const _SharingStatusPill({
     required this.paused,

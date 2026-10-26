@@ -3,8 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:legacytracker/src/features/tracking/widgets/map_geometry.dart';
+import 'package:legacytracker/src/features/tracking/widgets/tracking_map_layer.dart';
 
 void main() {
+  _styleMappingTests();
+
   group('clusterMarkers', () {
     test('groups neighbouring markers and leaves far ones alone', () {
       final entries = [
@@ -109,5 +112,27 @@ void main() {
     final limit = worldY(const LatLng(85.05112878, 0), 5);
     expect(top, closeTo(limit, 1e-9));
     expect(top, closeTo(0, 1e-6));
+  });
+}
+
+void _styleMappingTests() {
+  group('mapboxStyleUri', () {
+    test('maps the two basemaps to Mapbox Standard styles', () {
+      expect(
+        mapboxStyleUri(MapLayer.standard),
+        'mapbox://styles/mapbox/standard',
+      );
+      expect(
+        mapboxStyleUri(MapLayer.satellite),
+        'mapbox://styles/mapbox/standard-satellite',
+      );
+    });
+
+    test('terrain is gone from the layer list', () {
+      expect(MapLayer.values.map((layer) => layer.name), [
+        'standard',
+        'satellite',
+      ]);
+    });
   });
 }

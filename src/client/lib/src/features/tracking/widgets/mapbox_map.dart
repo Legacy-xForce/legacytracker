@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
@@ -72,6 +70,11 @@ class MapCheckpointOverlay {
   final Color color;
 }
 
+/// Line layers in draw order. Every manager adds its style layer on top of the
+/// ones created before it, so a casing can never end up over the route it is
+/// supposed to sit under.
+enum MapPolylineLayer { casing, route }
+
 /// A route line for replay.
 class MapPolyline {
   const MapPolyline({
@@ -79,12 +82,29 @@ class MapPolyline {
     required this.points,
     required this.color,
     required this.width,
+    this.layer = MapPolylineLayer.route,
   });
 
   final String id;
   final List<LatLng> points;
   final Color color;
   final double width;
+  final MapPolylineLayer layer;
+}
+
+/// The annotation inputs of one [MapboxMapWidget].
+///
+/// Mutable on purpose: marker positions change ~10 times a second, and
+/// rebuilding the Flutter tree around a platform-view map just to move a pin
+/// costs more than the move itself. Callers update the lists and call
+/// [markChanged]; the map re-syncs its annotations without any rebuild.
+class MapScene extends ChangeNotifier {
+  List<MapMarker> markers = const [];
+  List<MapTextMarker> labels = const [];
+  List<MapCheckpointOverlay> checkpoints = const [];
+  List<MapPolyline> polylines = const [];
+
+  void markChanged() => notifyListeners();
 }
 
 /// Mapbox-powered map surface shared by live tracking, replay and the
@@ -100,11 +120,8 @@ class MapboxMapWidget extends StatefulWidget {
     required this.initialCenter,
     required this.initialZoom,
     required this.style,
+    required this.scene,
     this.darkMode = true,
-    this.markers = const [],
-    this.labels = const [],
-    this.checkpoints = const [],
-    this.polylines = const [],
     this.showCheckpointLabels = false,
     this.onMarkerTap,
     this.onMapCreated,
@@ -117,11 +134,10 @@ class MapboxMapWidget extends StatefulWidget {
   final LatLng initialCenter;
   final double initialZoom;
   final MapLayer style;
+
+  /// Owned by the caller; this widget only listens.
+  final MapScene scene;
   final bool darkMode;
-  final List<MapMarker> markers;
-  final List<MapTextMarker> labels;
-  final List<MapCheckpointOverlay> checkpoints;
-  final List<MapPolyline> polylines;
   final bool showCheckpointLabels;
   final ValueChanged<MapMarker>? onMarkerTap;
   final ValueChanged<MapboxMap>? onMapCreated;
@@ -137,7 +153,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   MapboxMap? _map;
   late final ViewportState _viewport;
 
-  PolylineAnnotationManager? _lineManager;
+  final Map<MapPolylineLayer, PolylineAnnotationManager> _lineManagers = {};
   PolygonAnnotationManager? _checkpointManager;
   PointAnnotationManager? _labelManager;
   final Map<MapMarkerLayer, PointAnnotationManager> _pointManagers = {};
@@ -162,6 +178,11 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   bool _dirty = false;
   int _styleEpoch = 0;
 
+  /// Built once. The map is a platform view, so handing Flutter a fresh widget
+  /// every animation frame costs more than the annotation update it carries;
+  /// an identical instance lets the subtree skip rebuilding entirely.
+  late final Widget _surface;
+
   @override
   void initState() {
     super.initState();
@@ -169,14 +190,28 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       center: _point(widget.initialCenter),
       zoom: widget.initialZoom,
     );
+    widget.scene.addListener(_onSceneChanged);
     if (widget.accessToken.isNotEmpty) {
       MapboxOptions.setAccessToken(widget.accessToken);
     }
+    _surface = MapWidget(
+      styleUri: mapboxStyleUri(widget.style),
+      viewport: _viewport,
+      onMapCreated: _onMapCreated,
+      onStyleLoadedListener: (_) => _onStyleLoaded(),
+      onMapLoadErrorListener: (error) => widget.onLoadError?.call(error),
+      onCameraChangeListener: (event) =>
+          widget.onCameraChanged?.call(event.cameraState),
+    );
   }
 
   @override
   void didUpdateWidget(covariant MapboxMapWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.scene != oldWidget.scene) {
+      oldWidget.scene.removeListener(_onSceneChanged);
+      widget.scene.addListener(_onSceneChanged);
+    }
     if (widget.accessToken.isNotEmpty &&
         widget.accessToken != oldWidget.accessToken) {
       MapboxOptions.setAccessToken(widget.accessToken);
@@ -186,7 +221,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       _styleEpoch++;
       final map = _map;
       if (map != null) {
-        map.loadStyleURI(_styleUri(widget.style));
+        map.loadStyleURI(mapboxStyleUri(widget.style));
       }
     }
     if (widget.darkMode != oldWidget.darkMode) {
@@ -197,24 +232,18 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
 
   @override
   void dispose() {
+    widget.scene.removeListener(_onSceneChanged);
     _cancelTaps();
     super.dispose();
   }
+
+  void _onSceneChanged() => _syncAll();
 
   void _cancelTaps() {
     for (final subscription in _tapSubscriptions) {
       subscription.cancel();
     }
     _tapSubscriptions.clear();
-  }
-
-  String _styleUri(MapLayer style) {
-    switch (style) {
-      case MapLayer.satellite:
-        return MapboxStyles.STANDARD_SATELLITE;
-      case MapLayer.standard:
-        return MapboxStyles.STANDARD;
-    }
   }
 
   Point _point(LatLng point) =>
@@ -279,7 +308,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     if (_managersReady) return;
     final map = _map;
     if (map == null) return;
-    final lineManager = await map.annotations.createPolylineAnnotationManager();
+    final casingManager = await map.annotations
+        .createPolylineAnnotationManager();
+    final routeManager = await map.annotations
+        .createPolylineAnnotationManager();
     final checkpointManager = await map.annotations
         .createPolygonAnnotationManager();
     final labelManager = await map.annotations.createPointAnnotationManager();
@@ -289,7 +321,9 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final clusterManager = await map.annotations.createPointAnnotationManager();
     final userManager = await map.annotations.createPointAnnotationManager();
 
-    _lineManager = lineManager;
+    _lineManagers
+      ..[MapPolylineLayer.casing] = casingManager
+      ..[MapPolylineLayer.route] = routeManager;
     _checkpointManager = checkpointManager;
     _labelManager = labelManager;
     _pointManagers
@@ -325,7 +359,9 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     }
     if (_labelManager != null) await clear(_labelManager!.deleteAll);
     if (_checkpointManager != null) await clear(_checkpointManager!.deleteAll);
-    if (_lineManager != null) await clear(_lineManager!.deleteAll);
+    for (final manager in _lineManagers.values) {
+      await clear(manager.deleteAll);
+    }
     _annotations.clear();
     _annotationSpecs.clear();
     _labelAnnotations.clear();
@@ -342,7 +378,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         onTap: (annotation) {
           final markerId = annotation.customData?['markerId'] as String?;
           if (markerId == null) return;
-          for (final marker in widget.markers) {
+          for (final marker in widget.scene.markers) {
             if (marker.id == markerId && marker.payload != null) {
               widget.onMarkerTap?.call(marker);
               return;
@@ -389,9 +425,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
 
   Future<void> _syncOnce() async {
     final usedImages = <String>{
-      for (final marker in widget.markers) marker.image.id,
+      for (final marker in widget.scene.markers) marker.image.id,
     };
-    for (final marker in widget.markers) {
+    for (final marker in widget.scene.markers) {
+      if (_addedImages.contains(marker.image.id)) continue;
       try {
         await _ensureImage(marker.image);
         _failedImages.remove(marker.image.id);
@@ -402,15 +439,24 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       }
     }
 
-    await _syncPointLayer(MapMarkerLayer.beam, MapMarkerLayer.beam);
-    await _syncPointLayer(MapMarkerLayer.base, MapMarkerLayer.base);
-    await _syncPointLayer(MapMarkerLayer.event, MapMarkerLayer.event);
-    await _syncPointLayer(MapMarkerLayer.cluster, MapMarkerLayer.cluster);
-    await _syncPointLayer(MapMarkerLayer.user, MapMarkerLayer.user);
-    await _syncLabels();
-    await _syncCheckpoints();
-    await _syncLines();
+    for (final layer in MapMarkerLayer.values) {
+      await _attempt('layer ${layer.name}', () => _syncPointLayer(layer));
+    }
+    await _attempt('labels', _syncLabels);
+    await _attempt('checkpoints', _syncCheckpoints);
+    for (final layer in MapPolylineLayer.values) {
+      await _attempt('line layer ${layer.name}', () => _syncLineLayer(layer));
+    }
     await _removeUnusedImages(usedImages);
+  }
+
+  /// A failed layer must not take the rest of the annotations with it.
+  Future<void> _attempt(String what, Future<void> Function() run) async {
+    try {
+      await run();
+    } catch (error) {
+      _logSyncError(what, error);
+    }
   }
 
   void _logSyncError(String context, Object error) {
@@ -453,15 +499,12 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     }
   }
 
-  Future<void> _syncPointLayer(
-    MapMarkerLayer layer,
-    MapMarkerLayer source,
-  ) async {
+  Future<void> _syncPointLayer(MapMarkerLayer layer) async {
     final manager = _pointManagers[layer];
     if (manager == null) return;
     final desired = <String, MapMarker>{
-      for (final marker in widget.markers)
-        if (marker.layer == source && !_failedImages.contains(marker.image.id))
+      for (final marker in widget.scene.markers)
+        if (marker.layer == layer && !_failedImages.contains(marker.image.id))
           '${layer.name}:${marker.id}': marker,
     };
     final existingKeys = _annotations.keys
@@ -530,9 +573,9 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final manager = _labelManager;
     if (manager == null) return;
     final wanted = <String, MapTextMarker>{
-      for (final label in widget.labels) label.id: label,
+      for (final label in widget.scene.labels) label.id: label,
       if (widget.showCheckpointLabels)
-        for (final checkpoint in widget.checkpoints)
+        for (final checkpoint in widget.scene.checkpoints)
           if (checkpoint.label != null)
             'checkpoint-${checkpoint.id}': MapTextMarker(
               id: 'checkpoint-${checkpoint.id}',
@@ -588,7 +631,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final manager = _checkpointManager;
     if (manager == null) return;
     final wanted = <String, MapCheckpointOverlay>{
-      for (final checkpoint in widget.checkpoints) checkpoint.id: checkpoint,
+      for (final checkpoint in widget.scene.checkpoints)
+        checkpoint.id: checkpoint,
     };
     final existingKeys = _checkpointAnnotations.keys.toList();
     for (final entry in wanted.entries) {
@@ -633,30 +677,47 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     );
   }
 
-  Future<void> _syncLines() async {
-    final manager = _lineManager;
+  Future<void> _syncLineLayer(MapPolylineLayer layer) async {
+    final manager = _lineManagers[layer];
     if (manager == null) return;
-    final wanted = <String, MapPolyline>{
-      for (final line in widget.polylines) line.id: line,
-    };
-    final existingKeys = _lineAnnotations.keys.toList();
+    final wanted = <String, MapPolyline>{};
+    final wantedCounts = <String, int>{};
+    for (final line in widget.scene.polylines) {
+      if (line.layer != layer) continue;
+      final count = _linePositions(line).length;
+      // A one-point run is not a line, and the native API rejects it.
+      if (count > 1) {
+        wanted['${layer.name}:${line.id}'] = line;
+        wantedCounts['${layer.name}:${line.id}'] = count;
+      }
+    }
+    final existingKeys = _lineAnnotations.keys
+        .where((key) => key.startsWith('${layer.name}:'))
+        .toList();
     for (final entry in wanted.entries) {
+      final key = entry.key;
       final line = entry.value;
       final spec =
-          '${line.color.toARGB32()},${line.width},'
-          '${line.points.length}:'
-          '${line.points.isEmpty ? '' : '${line.points.first.latitude},${line.points.first.longitude},${line.points.last.latitude},${line.points.last.longitude}'}';
-      final annotation = _lineAnnotations[entry.key];
+          '${line.color.toARGB32()},${line.width},${wantedCounts[key]}';
+      final annotation = _lineAnnotations[key];
       if (annotation == null) {
-        final created = await manager.create(_lineOptions(line));
-        _lineAnnotations[entry.key] = created;
-        _lineSpecs[entry.key] = spec;
-      } else if (_lineSpecs[entry.key] != spec) {
-        annotation.geometry = _lineGeometry(line);
-        annotation.lineColor = line.color.toARGB32();
-        annotation.lineWidth = line.width;
-        await manager.update(annotation);
-        _lineSpecs[entry.key] = spec;
+        try {
+          final created = await manager.create(_lineOptions(line));
+          _lineAnnotations[key] = created;
+          _lineSpecs[key] = spec;
+        } catch (error) {
+          _logSyncError('line ${line.id}', error);
+        }
+      } else if (_lineSpecs[key] != spec) {
+        try {
+          annotation.geometry = _lineGeometry(line);
+          annotation.lineColor = line.color.toARGB32();
+          annotation.lineWidth = line.width;
+          await manager.update(annotation);
+          _lineSpecs[key] = spec;
+        } catch (error) {
+          _logSyncError('line ${line.id}', error);
+        }
       }
     }
     for (final key in existingKeys) {
@@ -676,25 +737,23 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     );
   }
 
-  LineString _lineGeometry(MapPolyline line) {
-    return LineString(
-      coordinates: [
-        for (final point in line.points)
-          Position(point.longitude, point.latitude),
-      ],
-    );
+  LineString _lineGeometry(MapPolyline line) =>
+      LineString(coordinates: _linePositions(line));
+
+  /// Repeats the native line API chokes on, and a one-point run is not a line.
+  List<Position> _linePositions(MapPolyline line) {
+    final positions = <Position>[];
+    double? lastLng;
+    double? lastLat;
+    for (final point in line.points) {
+      if (point.longitude == lastLng && point.latitude == lastLat) continue;
+      positions.add(Position(point.longitude, point.latitude));
+      lastLng = point.longitude;
+      lastLat = point.latitude;
+    }
+    return positions;
   }
 
   @override
-  Widget build(BuildContext context) {
-    return MapWidget(
-      styleUri: _styleUri(widget.style),
-      viewport: _viewport,
-      onMapCreated: _onMapCreated,
-      onStyleLoadedListener: (_) => _onStyleLoaded(),
-      onMapLoadErrorListener: (error) => widget.onLoadError?.call(error),
-      onCameraChangeListener: (event) =>
-          widget.onCameraChanged?.call(event.cameraState),
-    );
-  }
+  Widget build(BuildContext context) => _surface;
 }

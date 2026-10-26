@@ -94,6 +94,9 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
 
   late final List<_Peer> _peers;
 
+  /// The harness drives the map through the same scene object the app uses.
+  final MapScene _scene = MapScene();
+
   @override
   void initState() {
     super.initState();
@@ -149,6 +152,14 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         moving: true,
       ),
     ];
+    _scene.checkpoints = const [
+      MapCheckpointOverlay(
+        id: 'home',
+        center: _start,
+        radiusMeters: 120,
+        label: 'Home',
+      ),
+    ];
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       _tick++;
       final phase = _tick * 0.08;
@@ -170,6 +181,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
   @override
   void dispose() {
     _timer?.cancel();
+    _scene.dispose();
     _icons
       ..removeListener(_handleIconsChanged)
       ..dispose();
@@ -180,11 +192,6 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
     if (!mounted) return;
     setState(() => _images.clear());
   }
-
-  String _styleUri(MapLayer layer) => switch (layer) {
-    MapLayer.satellite => MapboxStyles.STANDARD_SATELLITE,
-    MapLayer.standard => MapboxStyles.STANDARD,
-  };
 
   MarkerImage? _imageFor(String key, Future<MarkerImage> Function() build) {
     final cached = _images[key];
@@ -268,7 +275,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
     MapboxOptions.setAccessToken(token);
     // Force new resource requests on the existing map. If the style loads,
     // the already-created map accepted the runtime token.
-    _map?.loadStyleURI(_styleUri(_layer));
+    _map?.loadStyleURI(mapboxStyleUri(_layer));
   }
 
   String _shortToken(String token) =>
@@ -300,7 +307,8 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
       );
     }
 
-    final markers = _buildMarkers();
+    _scene.markers = _buildMarkers();
+    _scene.markChanged();
     return Scaffold(
       body: Stack(
         children: [
@@ -311,15 +319,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
             initialZoom: _zoom,
             style: _layer,
             darkMode: theme.brightness == Brightness.dark,
-            markers: markers,
-            checkpoints: const [
-              MapCheckpointOverlay(
-                id: 'home',
-                center: _start,
-                radiusMeters: 120,
-                label: 'Home',
-              ),
-            ],
+            scene: _scene,
             showCheckpointLabels: true,
             onMapCreated: (map) {
               _map = map;
