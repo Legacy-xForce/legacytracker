@@ -328,24 +328,30 @@ class MarkerIconFactory extends ChangeNotifier {
     if (bytes != null && bytes.isNotEmpty) {
       return 'local:${person.id}:${identityHashCode(bytes)}';
     }
-    final url = person.avatarUrl.isNotEmpty
-        ? person.avatarUrl
-        : profilePictureUrl(person.id);
-    return url;
+    final urls = avatarCandidateUrls(person.id, avatarUrl: person.avatarUrl);
+    return urls.isEmpty ? null : urls.join('|');
   }
 
   Future<ui.Image?> _loadAvatar(MarkerPerson person) async {
     final bytes = person.avatarBytes;
-    ImageProvider provider;
     if (bytes != null && bytes.isNotEmpty) {
-      provider = ResizeImage.resizeIfNeeded(128, 128, MemoryImage(bytes));
-    } else {
-      final url = person.avatarUrl.isNotEmpty
-          ? person.avatarUrl
-          : profilePictureUrl(person.id);
-      if (url == null) return null;
-      provider = ResizeImage.resizeIfNeeded(128, 128, NetworkImage(url));
+      return _decode(ResizeImage.resizeIfNeeded(128, 128, MemoryImage(bytes)));
     }
+    // A legacy avatar_url can answer with HTML instead of an image, so every
+    // candidate gets its own attempt before falling back to the initial.
+    for (final url in avatarCandidateUrls(
+      person.id,
+      avatarUrl: person.avatarUrl,
+    )) {
+      final image = await _decode(
+        ResizeImage.resizeIfNeeded(128, 128, NetworkImage(url)),
+      );
+      if (image != null) return image;
+    }
+    return null;
+  }
+
+  Future<ui.Image?> _decode(ImageProvider provider) async {
     final completer = Completer<ui.Image?>();
     final stream = provider.resolve(ImageConfiguration.empty);
     late final ImageStreamListener listener;

@@ -53,6 +53,36 @@ String? profilePictureUrl(String userId) => _accountId.hasMatch(userId)
     ? 'https://auth.legacy-group.tech/auth/profile-picture/$userId'
     : null;
 
+/// Picture URLs to try for a person, in order. The tracker still carries a
+/// legacy `avatar_url` for accounts that set one before Legacy Auth took over,
+/// and those old paths answer with the sign-in page instead of an image, so
+/// every candidate has to be able to fall through to the next one.
+List<String> avatarCandidateUrls(String userId, {String avatarUrl = ''}) {
+  final auth = profilePictureUrl(userId);
+  return <String>[
+    if (avatarUrl.isNotEmpty) avatarUrl,
+    if (auth != null && auth != avatarUrl) auth,
+  ];
+}
+
+/// The first URL that decodes, or nothing, so the initial underneath stays.
+class _FallbackNetworkImage extends StatelessWidget {
+  const _FallbackNetworkImage({required this.urls});
+
+  final List<String> urls;
+
+  @override
+  Widget build(BuildContext context) {
+    if (urls.isEmpty) return const SizedBox.shrink();
+    return Image.network(
+      urls.first,
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stack) =>
+          _FallbackNetworkImage(urls: urls.sublist(1)),
+    );
+  }
+}
+
 /// A user's photo, or their initial on their own color.
 class UserAvatar extends StatelessWidget {
   const UserAvatar({
@@ -82,20 +112,15 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final url = avatarUrl.isNotEmpty ? avatarUrl : profilePictureUrl(userId);
     final color = dimmed ? Colors.grey.shade600 : userColor(userId);
 
     // The initial always sits underneath, so it shows while the picture loads
     // and stays when there is none (Legacy Auth answers 404).
-    final Widget photo = imageBytes != null
+    final photo = imageBytes != null
         ? Image.memory(imageBytes!, fit: BoxFit.cover)
-        : url != null
-        ? Image.network(
-            url,
-            fit: BoxFit.cover,
-            errorBuilder: (_, _, _) => const SizedBox.shrink(),
-          )
-        : const SizedBox.shrink();
+        : _FallbackNetworkImage(
+            urls: avatarCandidateUrls(userId, avatarUrl: avatarUrl),
+          );
 
     Widget avatar = Container(
       width: size,
