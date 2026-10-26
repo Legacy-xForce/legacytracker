@@ -224,7 +224,8 @@ rule is satisfiable:
   rebuilds the sheet under it, `DraggableScrollableController.animateTo`'s
   future can stay pending and the sheet silently never opens. A selection made
   on the map also calls `openPerson` on the drawer directly, so it does not
-  depend on that prop update landing before the frame.
+  depend on that prop update landing before the frame. `test/tracking_drawer_test.dart`
+  pins the extent report, the direct open and the prop-driven open.
 - The scale bar is switched off. It defaulted to the top-left corner, collided
   with the status pill and viewer row, and Mapbox does not require it.
 
@@ -346,7 +347,7 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 201 passed |
+| `flutter test` | 204 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |
