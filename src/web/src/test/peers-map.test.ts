@@ -53,6 +53,23 @@ describe('PeersMap', () => {
         wrapper.unmount();
     });
 
+    it('passes the panel insets to the Mapbox chrome', () => {
+        const wrapper = mount(PeersMap, {
+            props: {
+                peers: [],
+                selfId: '',
+                selectedId: null,
+                now: Date.now(),
+                insets: { top: 72, right: 72, bottom: 16, left: 404 }
+            }
+        });
+        const style = (wrapper.element as HTMLElement).style;
+        expect(style.getPropertyValue('--lt-map-left-inset')).toBe('404px');
+        expect(style.getPropertyValue('--lt-map-right-inset')).toBe('72px');
+        expect(style.getPropertyValue('--lt-map-bottom-inset')).toBe('16px');
+        wrapper.unmount();
+    });
+
     it('updates a marker in place instead of rebuilding it', async () => {
         const wrapper = mount(PeersMap, {
             attachTo: document.body,

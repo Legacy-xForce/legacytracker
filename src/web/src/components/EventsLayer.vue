@@ -66,7 +66,8 @@ function openDetailsFor(event: CalendarEvent) {
     // Keep the popup clear of the panels, like the rest of the map framing.
     const { top, right, bottom, left } = insets.value;
     target.setPadding({ top: top + 16, right: right + 16, bottom: bottom + 16, left: left + 16 });
-    popup = new Popup({ maxWidth: '320px', offset: 16, closeButton: true, className: 'lt-popup' })
+    // Clear the pin (36px tall, centred on the point) rather than clipping its tip.
+    popup = new Popup({ maxWidth: '320px', offset: 24, closeButton: true, className: 'lt-popup' })
         .setLngLat([event.point[1], event.point[0]])
         .setDOMContent(openDetails)
         .addTo(target);
