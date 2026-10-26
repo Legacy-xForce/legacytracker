@@ -135,13 +135,15 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     }
 }
 
+/* The 57px ring leaves a 2px band around the 53px avatar, matching the phone
+   app. Offsets keep it centred on the marker at (76px, 84px). */
 .peer-marker__ring {
     position: absolute;
-    left: 46px;
-    top: 54px;
-    width: 60px;
-    height: 60px;
-    padding: 3.5px;
+    left: 47.5px;
+    top: 55.5px;
+    width: 57px;
+    height: 57px;
+    padding: 2px;
     border-radius: 9999px;
     background: var(--ring);
     box-shadow: 0 4px 10px rgb(0 0 0 / 0.28);

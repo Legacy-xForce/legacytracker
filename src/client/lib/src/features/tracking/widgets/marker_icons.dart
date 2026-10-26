@@ -108,7 +108,9 @@ class MarkerIconFactory extends ChangeNotifier {
   static const _personWidth = 152.0;
   static const _personHeight = 168.0;
   static const _personCenter = Offset(76, 84);
-  static const _personRingSize = 60.0;
+  // A 2 px ring around the 53 px avatar. The old 60 px ring read as a thick
+  // white border on a phone; the web marker now uses the same 57 px ring.
+  static const _personRingSize = 57.0;
   static const _personAvatarSize = 53.0;
   static const _badgeHeight = 20.0;
   static const _badgeIconSize = 12.0;
