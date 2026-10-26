@@ -365,7 +365,14 @@ defineExpose({ focus, fitEveryone, zoomBy, following });
 </script>
 
 <template>
-    <div class="relative h-full w-full">
+    <div
+        class="relative h-full w-full"
+        :style="{
+            '--lt-map-left-inset': `${insets.left}px`,
+            '--lt-map-right-inset': `${insets.right}px`,
+            '--lt-map-bottom-inset': `${insets.bottom}px`
+        }"
+    >
         <div ref="element" class="h-full w-full" />
         <!-- Overlay layers (checkpoints, events, replay) draw onto the map through the injected handle. -->
         <slot />
