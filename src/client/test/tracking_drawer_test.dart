@@ -83,12 +83,10 @@ void main() {
     await tester.pump();
     final collapsed = sizes.last;
 
-    print('before open: reports=${sizes.length} last=${sizes.last}');
     key.currentState!.openPerson(UserProfile(id: 'bob', name: 'Bob'));
     await tester.pumpAndSettle();
     // The sheet animates on a timer; advance past its 240 ms.
     await tester.pump(const Duration(milliseconds: 400));
-    print('after open: reports=${sizes.length} last=${sizes.last}');
 
     expect(sizes.last, greaterThan(collapsed));
   });
