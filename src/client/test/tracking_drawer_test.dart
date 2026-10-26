@@ -149,6 +149,57 @@ void main() {
     expect(find.text('All people'), findsNothing);
     expect(find.text('Bob'), findsOneWidget);
   });
+
+  testWidgets('collapse folds the sheet back to its peek', (tester) async {
+    final key = GlobalKey<TrackingUsersDrawerState>();
+    final sizes = <double>[];
+
+    Widget build(String? selected) {
+      return MultiProvider(
+        providers: [
+          Provider<LocalAvatarStore?>.value(value: null),
+          ChangeNotifierProvider<AuthProvider>.value(value: _anonymousAuth()),
+        ],
+        child: MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              height: 800,
+              child: TrackingUsersDrawer(
+                key: key,
+                selfProfile: UserProfile(id: 'me', name: 'Me'),
+                peers: [
+                  UserProfile(id: 'bob', name: 'Bob', sharesWithMe: false),
+                ],
+                selfTrackingPaused: false,
+                selfMissingPermissions: false,
+                selfBatterySavingEnabled: false,
+                selectedUserId: selected,
+                onUserSelected: (_) {},
+                onSelectionCleared: () {},
+                onExtentChanged: sizes.add,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    await tester.pumpWidget(build(null));
+    await _expand(tester);
+    await tester.pumpWidget(build('bob'));
+    await tester.pumpAndSettle();
+    final expanded = sizes.last;
+    expect(expanded, greaterThan(0.1));
+
+    // The Android back gesture: the detail is gone and the sheet stops
+    // covering the map.
+    key.currentState!.collapse();
+    await tester.pumpAndSettle();
+    // The sheet animates on a timer; advance past its 240 ms.
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(sizes.last, lessThan(expanded));
+  });
 }
 
 /// The list is only laid out while the sheet is open; collapsed it is just the

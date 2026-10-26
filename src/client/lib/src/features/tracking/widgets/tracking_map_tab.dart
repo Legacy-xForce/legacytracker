@@ -95,10 +95,10 @@ class TrackingMapTab extends StatefulWidget {
   final MapboxTokenService? mapboxTokenService;
 
   @override
-  State<TrackingMapTab> createState() => _TrackingMapTabState();
+  State<TrackingMapTab> createState() => TrackingMapTabState();
 }
 
-class _TrackingMapTabState extends State<TrackingMapTab>
+class TrackingMapTabState extends State<TrackingMapTab>
     with TickerProviderStateMixin {
   final MarkerIconFactory _icons = MarkerIconFactory();
   final Map<String, MarkerImage> _images = {};
@@ -117,6 +117,11 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// drawer and the control column alongside them is what made the map
   /// stutter, so motion updates this scene and the map re-syncs on its own.
   final MapScene _scene = MapScene();
+
+  /// Lets the back gesture reach the sheet's own collapse, which is a
+  /// controller animation the props cannot express.
+  final GlobalKey<TrackingUsersDrawerState> _drawerKey =
+      GlobalKey<TrackingUsersDrawerState>();
 
   MapboxMap? _map;
   Size? _mapSize;
@@ -346,6 +351,14 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       });
     }
     widget.onSelectionCleared();
+  }
+
+  /// The Android back gesture: drop the selection *and* fold the sheet back
+  /// to its peek, so a back press never leaves the map covered. The header's
+  /// own back button keeps the list open - that one means "show me everyone".
+  void clearSelectionAndCollapse() {
+    _clearSelection();
+    _drawerKey.currentState?.collapse();
   }
 
   void _focusCluster(List<UserProfile> members) {
@@ -628,6 +641,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               ),
             ),
             TrackingUsersDrawer(
+              key: _drawerKey,
               selfProfile: widget.selfProfile,
               peers: widget.peers,
               selfTrackingPaused: widget.selfTrackingPaused,

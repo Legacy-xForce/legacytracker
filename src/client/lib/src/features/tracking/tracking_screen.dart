@@ -34,6 +34,10 @@ class _TrackingScreenState extends State<TrackingScreen> {
   // A style picked on the map itself; null follows the default setting.
   MapLayer? _layerOverride;
   String? _selectedUserId;
+  // Lets the back gesture tell the map tab to fold the sheet too, which is
+  // the tab's own controller animation, not something props can express.
+  final GlobalKey<TrackingMapTabState> _mapTabKey =
+      GlobalKey<TrackingMapTabState>();
 
   @override
   void didChangeDependencies() {
@@ -107,7 +111,12 @@ class _TrackingScreenState extends State<TrackingScreen> {
             if (_selectedIndex != _mapTab) {
               _selectTab(_mapTab);
             } else {
-              _clearSelection();
+              final tab = _mapTabKey.currentState;
+              if (tab != null) {
+                tab.clearSelectionAndCollapse();
+              } else {
+                _clearSelection();
+              }
             }
           },
           child: Scaffold(
@@ -117,6 +126,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
                   index: _selectedIndex,
                   children: [
                     TrackingMapTab(
+                      key: _mapTabKey,
                       isActive: _selectedIndex == _mapTab,
                       center: controller.mapCenter,
                       centerIsKnown: controller.hasKnownLocation,

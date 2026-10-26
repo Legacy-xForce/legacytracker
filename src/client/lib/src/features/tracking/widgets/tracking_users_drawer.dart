@@ -130,6 +130,15 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   bool get _isCollapsed => _sheetSize <= _collapsedSize + 0.01;
 
+  /// Collapse back to the peek header, for the Android back gesture: a back
+  /// press that leaves the detail means the sheet should stop covering the
+  /// map too, not only drop the selection.
+  void collapse() {
+    if (_sheetController.isAttached && _sheetController.size > _collapsedSize) {
+      _animateTo(_collapsedSize);
+    }
+  }
+
   void _expand() {
     if (_sheetController.isAttached && _sheetController.size < _expandedSize) {
       _animateTo(_expandedSize);
