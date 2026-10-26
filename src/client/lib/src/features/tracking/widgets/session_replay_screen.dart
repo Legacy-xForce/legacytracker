@@ -88,13 +88,21 @@ class SessionReplayScreen extends StatefulWidget {
   State<SessionReplayScreen> createState() => _SessionReplayScreenState();
 }
 
-/// One point on the replay clock: which recorded fix was last passed and
-/// where the marker is between it and the next.
+/// One point on the replay clock: which recorded fix was last passed, where
+/// the marker is between it and the next, and which way it is facing.
 class ReplayFix {
-  const ReplayFix({required this.index, required this.point});
+  const ReplayFix({
+    required this.index,
+    required this.point,
+    this.heading,
+  });
 
   final int index;
   final LatLng point;
+
+  /// Interpolated between the two fixes' headings, shortest arc; null when
+  /// neither has one.
+  final double? heading;
 }
 
 /// Timing for a replay route, the web's `ReplayTrack` in miniature: the pace
@@ -107,11 +115,13 @@ class ReplayFix {
 class ReplayTrack {
   ReplayTrack(
     List<LatLng> latLngs, {
+    List<double?> headings = const [],
     Duration targetPlayback = const Duration(seconds: 40),
     double minPaceMetersPerSecond = 5.0,
     double minSegmentMs = 16.0,
     double maxSegmentMs = 3000.0,
   }) {
+    _headings = headings.length == latLngs.length ? headings : const [];
     if (latLngs.length < 2) {
       _starts = const [0];
       return;
@@ -137,6 +147,10 @@ class ReplayTrack {
   /// Playback time in ms (at 1x) at which each fix is reached.
   late final List<double> _starts;
 
+  /// The route's recorded headings, aligned with the fixes; empty when the
+  /// route was built without them.
+  late final List<double?> _headings;
+
   /// Total playback time at 1x pace, in ms.
   double get durationMs => _starts.last;
 
@@ -144,15 +158,21 @@ class ReplayTrack {
   Duration get duration => Duration(milliseconds: durationMs.round());
 
   /// Where the marker is `elapsed` ms into playback (1x scale), interpolating
-  /// linearly between fixes like the web's `positionAt`.
+  /// linearly between fixes like the web's `positionAt`. The heading sweeps
+  /// the short way round between fixes, so the beam turns through a corner
+  /// instead of snapping at each one.
   ReplayFix positionAt(List<LatLng> latLngs, double elapsed) {
     if (latLngs.isEmpty) return const ReplayFix(index: 0, point: LatLng(0, 0));
     final last = latLngs.length - 1;
     if (elapsed <= 0) {
-      return ReplayFix(index: 0, point: latLngs.first);
+      return ReplayFix(index: 0, point: latLngs.first, heading: _heading(0));
     }
     if (elapsed >= durationMs || last == 0) {
-      return ReplayFix(index: last, point: latLngs[last]);
+      return ReplayFix(
+        index: last,
+        point: latLngs[last],
+        heading: _heading(last),
+      );
     }
     // Binary search for the segment containing `elapsed`.
     var low = 0;
@@ -175,12 +195,27 @@ class ReplayTrack {
         a.latitude + (b.latitude - a.latitude) * t,
         a.longitude + (b.longitude - a.longitude) * t,
       ),
+      heading: _lerpHeading(_heading(low), _heading(low + 1), t),
     );
   }
 
   /// The fix at [fraction] of the trip (0..1), for seeking.
   ReplayFix positionAtFraction(List<LatLng> latLngs, double fraction) =>
       positionAt(latLngs, fraction.clamp(0.0, 1.0) * durationMs);
+
+  double? _heading(int index) {
+    if (_headings.isEmpty || index >= _headings.length) return null;
+    final value = _headings[index];
+    return value != null && value.isFinite ? value : null;
+  }
+
+  static double? _lerpHeading(double? from, double? to, double t) {
+    if (from == null) return to;
+    if (to == null) return from;
+    // Shortest arc, so 350° -> 10° turns through north, not all the way back.
+    final delta = (to - from + 540) % 360 - 180;
+    return (from + delta * t + 360) % 360;
+  }
 }
 
 class _SessionReplayScreenState extends State<SessionReplayScreen>
@@ -210,9 +245,11 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   double _playbackSpeed = 1.0;
   int _currentIndex = 0;
   LatLng? _displayedPoint;
+
+  /// The interpolated heading under the playhead, for the beam.
+  double? _displayedHeading;
   bool _isPlaying = false;
   bool _initialized = false;
-  DateTime? _lastTick;
 
   /// The clock and speed text, refreshed only when the displayed value
   /// changes, so a dense stretch of fixes cannot rebuild the screen per
@@ -220,7 +257,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   String _clockText = '';
   String _speedText = '';
 
-  /// The route and the moving marker. Playback updates this ~20x a second, so
+  /// The route and the moving marker. Playback updates this per frame, so
   /// it lives here rather than in the widget tree.
   final MapScene _scene = MapScene();
   String? _sceneSpec;
@@ -232,12 +269,16 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     _latLngs = [
       for (final point in _route) LatLng(point.latitude, point.longitude),
     ];
-    _track = ReplayTrack(_latLngs);
+    _track = ReplayTrack(
+      _latLngs,
+      headings: [for (final point in _route) point.heading],
+    );
     _scene.polylines = _buildRouteLines();
     _playController = AnimationController(vsync: this, duration: _track.duration)
       ..addListener(_handleTick)
       ..addStatusListener(_handleStatus);
     _displayedPoint = _latLngs.isNotEmpty ? _latLngs.first : null;
+    _displayedHeading = _route.isNotEmpty ? _route.first.heading : null;
     _syncReadout();
     _icons.addListener(_handleIconsChanged);
   }
@@ -275,7 +316,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final moving = current.isMoving;
     final speedKmh = current.speed * 3.6;
     final speedBucket = moving ? (speedKmh / 5).round() * 5 : -1;
-    final heading = current.heading;
+    final heading = _displayedHeading ?? current.heading;
     final showBeam = moving && heading != null && heading.isFinite;
 
     final markerImage = _imageFor(
@@ -374,6 +415,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       _playController.value = 0;
       _currentIndex = 0;
       _displayedPoint = _latLngs.first;
+      _displayedHeading = _route.first.heading;
       _syncReadout();
     }
     setState(() => _isPlaying = true);
@@ -395,22 +437,20 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
   void _handleTick() {
     if (!mounted || _latLngs.isEmpty) return;
-    final now = DateTime.now();
-    final last = _lastTick;
-    if (last != null &&
-        now.difference(last) < const Duration(milliseconds: 50)) {
-      return;
-    }
-    _lastTick = now;
+    // One update per animation frame: the marker and the camera move together
+    // every frame, which is what makes the glide read as smooth. The old
+    // 50 ms throttle here was the other half of the jank - 20 fps steps
+    // against a 60-120 Hz screen.
     final fix = _track.positionAt(
       _latLngs,
       _playController.value * _track.durationMs,
     );
     _displayedPoint = fix.point;
+    _displayedHeading = fix.heading;
     final moved = fix.index != _currentIndex;
     if (moved) _currentIndex = fix.index;
     // The route and the marker live in the scene, so playback does not rebuild
-    // the screen 20 times a second.
+    // the screen per frame.
     _syncScene();
     _map?.setCamera(
       CameraOptions(
@@ -427,6 +467,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     if (status != AnimationStatus.completed) return;
     _currentIndex = _latLngs.length - 1;
     _displayedPoint = _latLngs.last;
+    _displayedHeading = _route.last.heading;
     _syncScene();
     _syncReadout();
     if (mounted) setState(() => _isPlaying = false);
@@ -445,6 +486,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     setState(() {
       _currentIndex = fix.index;
       _displayedPoint = fix.point;
+      _displayedHeading = fix.heading;
     });
     _syncScene();
     _syncReadout();
@@ -483,7 +525,18 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
   void _setPlaybackSpeed(double speed) {
     setState(() => _playbackSpeed = speed);
+    if (!_isPlaying) {
+      _applySpeed();
+      return;
+    }
+    // Changing `duration` on a running AnimationController does not re-rate
+    // the live ticker, so 2x/4x looked selected but played at the old speed.
+    // Restarting at the current fraction keeps the position and takes the new
+    // rate immediately.
+    final fraction = _playController.value;
+    _playController.stop();
     _applySpeed();
+    _playController.forward(from: fraction);
   }
 
   void _onCameraChanged(CameraState state) {

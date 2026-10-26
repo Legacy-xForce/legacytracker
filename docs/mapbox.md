@@ -204,6 +204,12 @@ animation made the marker race through dense stretches (turns, stops) and
 teleport between raw fixes. The controller's value is the trip fraction, so
 the slider, seeks and the speed options all work on the same monotonic clock,
 and the clock/km-h read-outs rebuild only when the displayed value changes.
+Marker and camera update **every animation frame** (the old 50 ms throttle was
+the other half of the jank), the heading beam interpolates the short way round
+between fixes instead of snapping at each one, and a speed change while
+playing restarts the ticker at the current fraction - setting `duration` on a
+running `AnimationController` does not re-rate it, so 2x/4x looked selected
+but played at the old speed.
 
 Every layer syncs through its own `try`/`catch` (`_attempt`), and a marker
 whose bitmap fails to encode is parked in `_failedImages` rather than aborting

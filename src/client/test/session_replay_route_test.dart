@@ -169,5 +169,26 @@ void main() {
       expect(fix.index, 0);
       expect(fix.point.latitude, 45.07);
     });
+
+    test('headings sweep the short way round between fixes', () {
+      final replay = ReplayTrack(
+        straight,
+        headings: [
+          for (var i = 0; i < straight.length; i++) i == 0 ? 350.0 : 10.0,
+        ],
+      );
+      final step = replay.durationMs / 39;
+      // 350 -> 10 must pass through north (0), not back through 180.
+      final mid = replay.positionAt(straight, step * 0.5);
+      expect(mid.heading, closeTo(0.0, 1e-9));
+      final end = replay.positionAt(straight, replay.durationMs);
+      expect(end.heading, 10.0);
+    });
+
+    test('missing headings stay missing rather than inventing one', () {
+      final replay = ReplayTrack(straight);
+      final fix = replay.positionAt(straight, replay.durationMs / 2);
+      expect(fix.heading, isNull);
+    });
   });
 }
