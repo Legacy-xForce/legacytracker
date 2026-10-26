@@ -150,6 +150,29 @@ void main() {
     expect(find.text('Bob'), findsOneWidget);
   });
 
+  testWidgets('the All people label itself goes back, not collapse', (
+    tester,
+  ) async {
+    final host = _DrawerHost();
+    await tester.pumpWidget(host.build());
+    await _expand(tester);
+
+    await tester.tap(find.text('Bob'));
+    await tester.pumpAndSettle();
+    expect(find.text('All people'), findsOneWidget);
+
+    // Tapping the label, not the arrow: the label used to sit outside the
+    // back button and fell through to the header's toggle gesture, which
+    // collapsed the sheet instead of going back to everyone.
+    await tester.tap(find.text('All people'));
+    await tester.pumpAndSettle();
+
+    expect(host.clearCalls, 1);
+    expect(host.selectedUserId, isNull);
+    expect(find.text('People'), findsOneWidget);
+    expect(find.text('All people'), findsNothing);
+  });
+
   testWidgets('collapse folds the sheet back to its peek', (tester) async {
     final key = GlobalKey<TrackingUsersDrawerState>();
     final sizes = <double>[];

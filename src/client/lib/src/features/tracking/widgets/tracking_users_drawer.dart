@@ -393,18 +393,46 @@ class _SheetHeader extends StatelessWidget {
               child: Row(
                 children: [
                   if (showingDetail) ...[
-                    IconButton(
-                      onPressed: onBack,
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      tooltip: 'All people',
-                      visualDensity: VisualDensity.compact,
-                      style: IconButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size.square(36),
+                    // The whole "All people" row is the back button. The
+                    // label used to sit outside the arrow's IconButton, so
+                    // tapping it fell through to the header's toggle gesture
+                    // and collapsed the sheet instead of going back.
+                    Tooltip(
+                      message: 'All people',
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onBack,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Semantics(
+                            button: true,
+                            label: 'All people',
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                2,
+                                8,
+                                14,
+                                8,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.arrow_back_rounded,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'All people',
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Text('All people', style: theme.textTheme.titleMedium),
                   ] else ...[
                     Text(
                       'People',
