@@ -153,8 +153,11 @@ Standard style the scene lighting multiplies a non-emissive layer down, so in a
 dark theme (`lightPreset: night`) the route rendered as a black line while the
 markers stayed bright - and switching styles showed the real colours for a
 moment, until the night lighting settled. Every route line now carries
-`emissiveStrength: 1` and the checkpoint manager is set to
-`setFillEmissiveStrength(1)`, which is what marker icons already do implicitly.
+`emissiveStrength: 1`, and both line managers and the checkpoint manager get the
+same value through their manager-level setters (`setLineEmissiveStrength`,
+`setFillEmissiveStrength`) because the native side may treat emission as a
+layer-wide constant rather than a per-feature one. That is what marker icons
+already do implicitly.
 
 Two further rules keep the casing from ever replacing the route:
 

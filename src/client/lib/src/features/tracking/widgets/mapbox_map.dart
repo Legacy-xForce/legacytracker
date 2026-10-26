@@ -383,13 +383,21 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     await labelManager.setIconAllowOverlap(true);
     await labelManager.setIconIgnorePlacement(true);
     await labelManager.setTextAllowOverlap(true);
-    try {
-      // Fills are lit like lines and default to no emission, which drains a
-      // checkpoint circle to black under the night preset. Icons default to 1.
-      await checkpointManager.setFillEmissiveStrength(1);
-    } catch (_) {
-      // Older native builds may not expose the property; circles still draw.
+    // Fills and lines are lit and default to no emission, which drains a route
+    // or a checkpoint circle to black under the night preset. Icons default to
+    // 1. The manager-level setters are used as well as the per-annotation ones
+    // because the native side may take emission as a layer-wide constant.
+    Future<void> applyLighting(Future<void> Function() run) async {
+      try {
+        await run();
+      } catch (_) {
+        // Older native builds may not expose these properties.
+      }
     }
+
+    await applyLighting(() => routeManager.setLineEmissiveStrength(1));
+    await applyLighting(() => casingManager.setLineEmissiveStrength(1));
+    await applyLighting(() => checkpointManager.setFillEmissiveStrength(1));
     _managersReady = true;
   }
 
