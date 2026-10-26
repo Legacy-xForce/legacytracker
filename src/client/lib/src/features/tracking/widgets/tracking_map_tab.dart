@@ -378,7 +378,9 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       _autoFollow = true;
       _followedUserId = profile.id;
     });
-    _sheetFraction = sheetFraction;
+    // The camera aims at where the sheet is going, but the covered band - and
+    // with it the Mapbox ornaments - keeps following what the drawer reports,
+    // so a sheet that has not moved yet cannot push the logo up the screen.
     _animateMapTo(
       LatLng(location.latitude, location.longitude),
       zoomTarget: _currentZoomForSelection,
