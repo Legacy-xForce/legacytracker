@@ -74,13 +74,13 @@ function paint() {
             id: FILL,
             type: 'fill',
             source: SOURCE,
-            paint: { 'fill-color': '#82d5c8', 'fill-opacity': 0.14 }
+            paint: { 'fill-color': '#82d5c8', 'fill-opacity': 0.14, 'fill-emissive-strength': 1 }
         });
         target.addLayer({
             id: LINE,
             type: 'line',
             source: SOURCE,
-            paint: { 'line-color': '#82d5c8', 'line-width': 1.5, 'line-opacity': 0.9 }
+            paint: { 'line-color': '#82d5c8', 'line-width': 1.5, 'line-opacity': 0.9, 'line-emissive-strength': 1 }
         });
         for (const checkpoint of props.checkpoints) {
             const el = document.createElement('div');
