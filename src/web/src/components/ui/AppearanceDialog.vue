@@ -1,12 +1,22 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from './Icon.vue';
+import type { IconName } from '../../lib/icons';
+import { MAP_VARIANTS, type MapVariant } from '../../lib/styles';
 import { useAppearanceStore } from '../../stores/appearance';
 import { THEMES, type AppTheme } from '../../theme/themes';
 
 const open = defineModel<boolean>({ required: true });
 const appearance = useAppearanceStore();
 const dialog = ref<HTMLElement | null>(null);
+
+const MAP_VARIANT_ICONS: Record<MapVariant, IconName> = {
+    auto: 'brightnessAuto',
+    dawn: 'wbTwilight',
+    day: 'lightMode',
+    dusk: 'partlyCloudyDay',
+    night: 'darkMode'
+};
 
 function close() {
     open.value = false;
@@ -112,6 +122,39 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         <span class="type-label-lg whitespace-nowrap">{{ option.shortLabel }}</span>
                         <Icon v-if="appearance.theme === option.id" name="check" :size="16" class="text-current" />
                     </button>
+                </div>
+
+                <div class="mt-6">
+                    <h3 class="type-title-sm font-bold">Map</h3>
+                    <p class="type-body-sm text-on-surface-variant mt-1">
+                        Auto follows the time of day. Saved on this device only.
+                    </p>
+                    <div class="mt-3 flex flex-wrap gap-2" role="radiogroup" aria-label="Map lighting">
+                        <button
+                            v-for="option in MAP_VARIANTS"
+                            :key="option.id"
+                            type="button"
+                            role="radio"
+                            :aria-checked="appearance.mapVariant === option.id"
+                            :aria-label="option.id === 'auto' ? 'Auto, follows the time of day' : option.label"
+                            class="flex min-h-11 items-center gap-2 rounded-full border px-3 py-2 transition-colors"
+                            :class="
+                                appearance.mapVariant === option.id
+                                    ? 'border-primary bg-primary-container text-on-primary-container'
+                                    : 'border-outline-variant bg-surface-container text-on-surface hover:bg-on-surface/6'
+                            "
+                            @click="appearance.setMapVariant(option.id)"
+                        >
+                            <Icon :name="MAP_VARIANT_ICONS[option.id]" :size="18" />
+                            <span class="type-label-lg whitespace-nowrap">{{ option.label }}</span>
+                            <Icon
+                                v-if="appearance.mapVariant === option.id"
+                                name="check"
+                                :size="16"
+                                class="text-current"
+                            />
+                        </button>
+                    </div>
                 </div>
 
                 <div class="mt-6 flex justify-end">
