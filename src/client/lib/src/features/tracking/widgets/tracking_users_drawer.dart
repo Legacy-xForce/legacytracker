@@ -60,10 +60,10 @@ class TrackingUsersDrawer extends StatefulWidget {
   static const double expandedSize = 0.6;
 
   @override
-  State<TrackingUsersDrawer> createState() => _TrackingUsersDrawerState();
+  State<TrackingUsersDrawer> createState() => TrackingUsersDrawerState();
 }
 
-class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
+class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
   static const double _expandedSize = TrackingUsersDrawer.expandedSize;
 
   /// Drag handle plus the "People" header: what stays visible collapsed.
@@ -71,6 +71,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
+  Timer? _sheetTimer;
 
   // Recomputed from the available height on every layout.
   double _collapsedSize = 0.1;
@@ -101,12 +102,17 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
         (widget.selectedUserId != oldWidget.selectedUserId ||
             widget.selectionTick != oldWidget.selectionTick)) {
       setState(() => _detailUserId = widget.selectedUserId);
-      _expand();
+      // During didUpdateWidget the sheet may not have a layout yet, and
+      // expanding then is a silent no-op; wait for the frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _expand();
+      });
     }
   }
 
   @override
   void dispose() {
+    _sheetTimer?.cancel();
     _sheetController.removeListener(_handleSheetChanged);
     _sheetController.dispose();
     super.dispose();
@@ -128,12 +134,30 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     }
   }
 
+  /// Drives the sheet ourselves instead of `DraggableScrollableController
+  /// .animateTo`: that future can stay pending when the sheet rebuilds under
+  /// it (which is exactly what a selection does), and the sheet silently never
+  /// opened. Stepping `jumpTo` is what the animation does internally anyway.
   void _animateTo(double size) {
-    _sheetController.animateTo(
-      size,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-    );
+    if (!_sheetController.isAttached) return;
+    _sheetTimer?.cancel();
+    final from = _sheetController.size;
+    if (from == size) return;
+    const steps = 16;
+    var step = 0;
+    _sheetTimer = Timer.periodic(const Duration(milliseconds: 15), (timer) {
+      if (!_sheetController.isAttached) {
+        timer.cancel();
+        return;
+      }
+      step++;
+      final t = Curves.easeOutCubic.transform(step / steps);
+      _sheetController.jumpTo(from + (size - from) * t);
+      if (step >= steps) {
+        timer.cancel();
+        _sheetTimer = null;
+      }
+    });
   }
 
   void _toggle() => _animateTo(_isCollapsed ? _expandedSize : _collapsedSize);
@@ -179,6 +203,17 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
   void _openDetail(UserProfile profile) {
     widget.onUserSelected(profile);
     setState(() => _detailUserId = profile.id);
+    _expand();
+  }
+
+  /// Opens a person's detail directly, for a tap on the map. A selection made
+  /// on the map arrives here as a prop change too, but that update can land
+  /// mid frame; this call is what guarantees one tap is enough.
+  void openPerson(UserProfile profile) {
+    if (!mounted) return;
+    if (widget.selectedUserId != profile.id || _detailUserId != profile.id) {
+      setState(() => _detailUserId = profile.id);
+    }
     _expand();
   }
 

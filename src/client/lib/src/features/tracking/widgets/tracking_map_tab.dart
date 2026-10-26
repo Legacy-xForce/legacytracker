@@ -105,6 +105,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   /// drawer and the control column alongside them is what made the map
   /// stutter, so motion updates this scene and the map re-syncs on its own.
   final MapScene _scene = MapScene();
+  final GlobalKey<TrackingUsersDrawerState> _drawerKey =
+      GlobalKey<TrackingUsersDrawerState>();
 
   MapboxMap? _map;
   Size? _mapSize;
@@ -303,6 +305,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       return;
     }
     widget.onUserSelected(profile);
+    _drawerKey.currentState?.openPerson(profile);
     _follow(
       profile,
       location,
@@ -588,6 +591,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               ),
             ),
             TrackingUsersDrawer(
+              key: _drawerKey,
               selfProfile: widget.selfProfile,
               peers: widget.peers,
               selfTrackingPaused: widget.selfTrackingPaused,

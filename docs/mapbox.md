@@ -220,6 +220,11 @@ rule is satisfiable:
   after the first frame, and the map reports again when it is first laid out.
   Until both are known the inset is 0 - never a guess from the screen height,
   which used to lift the logo into the middle of the map on startup.
+- The sheet opens on its own 15 ms timer stepping `jumpTo`: while a selection
+  rebuilds the sheet under it, `DraggableScrollableController.animateTo`'s
+  future can stay pending and the sheet silently never opens. A selection made
+  on the map also calls `openPerson` on the drawer directly, so it does not
+  depend on that prop update landing before the frame.
 - The scale bar is switched off. It defaulted to the top-left corner, collided
   with the status pill and viewer row, and Mapbox does not require it.
 
