@@ -697,22 +697,32 @@ class _TrackingMapTabState extends State<TrackingMapTab>
             avatarBytes: member.value.isSelf ? selfAvatarBytes : null,
             isStale: _isStale(member.value.profile),
             isSelected: widget.selectedUserId == member.value.profile.id,
+            isSelf: member.value.isSelf,
+            isMoving: member.value.profile.lastLocation?.isMoving ?? false,
+            speedKmh: (member.value.profile.lastLocation?.speed ?? 0) * 3.6,
+            batteryLevel: member.value.profile.batteryLevel,
+            isCharging: member.value.profile.isCharging ?? false,
           ),
       ];
+      final single = group.members.length == 1;
       final signature = [
         for (final person in persons)
           '${person.id}|${person.name}|${person.avatarUrl}|'
               '${identityHashCode(person.avatarBytes)}|'
-              '${person.isStale}|${person.isSelected}',
+              '${person.isStale}|${person.isSelf}|${person.isMoving}|'
+              '${(person.speedKmh / 5).round()}|${person.batteryLevel}|'
+              '${person.isCharging}',
       ].join(',');
       final image = _imageFor(
-        'live:$signature',
-        () => _icons.liveMarker(persons),
+        '${single ? 'person' : 'cluster'}:$signature',
+        () => single
+            ? _icons.personMarker(persons.first)
+            : _icons.clusterMarker(persons),
       );
       if (image == null) continue;
 
-      final single = group.members.length == 1;
       final member = group.members.first.value;
+      final person = persons.first;
       markers.add(
         MapMarker(
           id: single
@@ -721,6 +731,14 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           position: single ? group.members.first.point : group.center,
           image: image,
           layer: single ? MapMarkerLayer.user : MapMarkerLayer.cluster,
+          // The web scales the whole marker: selected 1.18, moving 1.08.
+          iconSize: single
+              ? person.isSelected
+                    ? 1.18
+                    : person.isMoving
+                    ? 1.08
+                    : 1
+              : 1,
           payload: single
               ? member.profile
               : [for (final m in group.members) m.value.profile],

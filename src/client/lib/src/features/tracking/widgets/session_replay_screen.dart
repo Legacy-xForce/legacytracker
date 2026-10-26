@@ -192,10 +192,13 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
 
     final markerImage = _imageFor(
       'replay:${widget.userId}:$speedBucket',
-      () => _icons.replayMarker(
-        person: MarkerPerson(id: widget.userId, name: widget.userName),
-        speedKmh: speedKmh,
-        isMoving: moving,
+      () => _icons.personMarker(
+        MarkerPerson(
+          id: widget.userId,
+          name: widget.userName,
+          isMoving: moving,
+          speedKmh: speedKmh,
+        ),
       ),
     );
     final beamImage = showBeam
@@ -239,6 +242,8 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           position: currentPoint,
           image: markerImage,
           layer: MapMarkerLayer.user,
+          // The web draws the replay rider at 70% so the route stays in view.
+          iconSize: 0.7,
         ),
     ];
 

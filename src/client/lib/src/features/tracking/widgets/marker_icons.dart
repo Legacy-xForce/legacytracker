@@ -40,7 +40,8 @@ class MarkerImage {
   final double anchorOffsetY;
 }
 
-/// One person drawn inside a live marker bubble.
+/// One person drawn on the map. Mirrors the web client's `PeerMarker`: an
+/// avatar in a ring, a speed badge while moving and a battery badge below.
 class MarkerPerson {
   const MarkerPerson({
     required this.id,
@@ -49,6 +50,11 @@ class MarkerPerson {
     this.avatarBytes,
     this.isStale = false,
     this.isSelected = false,
+    this.isSelf = false,
+    this.isMoving = false,
+    this.speedKmh = 0,
+    this.batteryLevel,
+    this.isCharging = false,
   });
 
   final String id;
@@ -57,6 +63,13 @@ class MarkerPerson {
   final Uint8List? avatarBytes;
   final bool isStale;
   final bool isSelected;
+
+  /// Own marker: the ring and badges use the accent colour.
+  final bool isSelf;
+  final bool isMoving;
+  final double speedKmh;
+  final int? batteryLevel;
+  final bool isCharging;
 }
 
 /// Builds the bitmap icons rendered through Mapbox point annotations.
@@ -89,28 +102,125 @@ class MarkerIconFactory extends ChangeNotifier {
     }
   }
 
-  /// A live-tracking bubble: one face per person, a short tail and a dot on
-  /// the shared location. Mirrors the old Life360-style marker.
-  Future<MarkerImage> liveMarker(List<MarkerPerson> members) async {
+  // PeerMarker geometry in logical pixels, copied from the web client. The
+  // box is the heading beam's footprint and the avatar sits in its centre, so
+  // the marker anchors on the person.
+  static const _personWidth = 152.0;
+  static const _personHeight = 168.0;
+  static const _personCenter = Offset(76, 84);
+  static const _personRingSize = 60.0;
+  static const _personAvatarSize = 53.0;
+  static const _badgeHeight = 20.0;
+  static const _badgeIconSize = 12.0;
+  static const _badgeFontSize = 10.0;
+  static const _badgeGap = 4.0;
+  static const _badgePadX = 8.0;
+
+  static const _staleGrey = Color(0xFF9E9E9E);
+  static const _badgeDark = Color(0xFF212121);
+  static const _badgeSelf = Color(0xFF00695C);
+  static const _badgeStale = Color(0xFF616161);
+
+  /// The web client's person marker: the avatar inside a ring, a soft pulse and
+  /// a speed badge while moving, and the battery badge below. Selection and
+  /// motion scaling are applied by the caller as the annotation's icon size.
+  Future<MarkerImage> personMarker(MarkerPerson person) async {
+    final id =
+        'person-${_personToken(person)}'
+        '-${person.isMoving ? (person.speedKmh / 5).round() * 5 : 'parked'}'
+        '-${person.batteryLevel ?? '-'}'
+        '${person.isCharging ? 'c' : ''}';
+    final cached = _cached(id);
+    if (cached != null) return cached;
+
+    final avatar = _avatarFor(person);
+    final beam = person.isStale ? _staleGrey : markerAccentColor;
+    final ring = person.isStale
+        ? _staleGrey
+        : person.isSelf
+        ? markerAccentColor
+        : Colors.white;
+    final badge = person.isStale
+        ? _badgeStale
+        : person.isSelf
+        ? _badgeSelf
+        : _badgeDark;
+
+    return _render(_personWidth, _personHeight, (canvas) {
+      if (person.isMoving) {
+        canvas.drawCircle(
+          _personCenter,
+          40,
+          Paint()..color = beam.withValues(alpha: 0.22),
+        );
+      }
+      final ringPath = Path()
+        ..addOval(
+          Rect.fromCircle(center: _personCenter, radius: _personRingSize / 2),
+        );
+      canvas.drawShadow(ringPath, Colors.black, 6, false);
+      canvas.drawPath(ringPath, Paint()..color = ring);
+      _drawRoundAvatar(
+        canvas,
+        person: person,
+        image: avatar,
+        center: _personCenter,
+        size: _personAvatarSize,
+      );
+
+      if (person.isMoving) {
+        _badge(
+          canvas,
+          icon: Icons.speed_rounded,
+          text: '${person.speedKmh.round()} km/h',
+          right: _personWidth - 18,
+          top: 48,
+          background: badge,
+        );
+      }
+      final battery = person.batteryLevel?.clamp(0, 100);
+      if (battery != null) {
+        _badge(
+          canvas,
+          icon: _batteryIcon(battery, person.isCharging),
+          text: '$battery%',
+          centerX: _personCenter.dx,
+          top: 116,
+          background: badge,
+        );
+      }
+    }, id: id);
+  }
+
+  // ClusterMarker geometry, the same numbers the web client uses.
+  static const _clusterFaceSize = 42.0;
+  static const _clusterFaceStep = 30.0;
+  static const _clusterPadding = 5.0;
+  static const _clusterBubbleHeight = 52.0;
+  static const _clusterTailHeight = 9.0;
+  static const _clusterDotSize = 14.0;
+  static const _clusterHeight =
+      _clusterBubbleHeight + _clusterTailHeight + _clusterDotSize - 2;
+  static const _clusterMaxFaces = 3;
+
+  /// Several people close together: their faces in one white bubble with a
+  /// tail dot on the shared location, as on the web.
+  Future<MarkerImage> clusterMarker(List<MarkerPerson> members) async {
     final allStale = members.every((m) => m.isStale);
     final id = _liveId(members, allStale);
     final cached = _cached(id);
     if (cached != null) return cached;
 
-    const faceSize = 42.0;
-    const padding = 3.0;
-    const faceStep = 30.0;
-    const tailHeight = 13.0;
-    const dotSize = 14.0;
-    const maxFaces = 3;
-
-    final faces = members.length > maxFaces ? maxFaces : members.length;
+    final faces = members.length > _clusterMaxFaces
+        ? _clusterMaxFaces
+        : members.length;
     final overflow = members.length - faces;
-    final slots = members.length > maxFaces ? maxFaces + 1 : members.length;
-    final bubbleHeight = faceSize + padding * 2;
-    final width = padding * 2 + faceSize + (slots - 1) * faceStep;
-    final height = bubbleHeight + tailHeight + dotSize / 2;
-    final dotCenterY = bubbleHeight + tailHeight;
+    final slots = members.length > _clusterMaxFaces
+        ? _clusterMaxFaces + 1
+        : members.length;
+    final width =
+        _clusterPadding * 2 + _clusterFaceSize + (slots - 1) * _clusterFaceStep;
+    final dotCenterY = _clusterHeight - _clusterDotSize / 2;
 
     final avatarImages = <int, ui.Image?>{
       for (var i = 0; i < faces; i++) i: _avatarFor(members[i]),
@@ -118,12 +228,12 @@ class MarkerIconFactory extends ChangeNotifier {
 
     return _render(
       width,
-      height,
+      _clusterHeight,
       (canvas) {
         final path = _bubblePath(
           width: width,
-          bubbleHeight: bubbleHeight,
-          tailHeight: tailHeight,
+          bubbleHeight: _clusterBubbleHeight,
+          tailHeight: _clusterTailHeight,
         );
         canvas.drawShadow(path, Colors.black, 4, false);
         canvas.drawPath(path, Paint()..color = Colors.white);
@@ -133,83 +243,38 @@ class MarkerIconFactory extends ChangeNotifier {
             canvas,
             person: null,
             overflow: overflow,
-            left: padding + faces * faceStep,
-            top: padding,
-            size: faceSize,
+            left: _clusterPadding + faces * _clusterFaceStep,
+            top: _clusterPadding,
+            size: _clusterFaceSize,
           );
         }
-        // Right to left, so the leftmost face paints on top like the old stack.
+        // Right to left, so the leftmost face paints on top like the web stack.
         for (var i = faces - 1; i >= 0; i--) {
           _drawFace(
             canvas,
             person: members[i],
             image: avatarImages[i],
-            left: padding + i * faceStep,
-            top: padding,
-            size: faceSize,
+            left: _clusterPadding + i * _clusterFaceStep,
+            top: _clusterPadding,
+            size: _clusterFaceSize,
           );
         }
 
         final dot = Offset(width / 2, dotCenterY);
-        canvas.drawCircle(dot, dotSize / 2, Paint()..color = Colors.white);
         canvas.drawCircle(
           dot,
-          dotSize / 2 - 2,
+          _clusterDotSize / 2,
+          Paint()..color = Colors.white,
+        );
+        canvas.drawCircle(
+          dot,
+          _clusterDotSize / 2 - 2.5,
           Paint()..color = allStale ? Colors.grey.shade600 : markerAccentColor,
         );
       },
       id: id,
-      anchorOffsetY: height - dotCenterY,
+      anchorOffsetY: _clusterHeight - dotCenterY,
     );
-  }
-
-  /// The compact marker used over a replay route: avatar, halo, heading beam
-  /// (a separate annotation) and, while moving, a speed badge.
-  Future<MarkerImage> replayMarker({
-    required MarkerPerson person,
-    required double speedKmh,
-    required bool isMoving,
-  }) async {
-    final speedBucket = isMoving ? (speedKmh / 5).round() * 5 : -1;
-    final id = 'replay-${_personToken(person)}-$speedBucket';
-    final cached = _cached(id);
-    if (cached != null) return cached;
-
-    const size = 84.0;
-    const height = 96.0;
-    const avatarSize = 42.0;
-    const center = Offset(size / 2, height / 2);
-    final avatar = _avatarFor(person);
-
-    return _render(size, height, (canvas) {
-      canvas.drawCircle(
-        center,
-        34,
-        Paint()..color = markerAccentColor.withValues(alpha: 0.16),
-      );
-      canvas.drawCircle(
-        center,
-        avatarSize / 2 + 3,
-        Paint()..color = Colors.white,
-      );
-      _drawFace(
-        canvas,
-        person: person,
-        image: avatar,
-        left: center.dx - avatarSize / 2,
-        top: center.dy - avatarSize / 2,
-        size: avatarSize,
-      );
-      if (isMoving) {
-        _drawPill(
-          canvas,
-          center: Offset(size / 2, height - 12),
-          text: '${speedKmh.round()} km/h',
-          background: Colors.grey.shade900,
-          color: Colors.white,
-        );
-      }
-    }, id: id);
   }
 
   /// A rounded-square calendar pin in the event's colour.
@@ -375,14 +440,15 @@ class MarkerIconFactory extends ChangeNotifier {
     );
   }
 
+  /// Identity of a cluster bitmap. Selection is not part of it: the caller
+  /// scales the annotation instead of baking another bitmap.
   String _liveId(List<MarkerPerson> members, bool allStale) {
-    final buffer = StringBuffer('live:$allStale');
+    final buffer = StringBuffer('cluster:$allStale');
     for (final member in members) {
       buffer
         ..write('|')
         ..write(_personToken(member))
-        ..write(member.isStale ? ':s' : '')
-        ..write(member.isSelected ? ':x' : '');
+        ..write(member.isStale ? ':s' : '');
     }
     return _hashed(buffer.toString());
   }
@@ -396,7 +462,8 @@ class MarkerIconFactory extends ChangeNotifier {
         : _avatarFailed.contains(avatar)
         ? 'failed'
         : 'initial';
-    return '${person.id}:${person.name}:$avatarState';
+    return '${person.id}:${person.name}:$avatarState'
+        '${person.isSelf ? ':self' : ''}${person.isStale ? ':stale' : ''}';
   }
 
   String _hashed(String value) {
@@ -507,9 +574,121 @@ class MarkerIconFactory extends ChangeNotifier {
       size / 2 - 1,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = person.isSelected ? 3 : 1.5
-        ..color = person.isSelected ? markerAccentColor : Colors.white,
+        ..strokeWidth = 2.5
+        ..color = Colors.white,
     );
+  }
+
+  /// Just the photo (or the initial) in a circle, without the badge styling.
+  void _drawRoundAvatar(
+    Canvas canvas, {
+    required MarkerPerson person,
+    ui.Image? image,
+    required Offset center,
+    required double size,
+  }) {
+    final radius = size / 2;
+    final circle = Rect.fromCircle(center: center, radius: radius);
+    canvas.save();
+    canvas.clipPath(Path()..addOval(circle));
+    if (image != null) {
+      _drawImageCover(canvas, image, circle, stale: person.isStale);
+    } else {
+      canvas.drawCircle(
+        center,
+        radius,
+        Paint()
+          ..color = person.isStale
+              ? Colors.grey.shade600
+              : userColor(person.id),
+      );
+      _drawText(
+        canvas,
+        userInitial(person.name),
+        center,
+        TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.42,
+          fontWeight: FontWeight.w700,
+          height: 1,
+        ),
+      );
+    }
+    canvas.restore();
+  }
+
+  TextPainter _iconPainter(IconData icon, double size, Color color) {
+    return TextPainter(
+      text: TextSpan(
+        text: String.fromCharCode(icon.codePoint),
+        style: TextStyle(
+          fontFamily: icon.fontFamily,
+          package: icon.fontPackage,
+          fontSize: size,
+          color: color,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+  }
+
+  /// A dark badge with a Material glyph and 10 px white text, as the web draws
+  /// its speed and battery pills. Anchored by its right edge or its centre.
+  Rect _badge(
+    Canvas canvas, {
+    required IconData icon,
+    required String text,
+    required double top,
+    required Color background,
+    double? right,
+    double? centerX,
+  }) {
+    final iconPainter = _iconPainter(icon, _badgeIconSize, Colors.white);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: _badgeFontSize,
+          fontWeight: FontWeight.w600,
+          height: 12 / 10,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    final contentWidth = iconPainter.width + _badgeGap + textPainter.width;
+    final width = contentWidth + _badgePadX * 2;
+    final left = right != null ? right - width : (centerX ?? 0) - width / 2;
+    final rect = Rect.fromLTWH(left, top, width, _badgeHeight);
+    final pill = RRect.fromRectAndRadius(rect, const Radius.circular(999));
+    canvas.drawShadow(Path()..addRRect(pill), Colors.black, 3, false);
+    canvas.drawRRect(pill, Paint()..color = background);
+    iconPainter.paint(
+      canvas,
+      Offset(rect.left + _badgePadX, rect.center.dy - iconPainter.height / 2),
+    );
+    textPainter.paint(
+      canvas,
+      Offset(
+        rect.left + _badgePadX + iconPainter.width + _badgeGap,
+        rect.center.dy - textPainter.height / 2,
+      ),
+    );
+    iconPainter.dispose();
+    textPainter.dispose();
+    return rect;
+  }
+
+  /// The battery glyph for a charge level, as the web client picks it.
+  IconData _batteryIcon(int level, bool charging) {
+    if (charging) return Icons.battery_charging_full_rounded;
+    if (level >= 90) return Icons.battery_full_rounded;
+    if (level >= 70) return Icons.battery_5_bar_rounded;
+    if (level >= 55) return Icons.battery_4_bar_rounded;
+    if (level >= 40) return Icons.battery_3_bar_rounded;
+    if (level >= 25) return Icons.battery_2_bar_rounded;
+    if (level >= 10) return Icons.battery_1_bar_rounded;
+    return Icons.battery_alert_rounded;
   }
 
   void _drawImageCover(
@@ -559,44 +738,6 @@ class MarkerIconFactory extends ChangeNotifier {
       text: TextSpan(text: text, style: style),
       textDirection: TextDirection.ltr,
     )..layout();
-    painter.paint(
-      canvas,
-      center - Offset(painter.width / 2, painter.height / 2),
-    );
-    painter.dispose();
-  }
-
-  void _drawPill(
-    Canvas canvas, {
-    required Offset center,
-    required String text,
-    required Color background,
-    required Color color,
-  }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: text,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      textDirection: TextDirection.ltr,
-    )..layout();
-    final width = painter.width + 16;
-    final height = painter.height + 8;
-    final rect = RRect.fromRectAndRadius(
-      Rect.fromCenter(center: center, width: width, height: height),
-      const Radius.circular(999),
-    );
-    canvas.drawRRect(
-      rect.shift(const Offset(0, 2)),
-      Paint()
-        ..color = Colors.black.withValues(alpha: 0.18)
-        ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 3),
-    );
-    canvas.drawRRect(rect, Paint()..color = background);
     painter.paint(
       canvas,
       center - Offset(painter.width / 2, painter.height / 2),

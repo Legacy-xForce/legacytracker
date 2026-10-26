@@ -118,10 +118,15 @@ to an embedded token. The token request has no body and deliberately sends no
 - Live markers are native bitmaps built in `marker_icons.dart` and added to the
   style with `StyleManager.addStyleImage`. Point annotations reference the image
   id, so moving a marker only updates geometry, never the bitmap bytes.
-- Markers follow the Life360-style white bubble: up to three avatar faces, a
-  `+N` overflow face, a tail dot on the location, greyed faces for stale peers
-  and an accent ring for the selected person. Clustering merges people only
-  when they are within 96 screen pixels **and** 100 m at the current zoom.
+- Markers are the web client's design, drawn into the bitmap: the avatar in a
+  60 px ring (white; the accent colour on your own marker; grey when stale), a
+  soft pulse while moving, a speed badge top-right (`km/h`) and a battery badge
+  under the avatar (dark pill, accent for yourself, grey when stale). Selection
+  and motion scale the annotation (1.18 / 1.08) rather than adding bitmaps.
+- Groups use the web's cluster bubble: up to three faces with a 2.5 px white
+  ring, a `+N` overflow face and a tail dot on the shared location, at the web's
+  52 / 9 / 14 px metrics. Clustering merges people only when they are within 96
+  screen pixels **and** 100 m at the current zoom.
 - Calendar events use a rounded-square pin in the event colour; checkpoints are
   geodesic polygons whose radius is respected in metres; replay routes are
   native polylines coloured by recorded speed.

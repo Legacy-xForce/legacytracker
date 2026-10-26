@@ -55,6 +55,9 @@ class _Peer {
     this.heading = 0,
     this.moving = false,
     this.stale = false,
+    this.speedKmh = 0,
+    this.battery = 64,
+    this.charging = false,
   });
 
   final String id;
@@ -63,6 +66,9 @@ class _Peer {
   double heading;
   bool moving;
   bool stale;
+  double speedKmh;
+  int battery;
+  bool charging;
 }
 
 class _MapCheckScreen extends StatefulWidget {
@@ -108,6 +114,8 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         position: const LatLng(45.07060, 7.68720),
         heading: 45,
         moving: true,
+        speedKmh: 18,
+        battery: 26,
       ),
       _Peer(
         id: 'peer-far',
@@ -115,6 +123,8 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         position: const LatLng(45.07600, 7.69500),
         heading: 130,
         moving: true,
+        speedKmh: 47,
+        battery: 82,
       ),
       _Peer(
         id: 'peer-stale',
@@ -122,6 +132,8 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         position: const LatLng(45.06600, 7.68000),
         heading: 270,
         stale: true,
+        battery: 9,
+        charging: true,
       ),
       _Peer(
         id: 'peer-cluster-a',
@@ -129,6 +141,8 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         position: const LatLng(45.07045, 7.68710),
         heading: 20,
         moving: true,
+        speedKmh: 4,
+        battery: 31,
       ),
       _Peer(
         id: 'peer-cluster-b',
@@ -236,19 +250,27 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
             id: member.value.id,
             name: member.value.name,
             isStale: member.value.stale,
+            isMoving: member.value.moving,
+            speedKmh: member.value.speedKmh,
+            batteryLevel: member.value.battery,
+            isCharging: member.value.charging,
+            isSelf: member.value.id == 'self',
           ),
       ];
       final signature = [
         for (final person in persons)
           '${person.id}|${person.name}|${person.isStale}|'
-              '${identityHashCode(person.avatarBytes)}',
+              '${person.isMoving}|${person.speedKmh.round()}|'
+              '${person.batteryLevel}|${identityHashCode(person.avatarBytes)}',
       ].join(',');
+      final single = group.members.length == 1;
       final image = _imageFor(
-        'live:$signature',
-        () => _icons.liveMarker(persons),
+        '${single ? 'person' : 'cluster'}:$signature',
+        () => single
+            ? _icons.personMarker(persons.first)
+            : _icons.clusterMarker(persons),
       );
       if (image == null) continue;
-      final single = group.members.length == 1;
       markers.add(
         MapMarker(
           id: single

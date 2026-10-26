@@ -5,35 +5,88 @@ import 'package:legacytracker/src/features/tracking/widgets/marker_icons.dart';
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  test('live marker renders a 2x bitmap anchored on its tail dot', () async {
+  test('a person marker is the web box, anchored on its centre', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);
 
-    final image = await factory.liveMarker(const [
-      MarkerPerson(id: 'user', name: 'Ada'),
-    ]);
+    final image = await factory.personMarker(
+      const MarkerPerson(id: 'user', name: 'Ada'),
+    );
 
     expect(image.scale, 2.0);
-    expect(image.width, greaterThan(0));
-    expect(image.height, greaterThan(image.width));
+    // PeerMarker.vue's 152x168 box at 2x.
+    expect(image.width, 304);
+    expect(image.height, 336);
+    // The avatar sits in the middle, so it needs no anchor offset.
+    expect(image.anchorOffsetY, 0);
     expectPng(image);
-    // The dot sits 7 logical px above the image edge.
-    expect(image.anchorOffsetY, closeTo(7, 1e-9));
   });
+
+  test('battery, motion and staleness each produce a different icon', () async {
+    final factory = MarkerIconFactory();
+    addTearDown(factory.dispose);
+
+    const plain = MarkerPerson(id: 'a', name: 'Ada');
+    final base = await factory.personMarker(plain);
+    final battery = await factory.personMarker(
+      const MarkerPerson(id: 'a', name: 'Ada', batteryLevel: 26),
+    );
+    final charging = await factory.personMarker(
+      const MarkerPerson(
+        id: 'a',
+        name: 'Ada',
+        batteryLevel: 26,
+        isCharging: true,
+      ),
+    );
+    final moving = await factory.personMarker(
+      const MarkerPerson(
+        id: 'a',
+        name: 'Ada',
+        batteryLevel: 26,
+        isMoving: true,
+        speedKmh: 34,
+      ),
+    );
+    final stale = await factory.personMarker(
+      const MarkerPerson(id: 'a', name: 'Ada', batteryLevel: 26, isStale: true),
+    );
+
+    final ids = {base.id, battery.id, charging.id, moving.id, stale.id};
+    expect(ids, hasLength(5));
+    for (final image in [battery, charging, moving, stale]) {
+      expectPng(image);
+    }
+  });
+
+  test(
+    'selection is left to the annotation, not baked into the bitmap',
+    () async {
+      final factory = MarkerIconFactory();
+      addTearDown(factory.dispose);
+
+      final normal = await factory.personMarker(
+        const MarkerPerson(id: 'a', name: 'Ada'),
+      );
+      final selected = await factory.personMarker(
+        const MarkerPerson(id: 'a', name: 'Ada', isSelected: true),
+      );
+
+      // The map scales the icon (1.18 when selected), so the bitmap is shared.
+      expect(selected.id, normal.id);
+    },
+  );
 
   test('a cluster grows horizontally with its faces', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);
 
-    final single = await factory.liveMarker(const [
-      MarkerPerson(id: 'a', name: 'Ada'),
-    ]);
-    final cluster = await factory.liveMarker(const [
+    final cluster = await factory.clusterMarker(const [
       MarkerPerson(id: 'a', name: 'Ada'),
       MarkerPerson(id: 'b', name: 'Bo'),
       MarkerPerson(id: 'c', name: 'Cy'),
     ]);
-    final overflow = await factory.liveMarker(const [
+    final overflow = await factory.clusterMarker(const [
       MarkerPerson(id: 'a', name: 'Ada'),
       MarkerPerson(id: 'b', name: 'Bo'),
       MarkerPerson(id: 'c', name: 'Cy'),
@@ -41,42 +94,23 @@ void main() {
       MarkerPerson(id: 'e', name: 'Ed'),
     ]);
 
-    expect(cluster.width, greaterThan(single.width));
     // Max three faces plus one "+N" slot.
     expect(overflow.width, greaterThan(cluster.width));
+    // ClusterMarker.vue: 52 bubble + 9 tail + 14 dot - 2, at 2x.
+    expect(cluster.height, 146);
+    // The tail dot sits 7 logical px above the image edge.
+    expect(cluster.anchorOffsetY, closeTo(7, 1e-9));
+    expectPng(cluster);
   });
 
-  test('selection and staleness produce different icons', () async {
+  test('event and beam icons render', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);
 
-    final normal = await factory.liveMarker(const [
-      MarkerPerson(id: 'a', name: 'Ada'),
-    ]);
-    final selected = await factory.liveMarker(const [
-      MarkerPerson(id: 'a', name: 'Ada', isSelected: true),
-    ]);
-    final stale = await factory.liveMarker(const [
-      MarkerPerson(id: 'a', name: 'Ada', isStale: true),
-    ]);
-
-    expect(selected.id, isNot(normal.id));
-    expect(stale.id, isNot(normal.id));
-  });
-
-  test('replay, event and beam icons render', () async {
-    final factory = MarkerIconFactory();
-    addTearDown(factory.dispose);
-
-    final replay = await factory.replayMarker(
-      person: const MarkerPerson(id: 'a', name: 'Ada'),
-      speedKmh: 34,
-      isMoving: true,
-    );
     final event = await factory.eventMarker(const Color(0xFF7C4DFF));
     final beam = await factory.headingBeam(markerAccentColor);
 
-    for (final image in [replay, event, beam]) {
+    for (final image in [event, beam]) {
       expectPng(image);
     }
   });
