@@ -133,9 +133,12 @@ to an embedded token. The token request has no body and deliberately sends no
   0.725 and 1 every 1.2 s (16 steps of 150 ms), because it has to change over
   time; the heading beam is a 56° cone reaching 77 px, rotated per annotation.
   Neither re-renders a bitmap per frame.
-- Groups use the web's cluster bubble: up to three faces with a 2.5 px white
-  ring, a `+N` overflow face and a tail dot on the shared location, at the web's
-  52 / 9 / 14 px metrics. Clustering merges people only when they are within 96
+- Groups use the web's cluster bubble: up to three faces with a 2 px ring, a
+  `+N` overflow face and a tail dot on the shared location, at 38 px faces and
+  46 / 8 / 12 px metrics. The bubble is painted in the same colour as the
+  avatar rings (the app's `surfaceContainerHighest`, the web's `#212121`), so
+  a cluster reads as one object with the people markers. Clustering merges
+  people only when they are within 96
   screen pixels **and** 100 m at the current zoom. The tap callback names the
   annotation but never the touch point, so each visible face also gets a
   transparent hit-area annotation (`clusterFace` layer, created above the

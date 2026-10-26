@@ -279,12 +279,12 @@ class MarkerIconFactory extends ChangeNotifier {
   }
 
   // ClusterMarker geometry, the same numbers the web client uses.
-  static const _clusterFaceSize = 34.0;
-  static const _clusterFaceStep = 24.0;
+  static const _clusterFaceSize = 38.0;
+  static const _clusterFaceStep = 27.0;
   static const _clusterPadding = 4.0;
-  static const _clusterBubbleHeight = 42.0;
-  static const _clusterTailHeight = 7.0;
-  static const _clusterDotSize = 11.0;
+  static const _clusterBubbleHeight = 46.0;
+  static const _clusterTailHeight = 8.0;
+  static const _clusterDotSize = 12.0;
   static const _clusterHeight =
       _clusterBubbleHeight + _clusterTailHeight + _clusterDotSize - 2;
   static const _clusterMaxFaces = 3;

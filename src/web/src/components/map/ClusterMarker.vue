@@ -60,7 +60,7 @@ function left(index: number): string {
                 :user-id="member.id"
                 :name="member.name"
                 :size="CLUSTER.faceSize"
-                :ring-color="'var(--color-surface-container-high)'"
+                :ring-color="'#212121'"
                 :ring-width="2"
                 :dimmed="member.stale"
             />
@@ -90,11 +90,11 @@ function left(index: number): string {
     filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
 }
 
-/* The bubble follows the theme's raised surface, like every other floating
-   card; the face rings and the dot border are the same colour so they cut the
-   overlapping faces apart instead of framing them. */
+/* The bubble is the same colour as the avatar rings on the map (the peer
+   pill #212121), so a cluster reads as one object with the people list; the
+   face rings and the dot border match it to cut the overlapping faces apart. */
 .peer-cluster__path {
-    fill: var(--color-surface-container-high);
+    fill: #212121;
 }
 
 .peer-cluster__face {
@@ -104,15 +104,17 @@ function left(index: number): string {
 }
 
 .peer-cluster__more {
-    width: 34px;
-    height: 34px;
+    width: 38px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: var(--color-on-surface);
-    box-shadow: inset 0 0 0 2px var(--color-surface-container-high);
-    color: var(--color-surface);
-    font-size: 11px;
+    /* Fixed light on the fixed dark bubble: the bubble no longer follows the
+       theme, so the chip must not either or it vanishes under light themes. */
+    background: #e3e6e5;
+    box-shadow: inset 0 0 0 2px #212121;
+    color: #212121;
+    font-size: 12px;
     font-weight: 700;
 }
 
@@ -120,12 +122,12 @@ function left(index: number): string {
     position: absolute;
     left: 50%;
     bottom: 0;
-    width: 11px;
-    height: 11px;
-    margin-left: -5.5px;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
     border-radius: 9999px;
     background: var(--color-beam);
-    border: 2px solid var(--color-surface-container-high);
+    border: 2px solid #212121;
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.38);
 }
 

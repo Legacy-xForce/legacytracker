@@ -970,23 +970,19 @@ class TrackingMapTabState extends State<TrackingMapTab>
   MarkerColors get _markerColors =>
       MarkerColors.from(Theme.of(context).colorScheme);
 
-  /// The bubble matches the app theme's raised surface: white on light, the
-  /// dark card colour on dark - never a white sticker on a dark map. The
-  /// tail dot is the theme accent.
+  /// The bubble is the same colour as the avatar rings on the map (the peer
+  /// pill colour), so a cluster reads as one object with the people list,
+  /// not a second card style. The tail dot is the theme accent.
   ClusterStyle get _clusterStyle {
     final scheme = Theme.of(context).colorScheme;
-    if (scheme.brightness == Brightness.light) {
-      return ClusterStyle(
-        bubble: Colors.white,
-        chip: const Color(0xFF2B3134),
-        chipText: Colors.white,
-        accent: scheme.primary,
-      );
-    }
     return ClusterStyle(
-      bubble: scheme.surfaceContainerHigh,
-      chip: scheme.onSurface,
-      chipText: scheme.surface,
+      bubble: scheme.surfaceContainerHighest,
+      chip: scheme.brightness == Brightness.light
+          ? const Color(0xFF2B3134)
+          : scheme.onSurface,
+      chipText: scheme.brightness == Brightness.light
+          ? Colors.white
+          : scheme.surface,
       accent: scheme.primary,
     );
   }
