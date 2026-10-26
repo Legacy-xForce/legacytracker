@@ -56,6 +56,7 @@ class TrackingMapTab extends StatefulWidget {
     required this.selectedUserId,
     required this.onLayerSelected,
     required this.onUserSelected,
+    required this.onSelectionCleared,
     required this.onStatusTap,
     this.mapboxTokenService,
   });
@@ -77,6 +78,10 @@ class TrackingMapTab extends StatefulWidget {
   final String? selectedUserId;
   final ValueChanged<MapLayer> onLayerSelected;
   final ValueChanged<UserProfile> onUserSelected;
+
+  /// The drawer returned to the list: drop the selected marker and the camera
+  /// that was following them.
+  final VoidCallback onSelectionCleared;
 
   /// The sharing-status pill was tapped (opens the sharing settings).
   final VoidCallback onStatusTap;
@@ -309,6 +314,18 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       // Selecting someone opens the sheet on their details.
       sheetFraction: TrackingUsersDrawer.expandedSize,
     );
+  }
+
+  /// Back to the list of everyone: the map stops framing the person whose
+  /// detail pane just closed.
+  void _clearSelection() {
+    if (_autoFollow || _followedUserId != null) {
+      setState(() {
+        _autoFollow = false;
+        _followedUserId = null;
+      });
+    }
+    widget.onSelectionCleared();
   }
 
   void _focusCluster(List<UserProfile> members) {
@@ -596,6 +613,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               selectedUserId: widget.selectedUserId,
               selectionTick: _selectionTick,
               onUserSelected: _focusUser,
+              onSelectionCleared: _clearSelection,
               onExtentChanged: (fraction) {
                 final changed = fraction != _sheetFraction;
                 _sheetFraction = fraction;

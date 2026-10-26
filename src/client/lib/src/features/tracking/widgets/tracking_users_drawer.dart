@@ -38,6 +38,7 @@ class TrackingUsersDrawer extends StatefulWidget {
     required this.selectedUserId,
     this.selectionTick = 0,
     required this.onUserSelected,
+    required this.onSelectionCleared,
     this.onExtentChanged,
   });
 
@@ -51,6 +52,10 @@ class TrackingUsersDrawer extends StatefulWidget {
   /// Bumped on every selection, including re-selecting the same person.
   final int selectionTick;
   final ValueChanged<UserProfile> onUserSelected;
+
+  /// The sheet went back to the list (header back button or Android back), so
+  /// the selection that highlights the marker has to be dropped too.
+  final VoidCallback onSelectionCleared;
 
   /// The fraction of the map's height the sheet currently covers, so the map
   /// can keep a focused marker in the part that's still visible.
@@ -75,13 +80,11 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
   // Recomputed from the available height on every layout.
   double _collapsedSize = 0.1;
   double _sheetSize = 0.1;
-  String? _detailUserId;
 
   @override
   void initState() {
     super.initState();
     _sheetController.addListener(_handleSheetChanged);
-    _detailUserId = widget.selectedUserId;
     // The controller does not notify for its initial size, so the map would
     // keep an inset of 0 (and paint its logo under the sheet) until the first
     // drag. Report the real extent once the sheet is laid out.
@@ -100,7 +103,6 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     if (widget.selectedUserId != null &&
         (widget.selectedUserId != oldWidget.selectedUserId ||
             widget.selectionTick != oldWidget.selectionTick)) {
-      setState(() => _detailUserId = widget.selectedUserId);
       _expand();
     }
   }
@@ -178,12 +180,13 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   void _openDetail(UserProfile profile) {
     widget.onUserSelected(profile);
-    setState(() => _detailUserId = profile.id);
     _expand();
   }
 
   void _closeDetail() {
-    setState(() => _detailUserId = null);
+    // Clearing the parent's selection is what removes the ring around the
+    // person on the map; doing it only here locally left them selected forever.
+    widget.onSelectionCleared();
   }
 
   @override
@@ -211,9 +214,9 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     ];
 
     _DrawerUser? detailUser;
-    if (_detailUserId != null) {
+    if (widget.selectedUserId != null) {
       for (final user in users) {
-        if (user.profile.id == _detailUserId) {
+        if (user.profile.id == widget.selectedUserId) {
           detailUser = user;
           break;
         }
@@ -866,15 +869,19 @@ class _UserDetailPane extends StatefulWidget {
 class _UserDetailPaneState extends State<_UserDetailPane>
     with SingleTickerProviderStateMixin {
   late final Future<List<LocationSession>> _todaySessions;
-  late final AnimationController _spin = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
+  late final AnimationController _spin;
   bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
+    // Created here, not lazily: a detail pane for someone who does not share
+    // with you never references it in build(), and disposing an uncreated
+    // `late final` controller used to build it too late (in dispose()).
+    _spin = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     _todaySessions = _loadTodaySessions();
   }
 
