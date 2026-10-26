@@ -820,10 +820,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       ].join(',');
       final image = _imageFor(
         single
-            ? 'person:${_personStyle.id}:$signature'
+            ? 'person:$signature'
             : 'cluster:${_clusterStyle.id}:$signature',
         () => single
-            ? _icons.personMarker(persons.first, style: _personStyle)
+            ? _icons.personMarker(persons.first)
             : _icons.clusterMarker(persons, style: _clusterStyle),
       );
       if (image == null) continue;
@@ -955,11 +955,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       chipText: scheme.surface,
     );
   }
-
-  /// Your ring is the theme accent, everyone else's the secondary grey of
-  /// the rest of the UI - white only reads well on a light map.
-  PersonStyle get _personStyle =>
-      personStyleFor(Theme.of(context).colorScheme);
 
   /// Greyed out when we haven't heard from the device in a while. Uses the
   /// server's last-seen time, not the position's age: a parked user's last

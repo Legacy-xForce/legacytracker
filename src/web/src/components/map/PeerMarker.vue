@@ -67,9 +67,9 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 <style>
 .peer-marker {
     --beam: var(--color-beam);
-    /* Others get the app's secondary grey, not white: on a dark map a white
-       ring is the loudest thing on screen. */
-    --ring: var(--color-on-surface-variant);
+    /* The ring is the colour of the badge pill under the avatar (see
+       --badge): dark grey for others, deep teal for you, never white. */
+    --ring: #212121;
     --badge: #212121;
     position: relative;
     width: 152px;
@@ -78,8 +78,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 }
 
 .peer-marker--self {
-    /* Your ring is the theme accent. */
-    --ring: var(--color-primary);
+    --ring: #00695c;
     --badge: #00695c;
 }
 

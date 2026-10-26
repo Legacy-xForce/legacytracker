@@ -121,9 +121,9 @@ to an embedded token. The token request has no body and deliberately sends no
   style with `StyleManager.addStyleImage`. Point annotations reference the image
   id, so moving a marker only updates geometry, never the bitmap bytes.
 - Markers are the web client's design, drawn into the bitmap: the avatar in a
-  ring that leaves a 2 px band (57 px ring around the 53 px avatar; the theme
-  accent on your own marker, the theme's secondary grey on everyone else -
-  white only on a light theme; grey when stale), a speed badge top-right
+  ring that leaves a 2 px band (57 px ring around the 53 px avatar) in the
+  colour of the badge pill under it - dark grey `#212121` for others, the deep
+  teal `#00695C` for yourself, grey when stale - a speed badge top-right
   (`km/h`) and a battery badge under the avatar (dark pill, accent for
   yourself, grey when stale). Selection and motion scale the annotation
   (1.18 / 1.08) rather than adding bitmaps.

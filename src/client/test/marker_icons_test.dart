@@ -157,23 +157,6 @@ void main() {
     expectPng(hit);
   });
 
-  test('a different ring style is a different icon', () async {
-    final factory = MarkerIconFactory();
-    addTearDown(factory.dispose);
-
-    const person = MarkerPerson(id: 'a', name: 'Ada');
-    final themed = await factory.personMarker(
-      person,
-      style: const PersonStyle(
-        selfRing: Color(0xFF82D5C8),
-        peerRing: Color(0xFFBEC9C6),
-      ),
-    );
-    final plain = await factory.personMarker(person);
-    expect(themed.id, isNot(plain.id));
-    expectPng(themed);
-  });
-
   test('a checkpoint label is a small dark pill sized to its name', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);

@@ -40,31 +40,6 @@ class MarkerImage {
   final double anchorOffsetY;
 }
 
-/// Ring colours for a person marker, taken from the app theme: your own ring
-/// is the accent, everyone else's the secondary grey that matches the rest of
-/// the UI (white only reads well on a light map).
-class PersonStyle {
-  const PersonStyle({required this.selfRing, required this.peerRing});
-
-  final Color selfRing;
-  final Color peerRing;
-
-  static const light = PersonStyle(
-    selfRing: markerAccentColor,
-    peerRing: Colors.white,
-  );
-
-  String get id => '${selfRing.toARGB32()}-${peerRing.toARGB32()}';
-}
-
-/// The theme a person marker's ring should use.
-PersonStyle personStyleFor(ColorScheme scheme) => PersonStyle(
-  selfRing: scheme.primary,
-  peerRing: scheme.brightness == Brightness.light
-      ? Colors.white
-      : scheme.onSurfaceVariant,
-);
-
 /// One person drawn on the map. Mirrors the web client's `PeerMarker`: an
 /// avatar in a ring, a speed badge while moving and a battery badge below.
 class MarkerPerson {
@@ -175,16 +150,13 @@ class MarkerIconFactory extends ChangeNotifier {
   /// The web client's person marker: the avatar inside a ring, a soft pulse and
   /// a speed badge while moving, and the battery badge below. Selection and
   /// motion scaling are applied by the caller as the annotation's icon size.
-  Future<MarkerImage> personMarker(
-    MarkerPerson person, {
-    PersonStyle style = PersonStyle.light,
-  }) async {
+  Future<MarkerImage> personMarker(MarkerPerson person) async {
     // Badge text and cache id share one 5 km/h bucket: that bounds how often a
     // 304x336 bitmap is re-rendered (roughly twice a second at motorway speed)
     // while still matching the web's rounded readout closely.
     final speed = person.isMoving ? (person.speedKmh / 5).round() * 5 : 0;
     final id =
-        'person-${style.id}-${_personToken(person)}'
+        'person-${_personToken(person)}'
         '-${person.isMoving ? speed : 'parked'}'
         '-${person.batteryLevel ?? '-'}'
         '${person.isCharging ? 'c' : ''}';
@@ -192,11 +164,13 @@ class MarkerIconFactory extends ChangeNotifier {
     if (cached != null) return cached;
 
     final avatar = _avatarFor(person);
+    // The ring is the colour of the badge pill under it: dark grey for
+    // others, the deep teal of your own badge. Stale keeps its own grey.
     final ring = person.isStale
         ? _staleGrey
         : person.isSelf
-        ? style.selfRing
-        : style.peerRing;
+        ? _badgeSelf
+        : _badgeDark;
     final badge = person.isStale
         ? _badgeStale
         : person.isSelf
