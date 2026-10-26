@@ -60,7 +60,7 @@ function left(index: number): string {
                 :user-id="member.id"
                 :name="member.name"
                 :size="CLUSTER.faceSize"
-                :ring-color="'#212121'"
+                :ring-color="'var(--color-surface-container-highest)'"
                 :ring-width="2"
                 :dimmed="member.stale"
             />
@@ -91,10 +91,10 @@ function left(index: number): string {
 }
 
 /* The bubble is the same colour as the avatar rings on the map (the peer
-   pill #212121), so a cluster reads as one object with the people list; the
+   pill token), so a cluster reads as one object with the people list; the
    face rings and the dot border match it to cut the overlapping faces apart. */
 .peer-cluster__path {
-    fill: #212121;
+    fill: var(--color-surface-container-highest);
 }
 
 .peer-cluster__face {
@@ -109,11 +109,9 @@ function left(index: number): string {
     display: flex;
     align-items: center;
     justify-content: center;
-    /* Fixed light on the fixed dark bubble: the bubble no longer follows the
-       theme, so the chip must not either or it vanishes under light themes. */
-    background: #e3e6e5;
-    box-shadow: inset 0 0 0 2px #212121;
-    color: #212121;
+    background: var(--color-on-surface);
+    box-shadow: inset 0 0 0 2px var(--color-surface-container-highest);
+    color: var(--color-surface);
     font-size: 12px;
     font-weight: 700;
 }
@@ -127,7 +125,7 @@ function left(index: number): string {
     margin-left: -6px;
     border-radius: 9999px;
     background: var(--color-beam);
-    border: 2px solid #212121;
+    border: 2px solid var(--color-surface-container-highest);
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.38);
 }
 

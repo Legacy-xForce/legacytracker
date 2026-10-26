@@ -68,9 +68,11 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 .peer-marker {
     --beam: var(--color-beam);
     /* The ring is the colour of the badge pill under the avatar (see
-       --badge): dark grey for others, deep teal for you, never white. */
-    --ring: #212121;
-    --badge: #212121;
+       --badge), both from the theme: the secondary raised surface for
+       others, the primary container for you - like the app's MarkerColors. */
+    --ring: var(--color-surface-container-highest);
+    --badge: var(--color-surface-container-highest);
+    --badge-text: var(--color-on-surface);
     position: relative;
     width: 152px;
     height: 168px;
@@ -78,14 +80,16 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 }
 
 .peer-marker--self {
-    --ring: #00695c;
-    --badge: #00695c;
+    --ring: var(--color-primary-container);
+    --badge: var(--color-primary-container);
+    --badge-text: var(--color-on-primary-container);
 }
 
 .peer-marker--stale {
     --beam: #9e9e9e;
     --ring: #9e9e9e;
     --badge: #616161;
+    --badge-text: #fff;
 }
 
 /* A 56° cone fading out from the person, with a soft glow. */
@@ -164,7 +168,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     padding: 4px 8px;
     border-radius: 9999px;
     background: var(--badge);
-    color: #fff;
+    color: var(--badge-text);
     font-size: 10px;
     line-height: 12px;
     font-weight: 600;
