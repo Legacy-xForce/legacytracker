@@ -186,7 +186,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final currentPoint = _displayedPoint ?? _latLngs[index];
     final moving = current.isMoving;
     final speedKmh = current.speed * 3.6;
-    final speedBucket = moving ? speedKmh.round() : -1;
+    final speedBucket = moving ? (speedKmh / 5).round() * 5 : -1;
     final heading = current.heading;
     final showBeam = moving && heading != null && heading.isFinite;
 
