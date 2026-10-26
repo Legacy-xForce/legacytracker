@@ -137,21 +137,36 @@ Rotation and pitch gestures are disabled on both clients.
 
 ### Draw order and error isolation
 
-A Mapbox annotation manager is one style layer, and a layer added later paints
-above the earlier ones, so the widget creates its managers in draw order:
-route casing, route lines, checkpoint polygons, checkpoint labels, heading
-beams, base markers, events, clusters, people. Route casing therefore gets its
-own manager instead of a `line-sort-key` value: the native API also exposes
-`line-sort-key` as a whole-layer constant, so a per-feature sort key is not a
-promise that the dark 8 px casing stays under the coloured 5 px route. Two
-managers make the order structural — that ordering is what kept a travel
-details route from rendering entirely black.
+A Mapbox annotation manager is one style layer: markers, labels, checkpoint
+circles and each route layer get their own, created in draw order - route
+casing, route lines, checkpoint polygons, checkpoint labels, heading beams,
+base markers, events, clusters, people.
+
+The replay route is a dark casing under speed-coloured runs, mirroring the
+working web layer (`src/web/src/components/ReplayLayer.vue`: `line-color`
+`#000` with `line-opacity` 0.35 at width 8, then `['get','color']` at width 5).
+Two rules keep it from rendering as a plain black line:
+
+- The casing manager is created with `below: routeManager.id`, so the style is
+  told to keep the coloured route above it. Creation order alone is not
+  enough - after a style reload the SDK re-adds annotation layers itself - and
+  `line-sort-key` is not either, because the native API also exposes it as a
+  whole-layer constant (`setLineSortKey`), so a per-feature key is no promise.
+- The casing is opaque black at `lineOpacity` 0.35 rather than a translucent
+  black colour, so even a wrong order can only tint the route.
+
+`buildSpeedRoute` produces one coloured run per speed band, each sharing its
+boundary point with the next so the line has no gaps
+(`test/session_replay_route_test.dart`).
 
 Every layer syncs through its own `try`/`catch` (`_attempt`), and a marker
 whose bitmap fails to encode is parked in `_failedImages` rather than aborting
 the pass. Before this, one rejected style image skipped every later layer, so a
 single bad icon silently removed checkpoint names and the whole route. Failures
-are printed once per distinct message as `Mapbox annotation sync failed …`.
+are printed once per distinct message as `Mapbox annotation sync failed …`,
+which reaches `adb logcat -s flutter` even in a release build: that is how a
+route line that fails to be created can be told apart from one created under
+the casing.
 
 ### Attribution, logo and scale bar
 
@@ -203,6 +218,15 @@ page app's HTML, which decodes as a broken image, so nobody's photo shows.
 `avatarCandidateUrls` lists the stored URL first and the Legacy Auth URL after
 it, and both `UserAvatar` (`_FallbackNetworkImage`) and the map markers
 (`MarkerIconFactory._loadAvatar`) walk the list until one decodes.
+
+A marker is drawn with the person's initial immediately and re-rendered with the
+photo when it arrives, because the icon id encodes the avatar state (`initial`,
+`ready`, `failed`). The screens cache the returned bitmaps per marker key, so an
+icon still being rendered when the factory announces new avatars would put the
+pre-photo bitmap back into that cache and the initial would stick — visibly so at
+the ends of a replay, where one speed bucket is reused. Each screen therefore
+keeps an `_iconEpoch`, clears both caches when the factory notifies, and drops
+any completion from an older epoch.
 
 ### Spike harness
 
@@ -282,7 +306,7 @@ Run locally on the migration branch:
 | Check | Result |
 |---|---|
 | `flutter analyze` | No issues |
-| `flutter test` | 190 passed |
+| `flutter test` | 196 passed |
 | `npm test` (server) | 116 passed |
 | `npm run build` (server) | tsc clean |
 | `npm run format:check` (web) | clean |

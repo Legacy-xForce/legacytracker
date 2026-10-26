@@ -91,6 +91,10 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   final Map<String, MarkerImage> _images = {};
   final Set<String> _pendingImages = {};
 
+  /// Bumped whenever the icon factory rebuilds, so a render already in flight
+  /// with the older bitmaps cannot write itself back into the cache.
+  int _iconEpoch = 0;
+
   /// What the map draws. Marker positions change ~10x a second; rebuilding the
   /// drawer and the control column alongside them is what made the map
   /// stutter, so motion updates this scene and the map re-syncs on its own.
@@ -150,6 +154,8 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     // An avatar finished loading: every cached icon keyed on "no photo yet"
     // has to be rebuilt with the photo.
     _images.clear();
+    _pendingImages.clear();
+    _iconEpoch++;
     _publishScene();
   }
 
@@ -772,11 +778,15 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     final cached = _images[key];
     if (cached != null) return cached;
     if (_pendingImages.add(key)) {
+      final epoch = _iconEpoch;
       unawaited(
         build()
             .then((image) {
               _pendingImages.remove(key);
-              if (!mounted) return;
+              // The icon set was rebuilt (an avatar landed) while this render
+              // was in flight, so its bitmap still shows the initial: caching
+              // it here is how a photo stayed missing after it had loaded.
+              if (!mounted || epoch != _iconEpoch) return;
               _images[key] = image;
               // Only the annotations need to know a finished icon exists.
               _publishScene();

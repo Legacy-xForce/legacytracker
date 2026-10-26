@@ -20,6 +20,58 @@ import 'mapbox_map.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
 
+/// The route as Mapbox draws it: one dark casing under one coloured line per
+/// run of similar speed, exactly like the web replay layer. The casing is
+/// opaque black at 0.35 rather than a translucent black colour, so if the
+/// layers ever land in the wrong order the route is tinted, not replaced.
+List<MapPolyline> buildSpeedRoute({
+  required List<LatLng> points,
+  required List<double> speedsMps,
+}) {
+  if (points.length < 2) return const [];
+  double speedAt(int index) => index < speedsMps.length ? speedsMps[index] : 0;
+  final lines = <MapPolyline>[
+    MapPolyline(
+      id: 'route-casing',
+      points: points,
+      color: const Color(0xFF000000),
+      opacity: 0.35,
+      width: 8,
+      layer: MapPolylineLayer.casing,
+    ),
+  ];
+  var run = <LatLng>[points.first];
+  Color? runColor;
+  var runIndex = 0;
+  void closeRun() {
+    if (run.length < 2 || runColor == null) return;
+    lines.add(
+      MapPolyline(
+        id: 'route-$runIndex',
+        points: List.of(run),
+        color: runColor,
+        width: 5,
+        layer: MapPolylineLayer.route,
+      ),
+    );
+    runIndex++;
+  }
+
+  for (var i = 1; i < points.length; i++) {
+    final color = speedColor((speedAt(i - 1) + speedAt(i)) / 2);
+    if (runColor == null) {
+      runColor = color;
+    } else if (color != runColor) {
+      closeRun();
+      run = <LatLng>[run.last];
+      runColor = color;
+    }
+    run.add(points[i]);
+  }
+  closeRun();
+  return lines;
+}
+
 class SessionReplayScreen extends StatefulWidget {
   const SessionReplayScreen({
     super.key,
@@ -50,6 +102,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   final MarkerIconFactory _icons = MarkerIconFactory();
   final Map<String, MarkerImage> _images = {};
   final Set<String> _pendingImages = {};
+
+  /// Bumped whenever the icon factory rebuilds, so a render that was already in
+  /// flight with the older bitmaps cannot write itself back into the cache.
+  int _iconEpoch = 0;
 
   late final List<LocationPoint> _route;
   late final List<LatLng> _latLngs;
@@ -200,58 +256,15 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   void _handleIconsChanged() {
     if (!mounted) return;
     _images.clear();
+    _pendingImages.clear();
+    _iconEpoch++;
     _syncScene();
   }
 
-  List<MapPolyline> _buildRouteLines() {
-    if (_latLngs.length < 2) return const [];
-    final lines = <MapPolyline>[
-      MapPolyline(
-        id: 'route-underlay',
-        points: _latLngs,
-        color: Colors.black.withValues(alpha: 0.35),
-        width: 8,
-        layer: MapPolylineLayer.casing,
-      ),
-    ];
-    var run = <LatLng>[_latLngs.first];
-    Color? runColor;
-    var runIndex = 0;
-    for (var i = 1; i < _latLngs.length; i++) {
-      final color = speedColor((_route[i - 1].speed + _route[i].speed) / 2);
-      if (runColor == null) {
-        runColor = color;
-      } else if (color != runColor) {
-        if (run.length > 1) {
-          lines.add(
-            MapPolyline(
-              id: 'route-$runIndex',
-              points: List.of(run),
-              color: runColor,
-              width: 5,
-              layer: MapPolylineLayer.route,
-            ),
-          );
-          runIndex++;
-        }
-        run = <LatLng>[run.last];
-        runColor = color;
-      }
-      run.add(_latLngs[i]);
-    }
-    if (runColor != null && run.length > 1) {
-      lines.add(
-        MapPolyline(
-          id: 'route-$runIndex',
-          points: List.of(run),
-          color: runColor,
-          width: 5,
-          layer: MapPolylineLayer.route,
-        ),
-      );
-    }
-    return lines;
-  }
+  List<MapPolyline> _buildRouteLines() => buildSpeedRoute(
+    points: _latLngs,
+    speedsMps: [for (final point in _route) point.speed],
+  );
 
   Duration _segmentDuration(int index) {
     final meters = index < _segmentMeters.length ? _segmentMeters[index] : 0.0;
@@ -409,11 +422,15 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final cached = _images[key];
     if (cached != null) return cached;
     if (_pendingImages.add(key)) {
+      final epoch = _iconEpoch;
       unawaited(
         build()
             .then((image) {
               _pendingImages.remove(key);
-              if (!mounted) return;
+              // The icon set was rebuilt (an avatar landed) while this render
+              // was in flight, so its bitmap is the pre-avatar one: dropping it
+              // here is what stops the initial-letter marker sticking for good.
+              if (!mounted || epoch != _iconEpoch) return;
               _images[key] = image;
               _syncScene();
             })

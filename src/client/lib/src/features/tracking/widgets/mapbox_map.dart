@@ -70,9 +70,9 @@ class MapCheckpointOverlay {
   final Color color;
 }
 
-/// Line layers in draw order. Every manager adds its style layer on top of the
-/// ones created before it, so a casing can never end up over the route it is
-/// supposed to sit under.
+/// Line layers in draw order. The casing manager is created with the route
+/// layer as its `below` anchor, so the dark edge is inserted under the coloured
+/// route by the style itself rather than by whatever order happened to work.
 enum MapPolylineLayer { casing, route }
 
 /// A route line for replay.
@@ -82,6 +82,7 @@ class MapPolyline {
     required this.points,
     required this.color,
     required this.width,
+    this.opacity = 1,
     this.layer = MapPolylineLayer.route,
   });
 
@@ -89,6 +90,11 @@ class MapPolyline {
   final List<LatLng> points;
   final Color color;
   final double width;
+
+  /// Line opacity, separate from the colour: the web map draws its dark route
+  /// edge as opaque black at 0.35, and a casing that ever ends up on top then
+  /// tints the route instead of replacing it.
+  final double opacity;
   final MapPolylineLayer layer;
 }
 
@@ -324,10 +330,14 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     if (_managersReady) return;
     final map = _map;
     if (map == null) return;
-    final casingManager = await map.annotations
-        .createPolylineAnnotationManager();
     final routeManager = await map.annotations
         .createPolylineAnnotationManager();
+    // `below` names the layer that must stay above this one, which pins the
+    // dark casing under the coloured route in the style itself instead of
+    // relying on whatever creation order happens to produce.
+    final casingManager = await map.annotations.createPolylineAnnotationManager(
+      below: routeManager.id,
+    );
     final checkpointManager = await map.annotations
         .createPolygonAnnotationManager();
     final labelManager = await map.annotations.createPointAnnotationManager();
@@ -772,7 +782,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       final key = entry.key;
       final line = entry.value;
       final spec =
-          '${line.color.toARGB32()},${line.width},${wantedCounts[key]}';
+          '${line.color.toARGB32()},${line.opacity},${line.width},'
+          '${wantedCounts[key]}';
       final annotation = _lineAnnotations[key];
       if (annotation == null) {
         try {
@@ -786,6 +797,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         try {
           annotation.geometry = _lineGeometry(line);
           annotation.lineColor = line.color.toARGB32();
+          annotation.lineOpacity = line.opacity;
           annotation.lineWidth = line.width;
           await manager.update(annotation);
           _lineSpecs[key] = spec;
@@ -806,6 +818,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     return PolylineAnnotationOptions(
       geometry: _lineGeometry(line),
       lineColor: line.color.toARGB32(),
+      lineOpacity: line.opacity,
       lineWidth: line.width,
       lineJoin: LineJoin.ROUND,
     );
