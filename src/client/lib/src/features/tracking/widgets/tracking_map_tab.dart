@@ -723,6 +723,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
           id: checkpoint.id,
           center: checkpoint.center,
           radiusMeters: checkpoint.radiusM.toDouble(),
+          color: Theme.of(context).colorScheme.primary,
         ),
     ];
     if (showLabels) {
@@ -832,12 +833,13 @@ class TrackingMapTabState extends State<TrackingMapTab>
               '${(person.speedKmh / 5).round() * 5}|${person.batteryLevel}|'
               '${person.isCharging}',
       ].join(',');
+      final colors = _markerColors;
       final image = _imageFor(
         single
-            ? 'person:$signature'
+            ? 'person:${colors.id}:$signature'
             : 'cluster:${_clusterStyle.id}:$signature',
         () => single
-            ? _icons.personMarker(persons.first)
+            ? _icons.personMarker(persons.first, colors: colors)
             : _icons.clusterMarker(persons, style: _clusterStyle),
       );
       if (image == null) continue;
@@ -846,9 +848,9 @@ class TrackingMapTabState extends State<TrackingMapTab>
       final person = persons.first;
       if (single && person.isMoving) {
         final pulse = _imageFor(
-          'pulse:${person.isStale ? 'stale' : 'live'}',
+          'pulse:${person.isStale ? 'stale' : colors.id}',
           () => _icons.pulseMarker(
-            person.isStale ? const Color(0xFF9E9E9E) : markerAccentColor,
+            person.isStale ? MarkerColors.staleRing : colors.accent,
           ),
         );
         if (pulse != null) {
@@ -958,15 +960,29 @@ class TrackingMapTabState extends State<TrackingMapTab>
     return markers;
   }
 
+  /// Marker ring/pill/accent colours from the current app theme, so the
+  /// markers follow light, dark and dynamic Material You alike.
+  MarkerColors get _markerColors =>
+      MarkerColors.from(Theme.of(context).colorScheme);
+
   /// The bubble matches the app theme's raised surface: white on light, the
-  /// dark card colour on dark - never a white sticker on a dark map.
+  /// dark card colour on dark - never a white sticker on a dark map. The
+  /// tail dot is the theme accent.
   ClusterStyle get _clusterStyle {
     final scheme = Theme.of(context).colorScheme;
-    if (scheme.brightness == Brightness.light) return ClusterStyle.light;
+    if (scheme.brightness == Brightness.light) {
+      return ClusterStyle(
+        bubble: Colors.white,
+        chip: const Color(0xFF2B3134),
+        chipText: Colors.white,
+        accent: scheme.primary,
+      );
+    }
     return ClusterStyle(
       bubble: scheme.surfaceContainerHigh,
       chip: scheme.onSurface,
       chipText: scheme.surface,
+      accent: scheme.primary,
     );
   }
 

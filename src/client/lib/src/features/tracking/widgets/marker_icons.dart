@@ -72,6 +72,56 @@ class MarkerPerson {
   final bool isCharging;
 }
 
+/// Marker colours derived from the app theme, so the avatar ring, the badge
+/// pills and the pulse follow whatever palette the user picked - including
+/// dynamic Material You - instead of baking the teal scheme into bitmaps that
+/// then look wrong under a light theme. The ring is the colour of the pill
+/// under the avatar, which is what the web does with its badge tokens.
+class MarkerColors {
+  const MarkerColors({
+    required this.accent,
+    required this.selfPill,
+    required this.selfPillText,
+    required this.peerPill,
+    required this.peerPillText,
+  });
+
+  factory MarkerColors.from(ColorScheme scheme) => MarkerColors(
+    accent: scheme.primary,
+    selfPill: scheme.primaryContainer,
+    selfPillText: scheme.onPrimaryContainer,
+    peerPill: scheme.surfaceContainerHighest,
+    peerPillText: scheme.onSurface,
+  );
+
+  /// The fixed teal look, for harnesses without an app theme.
+  static const teal = MarkerColors(
+    accent: markerAccentColor,
+    selfPill: Color(0xFF00695C),
+    selfPillText: Colors.white,
+    peerPill: Color(0xFF212121),
+    peerPillText: Colors.white,
+  );
+
+  /// The accent: pulse, heading beam and the cluster tail dot.
+  final Color accent;
+
+  /// Your ring and your badge pill share one colour, as do everyone else's.
+  final Color selfPill;
+  final Color selfPillText;
+  final Color peerPill;
+  final Color peerPillText;
+
+  /// Stale is a state, not a theme: offline keeps its own greys.
+  static const staleRing = Color(0xFF9E9E9E);
+  static const staleBadge = Color(0xFF616161);
+
+  String get id =>
+      '${accent.toARGB32()}-${selfPill.toARGB32()}-'
+      '${selfPillText.toARGB32()}-${peerPill.toARGB32()}-'
+      '${peerPillText.toARGB32()}';
+}
+
 /// Colours of the cluster bubble: the theme's raised surface it is painted
 /// on, and the `+N` chip that must contrast with it.
 class ClusterStyle {
@@ -79,6 +129,7 @@ class ClusterStyle {
     required this.bubble,
     required this.chip,
     required this.chipText,
+    required this.accent,
   });
 
   /// Bubble, face rings and the tail dot's border.
@@ -86,14 +137,19 @@ class ClusterStyle {
   final Color chip;
   final Color chipText;
 
+  /// The tail dot's core: the theme accent.
+  final Color accent;
+
   static const light = ClusterStyle(
     bubble: Colors.white,
     chip: Color(0xFF2B3134),
     chipText: Colors.white,
+    accent: markerAccentColor,
   );
 
   String get id =>
-      '${bubble.toARGB32()}-${chip.toARGB32()}-${chipText.toARGB32()}';
+      '${bubble.toARGB32()}-${chip.toARGB32()}-'
+      '${chipText.toARGB32()}-${accent.toARGB32()}';
 }
 
 /// Builds the bitmap icons rendered through Mapbox point annotations.
@@ -142,21 +198,21 @@ class MarkerIconFactory extends ChangeNotifier {
   static const _badgeGap = 4.0;
   static const _badgePadX = 8.0;
 
-  static const _staleGrey = Color(0xFF9E9E9E);
-  static const _badgeDark = Color(0xFF212121);
-  static const _badgeSelf = Color(0xFF00695C);
-  static const _badgeStale = Color(0xFF616161);
-
   /// The web client's person marker: the avatar inside a ring, a soft pulse and
   /// a speed badge while moving, and the battery badge below. Selection and
   /// motion scaling are applied by the caller as the annotation's icon size.
-  Future<MarkerImage> personMarker(MarkerPerson person) async {
+  /// The ring and both pills take [colors] from the app theme; stale keeps its
+  /// fixed offline greys because that is a state, not a palette.
+  Future<MarkerImage> personMarker(
+    MarkerPerson person, {
+    MarkerColors colors = MarkerColors.teal,
+  }) async {
     // Badge text and cache id share one 5 km/h bucket: that bounds how often a
     // 304x336 bitmap is re-rendered (roughly twice a second at motorway speed)
     // while still matching the web's rounded readout closely.
     final speed = person.isMoving ? (person.speedKmh / 5).round() * 5 : 0;
     final id =
-        'person-${_personToken(person)}'
+        'person-${colors.id}-${_personToken(person)}'
         '-${person.isMoving ? speed : 'parked'}'
         '-${person.batteryLevel ?? '-'}'
         '${person.isCharging ? 'c' : ''}';
@@ -164,18 +220,22 @@ class MarkerIconFactory extends ChangeNotifier {
     if (cached != null) return cached;
 
     final avatar = _avatarFor(person);
-    // The ring is the colour of the badge pill under it: dark grey for
-    // others, the deep teal of your own badge. Stale keeps its own grey.
+    // The ring is the colour of the badge pill under it, both from the theme.
     final ring = person.isStale
-        ? _staleGrey
+        ? MarkerColors.staleRing
         : person.isSelf
-        ? _badgeSelf
-        : _badgeDark;
+        ? colors.selfPill
+        : colors.peerPill;
     final badge = person.isStale
-        ? _badgeStale
+        ? MarkerColors.staleBadge
         : person.isSelf
-        ? _badgeSelf
-        : _badgeDark;
+        ? colors.selfPill
+        : colors.peerPill;
+    final badgeText = person.isStale
+        ? Colors.white
+        : person.isSelf
+        ? colors.selfPillText
+        : colors.peerPillText;
 
     return _render(_personWidth, _personHeight, (canvas) {
       final ringPath = Path()
@@ -200,6 +260,7 @@ class MarkerIconFactory extends ChangeNotifier {
           right: _personWidth - 18,
           top: 48,
           background: badge,
+          foreground: badgeText,
         );
       }
       final battery = person.batteryLevel?.clamp(0, 100);
@@ -211,6 +272,7 @@ class MarkerIconFactory extends ChangeNotifier {
           centerX: _personCenter.dx,
           top: 116,
           background: badge,
+          foreground: badgeText,
         );
       }
     }, id: id);
@@ -345,7 +407,7 @@ class MarkerIconFactory extends ChangeNotifier {
         canvas.drawCircle(
           dot,
           _clusterDotSize / 2 - 2,
-          Paint()..color = allStale ? Colors.grey.shade600 : markerAccentColor,
+          Paint()..color = allStale ? Colors.grey.shade600 : style.accent,
         );
       },
       id: id,
@@ -784,15 +846,16 @@ class MarkerIconFactory extends ChangeNotifier {
     required String text,
     required double top,
     required Color background,
+    required Color foreground,
     double? right,
     double? centerX,
   }) {
-    final iconPainter = _iconPainter(icon, _badgeIconSize, Colors.white);
+    final iconPainter = _iconPainter(icon, _badgeIconSize, foreground);
     final textPainter = TextPainter(
       text: TextSpan(
         text: text,
-        style: const TextStyle(
-          color: Colors.white,
+        style: TextStyle(
+          color: foreground,
           fontSize: _badgeFontSize,
           fontWeight: FontWeight.w600,
           height: 12 / 10,
