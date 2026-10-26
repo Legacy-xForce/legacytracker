@@ -277,6 +277,59 @@ class MarkerIconFactory extends ChangeNotifier {
     );
   }
 
+  /// The web client's checkpoint name: a dark pill with a pin glyph, shown
+  /// from zoom 13. Sized to the text, so the caller caches it per name.
+  Future<MarkerImage> checkpointLabel(
+    String name, {
+    required Color accent,
+  }) async {
+    final id = 'label-${_hashed('$name|${accent.toARGB32()}')}';
+    final cached = _cached(id);
+    if (cached != null) return cached;
+
+    final iconPainter = _iconPainter(Icons.place_rounded, 14, accent);
+    final textPainter = TextPainter(
+      text: TextSpan(
+        text: name,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12,
+          fontWeight: FontWeight.w600,
+          height: 16 / 12,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+    )..layout();
+    const padLeft = 6.0;
+    const padRight = 10.0;
+    const padY = 3.0;
+    const gap = 4.0;
+    final width =
+        padLeft + iconPainter.width + gap + textPainter.width + padRight;
+    final height = textPainter.height + padY * 2;
+
+    final image = await _render(width, height, (canvas) {
+      final rect = Rect.fromLTWH(0, 0, width, height);
+      final pill = RRect.fromRectAndRadius(rect, Radius.circular(height / 2));
+      canvas.drawShadow(Path()..addRRect(pill), Colors.black, 4, false);
+      canvas.drawRRect(pill, Paint()..color = const Color(0xEB252B2A));
+      iconPainter.paint(
+        canvas,
+        Offset(padLeft, rect.center.dy - iconPainter.height / 2),
+      );
+      textPainter.paint(
+        canvas,
+        Offset(
+          padLeft + iconPainter.width + gap,
+          rect.center.dy - textPainter.height / 2,
+        ),
+      );
+    }, id: id);
+    iconPainter.dispose();
+    textPainter.dispose();
+    return image;
+  }
+
   /// A rounded-square calendar pin in the event's colour.
   Future<MarkerImage> eventMarker(Color color) async {
     final id = 'event-${color.toARGB32()}';

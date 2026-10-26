@@ -439,7 +439,6 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       style: widget.selectedLayer,
       darkMode: Theme.of(context).brightness == Brightness.dark,
       scene: _scene,
-      showCheckpointLabels: true,
       onMarkerTap: _onMarkerTap,
       onCameraChanged: _onCameraChanged,
       onLoadError: (_) => session.recover(),
@@ -628,9 +627,27 @@ class _TrackingMapTabState extends State<TrackingMapTab>
           id: checkpoint.id,
           center: checkpoint.center,
           radiusMeters: checkpoint.radiusM.toDouble(),
-          label: showLabels ? checkpoint.name : null,
         ),
     ];
+    if (showLabels) {
+      // The web's name pill: a dark label with a pin, under people and events.
+      final accent = Theme.of(context).colorScheme.primary;
+      for (final checkpoint in checkpoints) {
+        final image = _imageFor(
+          'label:${checkpoint.name}:${accent.toARGB32()}',
+          () => _icons.checkpointLabel(checkpoint.name, accent: accent),
+        );
+        if (image == null) continue;
+        markers.add(
+          MapMarker(
+            id: 'label-${checkpoint.id}',
+            position: checkpoint.center,
+            image: image,
+            layer: MapMarkerLayer.label,
+          ),
+        );
+      }
+    }
 
     // Skip the notify when nothing moved: the drawer rebuilds for other
     // reasons, and re-syncing identical annotations is pure overhead.
@@ -845,7 +862,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
       final right = b[i];
       if (left.id != right.id ||
           left.radiusMeters != right.radiusMeters ||
-          left.label != right.label ||
+          left.color != right.color ||
           left.center.latitude != right.center.latitude ||
           left.center.longitude != right.center.longitude) {
         return false;

@@ -7,9 +7,10 @@ import 'map_geometry.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
 
-/// Annotation layers in draw order. Beams are drawn under people, calendar
-/// events under people, checkpoints under everything but the route.
-enum MapMarkerLayer { beam, base, event, cluster, user }
+/// Annotation layers in draw order. Checkpoint names sit under everything,
+/// beams and calendar events under people, checkpoints under all of them but
+/// the route.
+enum MapMarkerLayer { label, beam, base, event, cluster, user }
 
 /// A bitmap marker the map renders through a native point annotation.
 class MapMarker {
@@ -36,35 +37,18 @@ class MapMarker {
   final Object? payload;
 }
 
-/// A native text label, e.g. the name under a checkpoint circle.
-class MapTextMarker {
-  const MapTextMarker({
-    required this.id,
-    required this.position,
-    required this.text,
-  });
-
-  final String id;
-  final LatLng position;
-  final String text;
-}
-
 /// A checkpoint circle whose radius is honoured in metres.
 class MapCheckpointOverlay {
   const MapCheckpointOverlay({
     required this.id,
     required this.center,
     required this.radiusMeters,
-    this.label,
     this.color = const Color(0xFF82D5C8),
   });
 
   final String id;
   final LatLng center;
   final double radiusMeters;
-
-  /// Shown when the map is zoomed in enough, as on the old map.
-  final String? label;
 
   /// Outline colour; the fill uses the same colour at 14% opacity.
   final Color color;
@@ -114,7 +98,6 @@ class MapPolyline {
 /// [markChanged]; the map re-syncs its annotations without any rebuild.
 class MapScene extends ChangeNotifier {
   List<MapMarker> markers = const [];
-  List<MapTextMarker> labels = const [];
   List<MapCheckpointOverlay> checkpoints = const [];
   List<MapPolyline> polylines = const [];
 
@@ -148,7 +131,6 @@ class MapboxMapWidget extends StatefulWidget {
     required this.style,
     required this.scene,
     this.darkMode = true,
-    this.showCheckpointLabels = false,
     this.onMarkerTap,
     this.onMapCreated,
     this.onStyleLoaded,
@@ -164,7 +146,6 @@ class MapboxMapWidget extends StatefulWidget {
   /// Owned by the caller; this widget only listens.
   final MapScene scene;
   final bool darkMode;
-  final bool showCheckpointLabels;
   final ValueChanged<MapMarker>? onMarkerTap;
   final ValueChanged<MapboxMap>? onMapCreated;
   final VoidCallback? onStyleLoaded;
@@ -181,14 +162,11 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
 
   final Map<MapPolylineLayer, PolylineAnnotationManager> _lineManagers = {};
   PolygonAnnotationManager? _checkpointManager;
-  PointAnnotationManager? _labelManager;
   final Map<MapMarkerLayer, PointAnnotationManager> _pointManagers = {};
   final List<Cancelable> _tapSubscriptions = [];
 
   final Map<String, PointAnnotation> _annotations = {};
   final Map<String, String> _annotationSpecs = {};
-  final Map<String, PointAnnotation> _labelAnnotations = {};
-  final Map<String, String> _labelSpecs = {};
   final Map<String, PolygonAnnotation> _checkpointAnnotations = {};
   final Map<String, String> _checkpointSpecs = {};
   final Map<String, PolylineAnnotation> _lineAnnotations = {};
@@ -366,8 +344,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       ..[MapPolylineLayer.casing] = casingManager
       ..[MapPolylineLayer.route] = routeManager;
     _checkpointManager = checkpointManager;
-    _labelManager = labelManager;
     _pointManagers
+      ..[MapMarkerLayer.label] = labelManager
       ..[MapMarkerLayer.beam] = beamManager
       ..[MapMarkerLayer.base] = baseManager
       ..[MapMarkerLayer.event] = eventManager
@@ -413,15 +391,12 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     for (final manager in _pointManagers.values) {
       await clear(manager.deleteAll);
     }
-    if (_labelManager != null) await clear(_labelManager!.deleteAll);
     if (_checkpointManager != null) await clear(_checkpointManager!.deleteAll);
     for (final manager in _lineManagers.values) {
       await clear(manager.deleteAll);
     }
     _annotations.clear();
     _annotationSpecs.clear();
-    _labelAnnotations.clear();
-    _labelSpecs.clear();
     _checkpointAnnotations.clear();
     _checkpointSpecs.clear();
     _lineAnnotations.clear();
@@ -556,7 +531,6 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     for (final layer in MapMarkerLayer.values) {
       await _attempt('layer ${layer.name}', () => _syncPointLayer(layer));
     }
-    await _attempt('labels', _syncLabels);
     await _attempt('checkpoints', _syncCheckpoints);
     for (final layer in MapPolylineLayer.values) {
       await _attempt('line layer ${layer.name}', () => _syncLineLayer(layer));
@@ -681,64 +655,6 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         : IconAnchor.CENTER;
     annotation.iconOffset = [0, anchored];
     annotation.customData = {'markerId': marker.id};
-  }
-
-  Future<void> _syncLabels() async {
-    final manager = _labelManager;
-    if (manager == null) return;
-    final wanted = <String, MapTextMarker>{
-      for (final label in widget.scene.labels) label.id: label,
-      if (widget.showCheckpointLabels)
-        for (final checkpoint in widget.scene.checkpoints)
-          if (checkpoint.label != null)
-            'checkpoint-${checkpoint.id}': MapTextMarker(
-              id: 'checkpoint-${checkpoint.id}',
-              position: checkpoint.center,
-              text: checkpoint.label!,
-            ),
-    };
-
-    final existingKeys = _labelAnnotations.keys.toList();
-    for (final entry in wanted.entries) {
-      final key = entry.key;
-      final label = entry.value;
-      final spec =
-          '${label.position.latitude},${label.position.longitude},${label.text}';
-      final annotation = _labelAnnotations[key];
-      if (annotation == null) {
-        final created = await manager.create(_labelOptions(label));
-        _labelAnnotations[key] = created;
-        _labelSpecs[key] = spec;
-      } else if (_labelSpecs[key] != spec) {
-        _applyLabel(annotation, label);
-        await manager.update(annotation);
-        _labelSpecs[key] = spec;
-      }
-    }
-    for (final key in existingKeys) {
-      if (wanted.containsKey(key)) continue;
-      final annotation = _labelAnnotations.remove(key);
-      _labelSpecs.remove(key);
-      if (annotation != null) await manager.delete(annotation);
-    }
-  }
-
-  PointAnnotationOptions _labelOptions(MapTextMarker label) {
-    return PointAnnotationOptions(
-      geometry: _point(label.position),
-      textField: label.text,
-      textSize: 12,
-      textColor: 0xFFFFFFFF,
-      textHaloColor: 0xEB252B2A,
-      textHaloWidth: 2,
-      textOffset: [0, -1.2],
-      textAnchor: TextAnchor.CENTER,
-    );
-  }
-
-  void _applyLabel(PointAnnotation annotation, MapTextMarker label) {
-    annotation.geometry = _point(label.position);
-    annotation.textField = label.text;
   }
 
   Future<void> _syncCheckpoints() async {

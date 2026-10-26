@@ -167,13 +167,9 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
       ),
     ];
     _scene.checkpoints = const [
-      MapCheckpointOverlay(
-        id: 'home',
-        center: _start,
-        radiusMeters: 120,
-        label: 'Home',
-      ),
+      MapCheckpointOverlay(id: 'home', center: _start, radiusMeters: 120),
     ];
+    _labelHome();
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
       _tick++;
       final phase = _tick * 0.08;
@@ -282,7 +278,28 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         ),
       );
     }
+    final labelImage = _images['label:Home'];
+    if (labelImage != null) {
+      markers.add(
+        MapMarker(
+          id: 'label-home',
+          position: _start,
+          image: labelImage,
+          layer: MapMarkerLayer.label,
+        ),
+      );
+    }
     return markers;
+  }
+
+  Future<void> _labelHome() async {
+    final image = await _icons.checkpointLabel(
+      'Home',
+      accent: markerAccentColor,
+    );
+    if (!mounted) return;
+    _images['label:Home'] = image;
+    setState(() {});
   }
 
   void _applyTokenInPlace() {
@@ -342,7 +359,6 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
             style: _layer,
             darkMode: theme.brightness == Brightness.dark,
             scene: _scene,
-            showCheckpointLabels: true,
             onMapCreated: (map) {
               _map = map;
               map.setCamera(

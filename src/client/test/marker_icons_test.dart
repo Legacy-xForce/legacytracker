@@ -103,6 +103,27 @@ void main() {
     expectPng(cluster);
   });
 
+  test('a checkpoint label is a small dark pill sized to its name', () async {
+    final factory = MarkerIconFactory();
+    addTearDown(factory.dispose);
+
+    final short = await factory.checkpointLabel(
+      'Home',
+      accent: markerAccentColor,
+    );
+    final long = await factory.checkpointLabel(
+      'Casa Bullo, the long way round',
+      accent: markerAccentColor,
+    );
+
+    expect(short.scale, 2.0);
+    // 16 px line + 3 px padding each side, at 2x.
+    expect(short.height, 44);
+    expect(long.width, greaterThan(short.width));
+    expectPng(short);
+    expectPng(long);
+  });
+
   test('event and beam icons render', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);

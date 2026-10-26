@@ -128,8 +128,9 @@ to an embedded token. The token request has no body and deliberately sends no
   52 / 9 / 14 px metrics. Clustering merges people only when they are within 96
   screen pixels **and** 100 m at the current zoom.
 - Calendar events use a rounded-square pin in the event colour; checkpoints are
-  geodesic polygons whose radius is respected in metres; replay routes are
-  native polylines coloured by recorded speed.
+  geodesic polygons whose radius is respected in metres, with the web's name
+  pill (dark, pin glyph, 12 px semibold) as an image marker from zoom 13;
+  replay routes are native polylines coloured by recorded speed.
 - No Flutter view annotations are used anywhere.
 - Annotation managers are created once per map. On every `style.load` the
   widget re-adds style images and repopulates the managers: the sprite is wiped
@@ -144,7 +145,7 @@ Rotation and pitch gestures are disabled on both clients.
 
 A Mapbox annotation manager is one style layer: markers, labels, checkpoint
 circles and each route layer get their own, created in draw order - route
-casing, route lines, checkpoint polygons, checkpoint labels, heading beams,
+casing, route lines, checkpoint polygons, checkpoint name pills, heading beams,
 base markers, events, clusters, people.
 
 The replay route is a dark casing under speed-coloured runs, mirroring the
