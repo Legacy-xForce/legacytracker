@@ -18,12 +18,15 @@ class MapboxTokenService {
   }) : _client = httpClient ?? http.Client();
 
   final String baseUrl;
+
   /// Callback so a refreshed access token is always used (the service can
   /// outlive any single token's validity).
   final String? Function() getAccessToken;
+
   /// Requested lifetime, in seconds. Capped at one hour by Mapbox; the server
   /// applies the same default.
   final int ttlSeconds;
+
   /// Renew this long before expiry, so the map never holds a dead token.
   final int refreshMarginSeconds;
 
@@ -37,9 +40,7 @@ class MapboxTokenService {
   /// `null` when the server cannot issue a token (not configured or unreachable).
   Future<String?> get token async {
     final now = DateTime.now();
-    if (_token != null &&
-        _refreshAt != null &&
-        now.isBefore(_refreshAt!)) {
+    if (_token != null && _refreshAt != null && now.isBefore(_refreshAt!)) {
       return _token;
     }
     if (_fetching) {
@@ -62,10 +63,9 @@ class MapboxTokenService {
       final response = await _client
           .post(
             Uri.parse('$baseUrl/api/v1/mapbox/token'),
-            headers: {
-              'content-type': 'application/json',
-              'authorization': 'Bearer $accessToken',
-            },
+            // No body, so no content-type: Fastify rejects a body-less
+            // request that claims to send JSON.
+            headers: {'authorization': 'Bearer $accessToken'},
           )
           .timeout(const Duration(seconds: 15));
       if (response.statusCode >= 200 && response.statusCode < 300) {
@@ -77,13 +77,18 @@ class MapboxTokenService {
         }
         _token = token;
         final expiresAtRaw = body['expires_at'] as String?;
-        final parsed = expiresAtRaw != null ? DateTime.tryParse(expiresAtRaw) : null;
-        final expiresAt = parsed ?? DateTime.now().add(Duration(seconds: ttlSeconds));
+        final parsed = expiresAtRaw != null
+            ? DateTime.tryParse(expiresAtRaw)
+            : null;
+        final expiresAt =
+            parsed ?? DateTime.now().add(Duration(seconds: ttlSeconds));
         // Never refresh earlier than one second from now; cap the margin at
         // the token's remaining lifetime.
         final margin = refreshMarginSeconds.clamp(0, ttlSeconds);
         final refreshAt = expiresAt.subtract(Duration(seconds: margin));
-        _refreshAt = refreshAt.isAfter(now) ? refreshAt : now.add(const Duration(seconds: 1));
+        _refreshAt = refreshAt.isAfter(now)
+            ? refreshAt
+            : now.add(const Duration(seconds: 1));
         completer.complete(_token);
         return _token;
       }

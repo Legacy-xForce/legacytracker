@@ -20,6 +20,12 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
         working-directory: src/client
+      - name: Analyze
+        run: flutter analyze
+        working-directory: src/client
+      - name: Test
+        run: flutter test
+        working-directory: src/client
       - name: Build release APK
         run: flutter build apk --release
         working-directory: src/client

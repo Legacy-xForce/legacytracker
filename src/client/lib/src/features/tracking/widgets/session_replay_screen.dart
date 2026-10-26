@@ -3,17 +3,21 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
-import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
+import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart' hide Size;
 import 'package:provider/provider.dart';
 
 import '../../../core/constants.dart';
 import '../../../core/formatters.dart';
-import '../../../data/models/location_session.dart';
-import '../../../data/network/mapbox_token_service.dart';
+import '../../../core/speed_color.dart';
 import '../../../data/models/location_model.dart';
+import '../../../data/models/location_session.dart';
+import '../../../data/network/mapbox_token_gate.dart';
+import '../../../data/network/mapbox_token_service.dart';
 import '../../auth/auth_provider.dart';
-
+import '../map_settings.dart';
 import 'map_layers.dart';
+import 'mapbox_map.dart';
+import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
 
 class SessionReplayScreen extends StatefulWidget {
@@ -34,108 +38,201 @@ class SessionReplayScreen extends StatefulWidget {
 
 class _SessionReplayScreenState extends State<SessionReplayScreen>
     with SingleTickerProviderStateMixin {
+  // Constant on-screen speed, independent of the recorded real speed. Points
+  // are stored adaptively — dense through turns, sparse on straights — so
+  // each glide lasts in proportion to the distance it covers.
   static const _targetPlayback = Duration(seconds: 40);
-  static const _baseSpeed = 1.0;
-  final List<double> _speeds = const [0.5, 1.0, 2.0];
+  static const _baseSpeed = 2.0;
+  static const _minPaceMetersPerSecond = 5.0;
+  static const _minSegmentMs = 16.0;
+  static const _maxSegmentMs = 3000.0;
+
+  final MarkerIconFactory _icons = MarkerIconFactory();
+  final Map<String, MarkerImage> _images = {};
+  final Set<String> _pendingImages = {};
 
   late final List<LocationPoint> _route;
   late final List<LatLng> _latLngs;
+  late final List<double> _segmentMeters;
+  late final double _paceMetersPerSecond;
+  late final List<MapPolyline> _routeLines;
 
   late final AnimationController _segmentController;
   late final MapboxTokenService _tokenService;
-  String? _token;
-  Timer? _tokenTimer;
+  late MapLayer _selectedLayer;
 
   MapboxMap? _map;
-  PolylineAnnotationManager? _lineManager;
-  PointAnnotationManager? _pointManager;
-  double _currentZoom = 15.0;
-  int _mapKey = 0;
-
+  double _currentZoom = 15;
+  double _playbackSpeed = 1.0;
   int _segmentStart = 0;
   LatLng? _displayedPoint;
   bool _isPlaying = false;
-  double _playbackSpeed = 1.0;
-  MapLayer _selectedLayer = MapLayer.standard;
-
-  Animation<LatLng>? _segmentAnimation;
+  bool _initialized = false;
+  DateTime? _lastTick;
 
   @override
   void initState() {
     super.initState();
     _route = widget.session.points;
-    _latLngs = _route.map((p) => LatLng(p.latitude, p.longitude)).toList();
+    _latLngs = [
+      for (final point in _route) LatLng(point.latitude, point.longitude),
+    ];
+    _segmentMeters = [
+      for (var i = 1; i < _latLngs.length; i++)
+        const Distance().as(LengthUnit.Meter, _latLngs[i - 1], _latLngs[i]),
+    ];
+    _paceMetersPerSecond = math.max(
+      _segmentMeters.fold<double>(0, (sum, meters) => sum + meters) /
+          _targetPlayback.inSeconds,
+      _minPaceMetersPerSecond,
+    );
+    _routeLines = _buildRouteLines();
     _segmentController = AnimationController(vsync: this)
       ..addListener(_handleSegmentTick)
       ..addStatusListener(_handleSegmentStatus);
+    _displayedPoint = _latLngs.isNotEmpty ? _latLngs.first : null;
+    _icons.addListener(_handleIconsChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_initialized) return;
     _tokenService = MapboxTokenService(
       baseUrl: AppConstants.backendBaseUrl,
       getAccessToken: () => context.read<AuthProvider>().accessToken,
     );
-    _refreshToken();
-    _tokenTimer = Timer.periodic(
-      const Duration(minutes: 1),
-      (_) => _refreshToken(),
-    );
-  }
-
-  Future<void> _refreshToken() async {
-    final token = await _tokenService.token;
-    if (!mounted) return;
-    if (token != _token) {
-      setState(() {
-        _token = token;
-        _mapKey++;
-      });
-    }
+    _selectedLayer = context.read<MapSettings>().defaultLayer;
+    _initialized = true;
   }
 
   @override
   void dispose() {
-    _tokenTimer?.cancel();
+    _icons
+      ..removeListener(_handleIconsChanged)
+      ..dispose();
     _segmentController.dispose();
     _tokenService.dispose();
     super.dispose();
   }
 
-  Duration _segmentDuration(LocationPoint a, LocationPoint b) {
-    const baseMs = 120.0;
-    final meters = const Distance().as(
-      LengthUnit.Meter,
-      LatLng(a.latitude, a.longitude),
-      LatLng(b.latitude, b.longitude),
+  void _handleIconsChanged() {
+    if (!mounted) return;
+    setState(() => _images.clear());
+  }
+
+  List<MapPolyline> _buildRouteLines() {
+    if (_latLngs.length < 2) return const [];
+    final lines = <MapPolyline>[
+      MapPolyline(
+        id: 'route-underlay',
+        points: _latLngs,
+        color: Colors.black.withValues(alpha: 0.35),
+        width: 8,
+      ),
+    ];
+    var run = <LatLng>[_latLngs.first];
+    Color? runColor;
+    var runIndex = 0;
+    for (var i = 1; i < _latLngs.length; i++) {
+      final color = speedColor((_route[i - 1].speed + _route[i].speed) / 2);
+      if (runColor == null) {
+        runColor = color;
+      } else if (color != runColor) {
+        if (run.length > 1) {
+          lines.add(
+            MapPolyline(
+              id: 'route-$runIndex',
+              points: List.of(run),
+              color: runColor,
+              width: 5,
+            ),
+          );
+          runIndex++;
+        }
+        run = <LatLng>[run.last];
+        runColor = color;
+      }
+      run.add(_latLngs[i]);
+    }
+    if (runColor != null && run.length > 1) {
+      lines.add(
+        MapPolyline(
+          id: 'route-$runIndex',
+          points: List.of(run),
+          color: runColor,
+          width: 5,
+        ),
+      );
+    }
+    return lines;
+  }
+
+  Duration _segmentDuration(int index) {
+    final meters = index < _segmentMeters.length ? _segmentMeters[index] : 0.0;
+    final ms = (meters / _paceMetersPerSecond * 1000).clamp(
+      _minSegmentMs,
+      _maxSegmentMs,
     );
-    final ms = (baseMs + math.sqrt(meters) * 8).clamp(120, 900);
     return Duration(milliseconds: (ms / (_playbackSpeed * _baseSpeed)).round());
   }
 
-  void _playSegment() {
+  void _togglePlay() {
+    if (_route.length < 2) return;
+    if (_isPlaying) {
+      _pause();
+    } else {
+      _play();
+    }
+  }
+
+  void _play() {
+    if (_route.length < 2) return;
     if (_segmentStart >= _route.length - 1) {
-      setState(() => _isPlaying = false);
+      _segmentStart = 0;
+      _displayedPoint = _latLngs.first;
+    }
+    setState(() => _isPlaying = true);
+    _playSegment();
+  }
+
+  void _playSegment() {
+    if (_segmentStart >= _latLngs.length - 1) {
+      _pause();
       return;
     }
-    final a = _route[_segmentStart];
-    final b = _route[_segmentStart + 1];
-    _segmentAnimation =
-        _LatLngTween(
-          begin: _latLngs[_segmentStart],
-          end: _latLngs[_segmentStart + 1],
-        ).animate(
-          CurvedAnimation(parent: _segmentController, curve: Curves.linear),
-        );
-    _segmentController.duration = _segmentDuration(a, b);
-    _segmentController.forward(from: 0);
+    final start = _displayedPoint ?? _latLngs[_segmentStart];
+    final end = _latLngs[_segmentStart + 1];
+    _segmentController
+      ..stop()
+      ..duration = _segmentDuration(_segmentStart)
+      ..forward(from: 0);
+    _segmentAnimation = _LatLngTween(begin: start, end: end).animate(
+      CurvedAnimation(parent: _segmentController, curve: Curves.linear),
+    );
   }
+
+  Animation<LatLng>? _segmentAnimation;
 
   void _handleSegmentTick() {
     final animated = _segmentAnimation?.value;
     if (animated == null || !mounted) return;
+    final now = DateTime.now();
+    final last = _lastTick;
+    if (last != null &&
+        now.difference(last) < const Duration(milliseconds: 50)) {
+      return;
+    }
+    _lastTick = now;
     setState(() => _displayedPoint = animated);
-    _map?.setCamera(CameraOptions(
-      center: Point(coordinates: Position(animated.longitude, animated.latitude)),
-      zoom: _currentZoom,
-    ));
-    _syncPointAnnotations(animated);
+    _map?.setCamera(
+      CameraOptions(
+        center: Point(
+          coordinates: Position(animated.longitude, animated.latitude),
+        ),
+        zoom: _currentZoom,
+      ),
+    );
   }
 
   void _handleSegmentStatus(AnimationStatus status) {
@@ -161,120 +258,168 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       _segmentStart = index;
       _displayedPoint = _latLngs[index];
     });
-    _map?.setCamera(CameraOptions(
-      center: Point(coordinates: Position(
-            _latLngs[index].longitude,
-            _latLngs[index].latitude,
-          )),
-      zoom: _currentZoom,
-    ));
-    _syncPointAnnotations(_latLngs[index]);
+    _centerOn(_latLngs[index]);
+  }
+
+  void _centerOn(LatLng point) {
+    _map?.setCamera(
+      CameraOptions(
+        center: Point(coordinates: Position(point.longitude, point.latitude)),
+        zoom: _currentZoom,
+      ),
+    );
   }
 
   void _setPlaybackSpeed(double speed) {
     setState(() => _playbackSpeed = speed);
   }
 
-  PreferredSizeWidget _appBar(ThemeData theme) {
-    final session = widget.session;
-    return AppBar(
-      title: Text('${widget.userName} — ${formatShortDate(session.startAt)}'),
-      actions: [
-        PopupMenuButton<double>(
-          tooltip: 'Playback speed',
-          initialValue: _playbackSpeed,
-          onSelected: _setPlaybackSpeed,
-          itemBuilder: (_) => [
-            for (final speed in _speeds)
-              PopupMenuItem<double>(value: speed, child: Text('${speed}x')),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Center(child: Text('${_playbackSpeed}x')),
-          ),
-        ),
-      ],
-    );
+  void _onCameraChanged(CameraState state) {
+    _currentZoom = state.zoom;
   }
 
-  void _syncLineAnnotations() {
-    final manager = _lineManager;
-    if (manager == null) return;
-    manager.deleteAll().then((_) async {
-      await manager.create(
-        PolylineAnnotationOptions(
-          geometry: LineString(
-            coordinates: [
-              for (final point in _latLngs)
-                Position(point.longitude, point.latitude),
-            ],
-          ),
-          lineColor: 0xFF0985FB,
-          lineWidth: 4,
-        ),
-      );
-      await manager.create(
-        PolylineAnnotationOptions(
-          geometry: LineString(
-            coordinates: [
-              for (final point in _latLngs)
-                Position(point.longitude, point.latitude),
-            ],
-          ),
-          lineColor: 0x59000000,
-          lineWidth: 8,
-        ),
-      );
-    });
-  }
-
-  void _syncPointAnnotations(LatLng current) {
-    final manager = _pointManager;
-    if (manager == null) return;
-    manager.deleteAll().then((_) async {
-      await manager.create(
-        PointAnnotationOptions(
-          geometry: Point(
+  Future<void> _fitRoute(MapboxMap map) async {
+    if (_latLngs.isEmpty) return;
+    if (_segmentStart > 0 || _isPlaying) {
+      _centerOn(_displayedPoint ?? _latLngs.first);
+      return;
+    }
+    if (_latLngs.length == 1) {
+      map.setCamera(
+        CameraOptions(
+          center: Point(
             coordinates: Position(
               _latLngs.first.longitude,
               _latLngs.first.latitude,
             ),
           ),
-          iconColor: 0xFF34C759,
-          iconSize: 1.5,
+          zoom: _currentZoom,
         ),
       );
-      await manager.create(
-        PointAnnotationOptions(
-          geometry: Point(
-            coordinates: Position(
-              _latLngs.last.longitude,
-              _latLngs.last.latitude,
+      return;
+    }
+    final camera = await map.cameraForCoordinatesPadding(
+      [
+        for (final point in _latLngs)
+          Point(coordinates: Position(point.longitude, point.latitude)),
+      ],
+      CameraOptions(),
+      MbxEdgeInsets(top: 56, left: 56, bottom: 56, right: 56),
+      null,
+      null,
+    );
+    if (!mounted) return;
+    if (camera.zoom != null) _currentZoom = camera.zoom!;
+    map.setCamera(camera);
+  }
+
+  MarkerImage? _imageFor(String key, Future<MarkerImage> Function() build) {
+    final cached = _images[key];
+    if (cached != null) return cached;
+    if (_pendingImages.add(key)) {
+      unawaited(
+        build()
+            .then((image) {
+              _pendingImages.remove(key);
+              if (!mounted) return;
+              setState(() => _images[key] = image);
+            })
+            .catchError((_) {
+              _pendingImages.remove(key);
+            }),
+      );
+    }
+    return null;
+  }
+
+  PreferredSizeWidget _appBar(ThemeData theme) {
+    final session = widget.session;
+    return AppBar(
+      title: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(widget.userName),
+          Text(
+            '${formatLongDay(session.startAt.toLocal())} · '
+            '${formatClock(session.startAt)} – ${formatClock(session.endAt)}',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          iconColor: 0xFFFF453A,
-          iconSize: 1.5,
-        ),
-      );
-      await manager.create(
-        PointAnnotationOptions(
-          geometry: Point(
-            coordinates: Position(current.longitude, current.latitude),
-          ),
-          iconColor: 0xFF0985FB,
-          iconSize: 2.0,
-        ),
-      );
-    });
+        ],
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-
-    if (_token != null) {
-      MapboxOptions.setAccessToken(_token!);
+    if (_route.isEmpty) {
+      return Scaffold(
+        appBar: _appBar(theme),
+        body: const Center(child: Text('No points to replay')),
+      );
     }
+
+    final currentIndex = _segmentStart.clamp(0, _route.length - 1);
+    final current = _route[currentIndex];
+    final currentPoint = _displayedPoint ?? _latLngs[currentIndex];
+    final moving = current.isMoving;
+    final speedKmh = current.speed * 3.6;
+    final person = MarkerPerson(id: widget.userId, name: widget.userName);
+    final speedBucket = moving ? (speedKmh / 5).round() * 5 : -1;
+    final markerImage = _imageFor(
+      'replay:${widget.userId}:$speedBucket',
+      () => _icons.replayMarker(
+        person: person,
+        speedKmh: speedKmh,
+        isMoving: moving,
+      ),
+    );
+    final heading = current.heading;
+    final beamImage = moving && heading != null && heading.isFinite
+        ? _imageFor('beam', () => _icons.headingBeam(markerAccentColor))
+        : null;
+    final startImage = _imageFor(
+      'start',
+      () => _icons.endpointMarker(const Color(0xFF34C759)),
+    );
+    final endImage = _imageFor(
+      'end',
+      () => _icons.endpointMarker(const Color(0xFFFF453A)),
+    );
+
+    final markers = <MapMarker>[
+      if (beamImage != null)
+        MapMarker(
+          id: 'moving-beam',
+          position: currentPoint,
+          image: beamImage,
+          layer: MapMarkerLayer.beam,
+          rotation: heading!,
+        ),
+      if (startImage != null)
+        MapMarker(
+          id: 'route-start',
+          position: _latLngs.first,
+          image: startImage,
+          layer: MapMarkerLayer.base,
+        ),
+      if (endImage != null)
+        MapMarker(
+          id: 'route-end',
+          position: _latLngs.last,
+          image: endImage,
+          layer: MapMarkerLayer.base,
+        ),
+      if (markerImage != null)
+        MapMarker(
+          id: 'replay-marker',
+          position: currentPoint,
+          image: markerImage,
+          layer: MapMarkerLayer.user,
+        ),
+    ];
 
     return Scaffold(
       appBar: _appBar(theme),
@@ -283,37 +428,24 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           Expanded(
             child: Stack(
               children: [
-                MapWidget(
-                  key: ValueKey(_mapKey),
-                  styleUri: _styleUri(_selectedLayer),
-                  cameraOptions: CameraOptions(
-                    center: Point(
-                      coordinates: Position(
-                        _latLngs.first.longitude,
-                        _latLngs.first.latitude,
-                      ),
-                    ),
-                    zoom: 15,
+                MapboxTokenGate(
+                  service: _tokenService,
+                  builder: (context, session) => MapboxMapWidget(
+                    key: ValueKey('replay-map-${session.generation}'),
+                    accessToken: session.token,
+                    initialCenter: _latLngs.first,
+                    initialZoom: _currentZoom,
+                    style: _selectedLayer,
+                    darkMode: theme.brightness == Brightness.dark,
+                    markers: markers,
+                    polylines: _routeLines,
+                    onCameraChanged: _onCameraChanged,
+                    onLoadError: (_) => session.recover(),
+                    onMapCreated: (map) {
+                      _map = map;
+                      unawaited(_fitRoute(map));
+                    },
                   ),
-                  onMapCreated: (map) async {
-                    _map = map;
-                    _lineManager = await map.annotations
-                        .createPolylineAnnotationManager();
-                    _pointManager = await map.annotations
-                        .createPointAnnotationManager();
-                    map.setCamera(CameraOptions(
-                      center: Point(
-                        coordinates: Position(
-                          _latLngs.first.longitude,
-                          _latLngs.first.latitude,
-                        ),
-                      ),
-                      zoom: 15,
-                    ));
-                    _syncLineAnnotations();
-                    _syncPointAnnotations(_latLngs.first);
-                  },
-                  onCameraChangeListener: (_) {},
                 ),
                 Positioned(
                   top: 16,
@@ -333,30 +465,19 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
           ),
           _PlaybackBar(
             isPlaying: _isPlaying,
-            progress: _segmentStart.toDouble(),
-            max: (_route.length - 1).toDouble(),
-            onPlay: () {
-              setState(() => _isPlaying = true);
-              _playSegment();
-            },
-            onPause: _pause,
-            onSeek: _seek,
+            progress: currentIndex.toDouble(),
+            max: math.max(1, _route.length - 1).toDouble(),
+            divisions: math.max(1, _route.length - 1),
+            currentTime: formatClock(current.timestamp),
+            speedKmh: speedKmh,
             speed: _playbackSpeed,
+            onPlay: _route.length > 1 ? _togglePlay : null,
+            onSeek: _route.length > 1 ? _seek : (_) {},
             onSpeedChanged: _setPlaybackSpeed,
           ),
         ],
       ),
     );
-  }
-
-  String _styleUri(MapLayer style) {
-    switch (style) {
-      case MapLayer.satellite:
-        return MapboxStyles.STANDARD_SATELLITE;
-      case MapLayer.standard:
-      case MapLayer.terrain:
-        return MapboxStyles.STANDARD;
-    }
   }
 }
 
@@ -365,43 +486,106 @@ class _PlaybackBar extends StatelessWidget {
     required this.isPlaying,
     required this.progress,
     required this.max,
-    required this.onPlay,
-    required this.onPause,
-    required this.onSeek,
+    required this.divisions,
+    required this.currentTime,
+    required this.speedKmh,
     required this.speed,
+    required this.onPlay,
+    required this.onSeek,
     required this.onSpeedChanged,
   });
 
   final bool isPlaying;
   final double progress;
   final double max;
-  final VoidCallback onPlay;
-  final VoidCallback onPause;
-  final ValueChanged<double> onSeek;
+  final int divisions;
+  final String currentTime;
+  final double speedKmh;
   final double speed;
+  final VoidCallback? onPlay;
+  final ValueChanged<double> onSeek;
   final ValueChanged<double> onSpeedChanged;
 
   @override
   Widget build(BuildContext context) {
-    return SafeArea(
-      top: false,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Slider(value: progress.clamp(0, max), max: max, onChanged: onSeek),
-            Row(
-              children: [
-                IconButton(
-                  onPressed: isPlaying ? onPause : onPlay,
-                  icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
+    final theme = Theme.of(context);
+    return Material(
+      color: theme.colorScheme.surfaceContainerLow,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 14, 20, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    currentTime,
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    '${speedKmh.toStringAsFixed(0)} km/h',
+                    style: theme.textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
+                ],
+              ),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  overlayShape: SliderComponentShape.noOverlay,
                 ),
-                const Spacer(),
-                Text('${speed}x'),
-              ],
-            ),
-          ],
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  child: Slider(
+                    value: progress.clamp(0, max),
+                    min: 0,
+                    max: max,
+                    divisions: divisions,
+                    onChanged: onSeek,
+                  ),
+                ),
+              ),
+              Row(
+                children: [
+                  Expanded(
+                    child: SegmentedButton<double>(
+                      showSelectedIcon: false,
+                      segments: const [
+                        ButtonSegment(value: 1.0, label: Text('1x')),
+                        ButtonSegment(value: 2.0, label: Text('2x')),
+                        ButtonSegment(value: 4.0, label: Text('4x')),
+                      ],
+                      selected: {speed},
+                      onSelectionChanged: (selection) =>
+                          onSpeedChanged(selection.first),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  IconButton.filled(
+                    iconSize: 30,
+                    style: IconButton.styleFrom(
+                      fixedSize: const Size.square(56),
+                    ),
+                    tooltip: isPlaying ? 'Pause' : 'Play',
+                    icon: Icon(
+                      isPlaying
+                          ? Icons.pause_rounded
+                          : Icons.play_arrow_rounded,
+                    ),
+                    onPressed: onPlay,
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
     );

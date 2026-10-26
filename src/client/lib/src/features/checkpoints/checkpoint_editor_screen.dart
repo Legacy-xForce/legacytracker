@@ -8,9 +8,11 @@ import 'package:provider/provider.dart';
 import '../../core/constants.dart';
 import '../../data/models/checkpoint.dart';
 import '../../data/network/checkpoint_service.dart';
+import '../../data/network/mapbox_token_gate.dart';
 import '../../data/network/mapbox_token_service.dart';
 import '../../data/network/place_search_service.dart';
 import '../auth/auth_provider.dart';
+import '../tracking/widgets/mapbox_map.dart';
 import '../tracking/widgets/tracking_map_layer.dart';
 import 'checkpoints_provider.dart';
 
@@ -38,79 +40,44 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
   final _searchController = TextEditingController();
   final _placeSearch = PlaceSearchService();
 
-  late final ValueNotifier<LatLng> _center;
+  late LatLng _center;
+  late double _radius;
   MapboxMap? _map;
   MapboxTokenService? _tokenService;
-  String? _token;
-  int _mapKey = 0;
-  CircleAnnotationManager? _circleManager;
-  double _radius = 100;
+  bool _initialized = false;
+
   Timer? _debounce;
-  Timer? _tokenTimer;
   List<PlaceResult> _results = const [];
   bool _searching = false;
   String? _searchError;
   bool _saving = false;
   String? _nameError;
   String? _saveError;
-  bool _initialized = false;
 
   bool get _readOnly =>
       widget.checkpoint != null && !widget.checkpoint!.canEdit;
 
-  String _styleUri(MapLayer style) {
-    switch (style) {
-      case MapLayer.satellite:
-        return MapboxStyles.STANDARD_SATELLITE;
-      case MapLayer.standard:
-      case MapLayer.terrain:
-        return MapboxStyles.STANDARD;
-      default:
-        return MapboxStyles.STANDARD;
-    }
-  }
-
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (!_initialized) {
-      final checkpoint = widget.checkpoint;
-      _center = ValueNotifier(
+    if (_initialized) return;
+    final checkpoint = widget.checkpoint;
+    _center =
         checkpoint?.center ??
-            widget.initialCenter ??
-            AppConstants.defaultMapCenter,
-      );
-      _radius = (checkpoint?.radiusM ?? 100).toDouble();
-      _nameController.text = checkpoint?.name ?? '';
-      _tokenService = MapboxTokenService(
-        baseUrl: AppConstants.backendBaseUrl,
-        getAccessToken: () => context.read<AuthProvider>().accessToken,
-      );
-      _initialized = true;
-      _refreshToken();
-      _tokenTimer = Timer.periodic(
-        const Duration(minutes: 1),
-        (_) => _refreshToken(),
-      );
-    }
-  }
-
-  Future<void> _refreshToken() async {
-    final token = await _tokenService?.token;
-    if (!mounted) return;
-    if (token != _token) {
-      setState(() {
-        _token = token;
-        _mapKey++;
-      });
-    }
+        widget.initialCenter ??
+        AppConstants.defaultMapCenter;
+    _radius = (checkpoint?.radiusM ?? 100).toDouble();
+    _nameController.text = checkpoint?.name ?? '';
+    _tokenService = MapboxTokenService(
+      baseUrl: AppConstants.backendBaseUrl,
+      getAccessToken: () => context.read<AuthProvider>().accessToken,
+    );
+    _initialized = true;
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _tokenTimer?.cancel();
-    _center.dispose();
     _tokenService?.dispose();
     _nameController.dispose();
     _searchController.dispose();
@@ -151,32 +118,30 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
     FocusScope.of(context).unfocus();
     setState(() {
       _results = const [];
-      _center.value = place.point;
+      _center = place.point;
     });
-    _map?.setCamera(CameraOptions(
-      center: Point(coordinates: Position(place.point.longitude, place.point.latitude)),
-      zoom: 17,
-    ));
+    _map?.setCamera(
+      CameraOptions(
+        center: Point(
+          coordinates: Position(place.point.longitude, place.point.latitude),
+        ),
+        zoom: 17,
+      ),
+    );
   }
 
-  void _syncCircle() {
-    final manager = _circleManager;
-    if (manager == null) return;
-    final center = _readOnly ? widget.checkpoint!.center : _center.value;
-    manager.deleteAll().then((_) async {
-      await manager.create(
-        CircleAnnotationOptions(
-          geometry: Point(
-            coordinates: Position(center.longitude, center.latitude),
-          ),
-          circleColor: 0x330080FF,
-          circleRadius: _radius.clamp(4, 40),
-          circleOpacity: 0.2,
-          circleStrokeColor: 0xFF0080FF,
-          circleStrokeWidth: 2,
-        ),
-      );
-    });
+  void _onCameraChanged(CameraState state) {
+    if (_readOnly) return;
+    final center = state.center;
+    final next = LatLng(
+      center.coordinates.lat.toDouble(),
+      center.coordinates.lng.toDouble(),
+    );
+    if (next.latitude == _center.latitude &&
+        next.longitude == _center.longitude) {
+      return;
+    }
+    setState(() => _center = next);
   }
 
   Future<void> _save() async {
@@ -197,16 +162,16 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
       if (existing == null) {
         await provider.create(
           name: name,
-          latitude: _center.value.latitude,
-          longitude: _center.value.longitude,
+          latitude: _center.latitude,
+          longitude: _center.longitude,
           radiusM: _radius.round(),
         );
       } else {
         await provider.update(
           existing.id,
           name: name,
-          latitude: _center.value.latitude,
-          longitude: _center.value.longitude,
+          latitude: _center.latitude,
+          longitude: _center.longitude,
           radiusM: _radius.round(),
         );
       }
@@ -232,10 +197,12 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
         : _readOnly
         ? 'Checkpoint'
         : 'Edit checkpoint';
-
-    if (_token != null) {
-      MapboxOptions.setAccessToken(_token!);
-    }
+    final overlay = MapCheckpointOverlay(
+      id: widget.checkpoint?.id ?? 'editor',
+      center: _readOnly ? widget.checkpoint!.center : _center,
+      radiusMeters: _radius,
+      color: theme.colorScheme.primary,
+    );
 
     return Scaffold(
       appBar: AppBar(title: Text(title)),
@@ -244,43 +211,33 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
           Expanded(
             child: Stack(
               children: [
-                MapWidget(
-                  key: ValueKey(_mapKey),
-                  styleUri: _styleUri(widget.mapLayer),
-                  cameraOptions: CameraOptions(
-                    center: Point(
-                      coordinates: Position(
-                        _center.value.longitude,
-                        _center.value.latitude,
-                      ),
-                    ),
-                    zoom: 16,
-                  ),
-                  onMapCreated: (map) async {
-                    _map = map;
-                    _circleManager = await map.annotations
-                        .createCircleAnnotationManager();
-                    map.setCamera(CameraOptions(
-                      center: Point(
-                        coordinates: Position(
-                          _center.value.longitude,
-                          _center.value.latitude,
+                MapboxTokenGate(
+                  service: _tokenService,
+                  builder: (context, session) => MapboxMapWidget(
+                    key: ValueKey('checkpoint-map-${session.generation}'),
+                    accessToken: session.token,
+                    initialCenter: _center,
+                    initialZoom: 16,
+                    style: widget.mapLayer,
+                    darkMode: theme.brightness == Brightness.dark,
+                    checkpoints: [overlay],
+                    onCameraChanged: _onCameraChanged,
+                    onLoadError: (_) => session.recover(),
+                    onMapCreated: (map) {
+                      _map = map;
+                      map.setCamera(
+                        CameraOptions(
+                          center: Point(
+                            coordinates: Position(
+                              _center.longitude,
+                              _center.latitude,
+                            ),
+                          ),
+                          zoom: 16,
                         ),
-                      ),
-                      zoom: 16,
-                    ));
-                    _syncCircle();
-                  },
-                  onCameraChangeListener: (event) {
-                    if (_readOnly) return;
-                    final center = event.cameraState.center;
-                    _center.value = LatLng(
-                      center.coordinates.lat.toDouble(),
-                      center.coordinates.lng.toDouble(),
-                    );
-                    _syncCircle();
-                  },
-                  // Interaction options not available in v2; gestures enabled by default.
+                      );
+                    },
+                  ),
                 ),
                 if (!_readOnly)
                   IgnorePointer(
@@ -344,10 +301,7 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
                     label: '${_radius.round()} m',
                     onChanged: _readOnly
                         ? null
-                        : (value) {
-                            setState(() => _radius = value);
-                            _syncCircle();
-                          },
+                        : (value) => setState(() => _radius = value),
                   ),
                   if (_saveError != null)
                     Padding(

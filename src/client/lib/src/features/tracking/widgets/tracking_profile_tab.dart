@@ -382,11 +382,6 @@ class DefaultMapStyleCard extends StatelessWidget {
                     icon: Icon(Icons.satellite_alt_outlined),
                     label: Text('Satellite'),
                   ),
-                  ButtonSegment(
-                    value: MapLayer.terrain,
-                    icon: Icon(Icons.terrain_outlined),
-                    label: Text('Terrain'),
-                  ),
                 ],
                 selected: {settings.defaultLayer},
                 onSelectionChanged: (s) => settings.setDefaultLayer(s.first),

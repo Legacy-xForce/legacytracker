@@ -1,9 +1,10 @@
 # Mapbox configuration
 
-Status: provisioning notes for the migration tracked in
-[#69](https://github.com/Legacy-xForce/legacytracker/issues/69). The web app and
-the phone app render Mapbox Standard and Standard Satellite; Nominatim stays for
-street names, place search and event geocoding.
+Status: provisioning and QA notes for the migration tracked in
+[#69](https://github.com/Legacy-xForce/legacytracker/issues/69). This replaces
+the old MapLibre assessment. The web app and the phone app render Mapbox
+Standard and Standard Satellite; Nominatim stays for street names, place search
+and event geocoding.
 
 ## Tokens at a glance
 
@@ -95,21 +96,71 @@ secret. Local development reads `.env.local` (copy from `.env.example`); see
 
 ## App
 
-The phone app fetches a token before creating `MapWidget`:
+The phone app fetches a token through `MapboxTokenGate` before creating
+`MapWidget`:
 
 1. `POST /api/v1/mapbox/token` with the signed-in session.
-2. `MapboxOptions.setAccessToken(token, true)` (persistent is optional; the
-   token is short-lived).
-3. Renew about five minutes before `expires_at` and set the new global token.
-4. If a style fails after expiry, recreate the `MapWidget` with camera and
-   selection restored. The spike in `main_mapcheck.dart` records whether an
-   already-created map accepts the new token without recreation.
+2. `MapboxOptions.setAccessToken(token)`.
+3. Re-check the token every 30 seconds. The service returns its cached token
+   until five minutes before expiry, then mints a new one.
+4. A refresh updates the global token in place; the existing map keeps its
+   camera and annotations. `MapboxTokenGate` recreates the map only after a
+   `MapLoadingError` (two automatic attempts), because a dead token is the case
+   where the already-created map demonstrably needs a fresh widget.
 
-If the token service is unavailable, the app shows a retryable error instead of
-a blank map; it does not fall back to an embedded token. The spike harness can
-still take a development token directly:
-`flutter run -t lib/main_mapcheck.dart --dart-define=MAPBOX_TOKEN=pk.…`.
-Name the define only for debug/profile runs; release builds reject it.
+While the first token loads the gate shows a spinner. If the backend cannot
+mint one, it shows a "Map unavailable" card with **Retry**; it never falls back
+to an embedded token. The token request has no body and deliberately sends no
+`Content-Type` (Fastify rejects body-less JSON requests).
+
+### Markers and annotations
+
+- Live markers are native bitmaps built in `marker_icons.dart` and added to the
+  style with `StyleManager.addStyleImage`. Point annotations reference the image
+  id, so moving a marker only updates geometry, never the bitmap bytes.
+- Markers follow the Life360-style white bubble: up to three avatar faces, a
+  `+N` overflow face, a tail dot on the location, greyed faces for stale peers
+  and an accent ring for the selected person. Clustering merges people only
+  when they are within 96 screen pixels **and** 100 m at the current zoom.
+- Calendar events use a rounded-square pin in the event colour; checkpoints are
+  geodesic polygons whose radius is respected in metres; replay routes are
+  native polylines coloured by recorded speed.
+- No Flutter view annotations are used anywhere.
+- Annotation managers are created once per map. On every `style.load` the
+  widget re-adds style images and repopulates the managers: the sprite is wiped
+  by a style switch, while the SDK re-adds the annotation layers themselves.
+  The map listens for `style.load` through one controller, so switching
+  Standard/Satellite does not leak or duplicate marker layers.
+
+The Standard basemap follows the app theme (`lightPreset` `day`/`night`).
+Rotation and pitch gestures are disabled on both clients.
+
+### Spike harness
+
+The standalone harness renders the real map with moving peers, a cluster, a
+stale peer, an event-style checkpoint and the token controls:
+
+```bash
+flutter run -t lib/main_mapcheck.dart -d <device> \
+  --dart-define=MAPBOX_TOKEN=pk.…
+```
+
+Pass a second token to exercise runtime replacement without rebuilding the
+widget:
+
+```bash
+flutter run -t lib/main_mapcheck.dart -d <device> \
+  --dart-define=MAPBOX_TOKEN=pk.… \
+  --dart-define=MAPBOX_TOKEN_ALT=pk.…
+```
+
+The status card shows the active token prefix and how many times a style has
+loaded. **Apply/Switch token in place** sets the global token and reloads the
+style on the existing `MapWidget`; a rising style count means the already-created
+map accepted the new token. **Recreate map** exercises the fallback. Record on a
+device: marker glide smoothness, cluster split at high zoom, sheet-inset
+following, and the APK size/token scan below. The `MAPBOX_TOKEN` define is
+ignored by release builds (the harness itself is not part of the release app).
 
 ## CSP
 
@@ -146,11 +197,60 @@ migration. Mapbox's logo and attribution stay visible.
 ## Checking a release APK
 
 ```bash
-unzip -p build/app/outputs/flutter-apk/app-release.apk classes.dex | strings | grep -E 'pk\.|sk\.' && echo 'token found' || echo 'no Mapbox token in APK'
+unzip -p build/app/outputs/flutter-apk/app-release.apk classes.dex | strings \
+  | grep -E 'pk\.[A-Za-z0-9]{20,}|sk\.[A-Za-z0-9]{20,}|tk\.' \
+  && echo 'token found' || echo 'no Mapbox token in APK'
 ```
 
-Also grep the Flutter assets and native libraries. The only acceptable `tk.*`
-value is one fetched at runtime.
+Also grep the Flutter assets and native libraries. Qualify the `pk.`/`sk.`
+patterns with a length, otherwise the word "Task." matches the naive `sk\.`
+search. The only acceptable `tk.*` value is one fetched at runtime.
+
+## Verification and QA notes (October 2026)
+
+Run locally on the migration branch:
+
+| Check | Result |
+|---|---|
+| `flutter analyze` | No issues |
+| `flutter test` | 188 passed |
+| `npm test` (server) | 116 passed |
+| `npm run build` (server) | tsc clean |
+| `npm run format:check` (web) | clean |
+| `npm test` (web) | 185 passed (one API-docs timeout when run beside a Gradle build; clean when rerun alone) |
+| `npm run build` (web, placeholder token) | built |
+
+Release APK measured from the CI artifact for commit `78a129d`
+(`android-apk`, universal):
+
+| | Pre-Mapbox build | Mapbox build |
+|---|---|---|
+| APK on disk | 56 MB | 128 MB |
+| CI artifact (zip) | 27.4 MB | 58.0 MB |
+
+The growth is the Mapbox Maps SDK plus its native libraries, accepted in #69
+in exchange for keeping one universal APK. Token scan on the extracted release
+APK:
+
+```bash
+cd /tmp/android-apk
+unzip -p app-release.apk classes.dex | strings | grep -E 'pk\.[A-Za-z0-9]{20,}|sk\.[A-Za-z0-9]{20,}|tk\.'
+```
+
+No `pk.`/`sk.`/`tk.` token was found in any dex, native library or asset
+(a naive `grep 'sk\.'` matches the word "Task.", so use the length-qualified
+pattern above). The only `tk.*` value the app ever handles is the one fetched
+at runtime.
+
+Device QA still to record on hardware (CI cannot run a map): marker glide
+smoothness with several peers, cluster split, follow camera with the expanded
+sheet, Standard/Satellite switching, light/dark `lightPreset`, replay playback,
+the checkpoint radius at different zooms, and token refresh over a full expiry
+window. Use `main_mapcheck.dart` and the status card described above.
+
+Flutter targets are now Android and iOS only; the `linux`, `macos`, `windows`
+and `web` runner directories were removed along with the unused desktop/web
+tooling. `flutter_map` and its raster tile layers are no longer dependencies.
 
 ## Rotation and incident response
 
