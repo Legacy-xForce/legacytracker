@@ -136,6 +136,14 @@ class _TrackingMapTabState extends State<TrackingMapTab>
   void initState() {
     super.initState();
     _cameraCenter = widget.center;
+    // Open on ourselves at the "where am I" zoom, not at the world-spanning
+    // default: the map is there to show where you are the moment it appears.
+    final selfFix = widget.selfProfile.lastLocation;
+    if (selfFix != null &&
+        selfFix.latitude.isFinite &&
+        selfFix.longitude.isFinite) {
+      _cameraZoom = _recenterZoom;
+    }
     _icons.addListener(_handleIconsChanged);
     _syncMarkerMotions();
   }
@@ -181,7 +189,7 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     _didJumpToInitialFix = true;
     _moveCamera(
       widget.center,
-      _cameraZoom,
+      _recenterZoom,
       animate: false,
       sheetFraction: _sheetFraction,
     );
@@ -207,10 +215,13 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     );
   }
 
-  double get _currentZoomForSelection => math.min(
-    AppConstants.maxZoom,
-    math.max(_cameraZoom, AppConstants.defaultZoom + 3.5),
-  );
+  /// Street-level enough to recognise where you are, the zoom the "where am
+  /// I" button and the opening camera aim for; the web focuses at ≥ 16.
+  double get _recenterZoom =>
+      math.min(AppConstants.maxZoom, AppConstants.defaultZoom + 3.5);
+
+  double get _currentZoomForSelection =>
+      math.min(AppConstants.maxZoom, math.max(_cameraZoom, _recenterZoom));
 
   double get _mapHeight =>
       _mapSize?.height ?? MediaQuery.sizeOf(context).height;
