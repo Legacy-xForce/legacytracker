@@ -76,6 +76,7 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 - Pushing to `main` makes CI publish the server image as ghcr `:latest`, so server changes (especially auth) can go live on push.
 - The Android emulator reaches the host at `10.0.2.2`; debug builds allow cleartext HTTP, release builds do not.
 - Fastify answers 400 to a body-less request that sends `Content-Type: application/json`; only set that header when there is a body (the Flutter services build headers per request for this reason).
+- Do not chain a command after `gh run watch --exit-status` (e.g. with `;`): the shell reports the **last** command's status, so a red run looks green. Read the verdict back with `gh run view <id> --json conclusion`. A `cancelled` job with no steps means no runner picked it up, and a corrupt NDK download fails `Build Android` on the runner — neither is a code failure; re-check the job log before reporting CI status.
 
 ## Database (production)
 
