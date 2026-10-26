@@ -81,46 +81,52 @@ void main() {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);
 
-    final cluster = await factory.clusterMarker(const [
-      MarkerPerson(id: 'a', name: 'Ada'),
-      MarkerPerson(id: 'b', name: 'Bo'),
-      MarkerPerson(id: 'c', name: 'Cy'),
-    ]);
-    final overflow = await factory.clusterMarker(const [
-      MarkerPerson(id: 'a', name: 'Ada'),
-      MarkerPerson(id: 'b', name: 'Bo'),
-      MarkerPerson(id: 'c', name: 'Cy'),
-      MarkerPerson(id: 'd', name: 'Di'),
-      MarkerPerson(id: 'e', name: 'Ed'),
-    ]);
+    final cluster = await factory.clusterMarker(
+      const [
+        MarkerPerson(id: 'a', name: 'Ada'),
+        MarkerPerson(id: 'b', name: 'Bo'),
+        MarkerPerson(id: 'c', name: 'Cy'),
+      ],
+      style: ClusterStyle.light,
+    );
+    final overflow = await factory.clusterMarker(
+      const [
+        MarkerPerson(id: 'a', name: 'Ada'),
+        MarkerPerson(id: 'b', name: 'Bo'),
+        MarkerPerson(id: 'c', name: 'Cy'),
+        MarkerPerson(id: 'd', name: 'Di'),
+        MarkerPerson(id: 'e', name: 'Ed'),
+      ],
+      style: ClusterStyle.light,
+    );
 
     // Max three faces plus one "+N" slot.
     expect(overflow.width, greaterThan(cluster.width));
-    // ClusterMarker.vue: 52 bubble + 9 tail + 14 dot - 2, at 2x.
-    expect(cluster.height, 146);
-    // The tail dot sits 7 logical px above the image edge.
-    expect(cluster.anchorOffsetY, closeTo(7, 1e-9));
+    // ClusterMarker.vue: 42 bubble + 7 tail + 11 dot - 2, at 2x.
+    expect(cluster.height, 116);
+    // The tail dot sits 5.5 logical px above the image edge.
+    expect(cluster.anchorOffsetY, closeTo(5.5, 1e-9));
     expectPng(cluster);
   });
 
   test('cluster face hit areas sit over the faces', () {
-    // Two people: an 82 px bubble, faces centred 15 px either side of the
-    // tail dot, and 40 px above it (face centre 26, dot centre 66).
+    // Two people: a 66 px bubble, faces centred 12 px either side of the
+    // tail dot, and 31.5 px above it (face centre 21, dot centre 52.5).
     final two = MarkerIconFactory.clusterFaceOffsets(2);
     expect(two, hasLength(2));
-    expect(two[0], const Offset(-15, -40));
-    expect(two[1], const Offset(15, -40));
+    expect(two[0], const Offset(-12, -31.5));
+    expect(two[1], const Offset(12, -31.5));
 
-    // Three people: a 112 px bubble, faces centred at -30, 0 and 30.
+    // Three people: a 90 px bubble, faces centred at -24, 0 and 24.
     final three = MarkerIconFactory.clusterFaceOffsets(3);
-    expect(three.map((o) => o.dx), orderedEquals(<double>[-30, 0, 30]));
+    expect(three.map((o) => o.dx), orderedEquals(<double>[-24, 0, 24]));
 
-    // Four people: 142 px wide, but the "+N" chip is not a person, so the
-    // three faces keep centring themselves at -45, -15 and 15.
+    // Four people: 114 px wide, but the "+N" chip is not a person, so the
+    // three faces keep centring themselves at -36, -12 and 12.
     final four = MarkerIconFactory.clusterFaceOffsets(4);
     expect(four, hasLength(3));
-    expect(four.map((o) => o.dx), orderedEquals(<double>[-45, -15, 15]));
-    expect(four.every((o) => o.dy == -40), isTrue);
+    expect(four.map((o) => o.dx), orderedEquals(<double>[-36, -12, 12]));
+    expect(four.every((o) => o.dy == -31.5), isTrue);
   });
 
   test('the cluster face hit area is one transparent face square', () async {
@@ -128,9 +134,9 @@ void main() {
     addTearDown(factory.dispose);
 
     final hit = await factory.clusterFaceHitArea();
-    // 42 logical px, the ClusterMarker face size, at 2x.
-    expect(hit.width, 84);
-    expect(hit.height, 84);
+    // 34 logical px, the ClusterMarker face size, at 2x.
+    expect(hit.width, 68);
+    expect(hit.height, 68);
     // Centred on its own coordinate offset, no bottom anchor.
     expect(hit.anchorOffsetY, 0);
     expectPng(hit);

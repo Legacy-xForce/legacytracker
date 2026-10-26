@@ -809,10 +809,12 @@ class _TrackingMapTabState extends State<TrackingMapTab>
               '${person.isCharging}',
       ].join(',');
       final image = _imageFor(
-        '${single ? 'person' : 'cluster'}:$signature',
+        single
+            ? 'person:$signature'
+            : 'cluster:${_clusterStyle.id}:$signature',
         () => single
             ? _icons.personMarker(persons.first)
-            : _icons.clusterMarker(persons),
+            : _icons.clusterMarker(persons, style: _clusterStyle),
       );
       if (image == null) continue;
 
@@ -911,6 +913,18 @@ class _TrackingMapTabState extends State<TrackingMapTab>
     }
 
     return markers;
+  }
+
+  /// The bubble matches the app theme's raised surface: white on light, the
+  /// dark card colour on dark - never a white sticker on a dark map.
+  ClusterStyle get _clusterStyle {
+    final scheme = Theme.of(context).colorScheme;
+    if (scheme.brightness == Brightness.light) return ClusterStyle.light;
+    return ClusterStyle(
+      bubble: scheme.surfaceContainerHigh,
+      chip: scheme.onSurface,
+      chipText: scheme.surface,
+    );
   }
 
   /// Greyed out when we haven't heard from the device in a while. Uses the

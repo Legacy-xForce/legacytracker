@@ -269,7 +269,7 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
         '${single ? 'person' : 'cluster'}:$signature',
         () => single
             ? _icons.personMarker(persons.first)
-            : _icons.clusterMarker(persons),
+            : _icons.clusterMarker(persons, style: ClusterStyle.light),
       );
       if (image == null) continue;
       markers.add(

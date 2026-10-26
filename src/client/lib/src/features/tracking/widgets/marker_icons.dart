@@ -72,6 +72,30 @@ class MarkerPerson {
   final bool isCharging;
 }
 
+/// Colours of the cluster bubble: the theme's raised surface it is painted
+/// on, and the `+N` chip that must contrast with it.
+class ClusterStyle {
+  const ClusterStyle({
+    required this.bubble,
+    required this.chip,
+    required this.chipText,
+  });
+
+  /// Bubble, face rings and the tail dot's border.
+  final Color bubble;
+  final Color chip;
+  final Color chipText;
+
+  static const light = ClusterStyle(
+    bubble: Colors.white,
+    chip: Color(0xFF2B3134),
+    chipText: Colors.white,
+  );
+
+  String get id =>
+      '${bubble.toARGB32()}-${chip.toARGB32()}-${chipText.toARGB32()}';
+}
+
 /// Builds the bitmap icons rendered through Mapbox point annotations.
 ///
 /// Icons are cached by a deterministic id; callers add each id to the style
@@ -191,12 +215,12 @@ class MarkerIconFactory extends ChangeNotifier {
   }
 
   // ClusterMarker geometry, the same numbers the web client uses.
-  static const _clusterFaceSize = 42.0;
-  static const _clusterFaceStep = 30.0;
-  static const _clusterPadding = 5.0;
-  static const _clusterBubbleHeight = 52.0;
-  static const _clusterTailHeight = 9.0;
-  static const _clusterDotSize = 14.0;
+  static const _clusterFaceSize = 34.0;
+  static const _clusterFaceStep = 24.0;
+  static const _clusterPadding = 4.0;
+  static const _clusterBubbleHeight = 42.0;
+  static const _clusterTailHeight = 7.0;
+  static const _clusterDotSize = 11.0;
   static const _clusterHeight =
       _clusterBubbleHeight + _clusterTailHeight + _clusterDotSize - 2;
   static const _clusterMaxFaces = 3;
@@ -239,11 +263,14 @@ class MarkerIconFactory extends ChangeNotifier {
     return _render(_clusterFaceSize, _clusterFaceSize, (canvas) {}, id: id);
   }
 
-  /// Several people close together: their faces in one white bubble with a
-  /// tail dot on the shared location, as on the web.
-  Future<MarkerImage> clusterMarker(List<MarkerPerson> members) async {
+  /// Several people close together: their faces in one theme-coloured bubble
+  /// with a tail dot on the shared location, as on the web.
+  Future<MarkerImage> clusterMarker(
+    List<MarkerPerson> members, {
+    required ClusterStyle style,
+  }) async {
     final allStale = members.every((m) => m.isStale);
-    final id = _liveId(members, allStale);
+    final id = _liveId(members, allStale, style);
     final cached = _cached(id);
     if (cached != null) return cached;
 
@@ -272,7 +299,7 @@ class MarkerIconFactory extends ChangeNotifier {
           tailHeight: _clusterTailHeight,
         );
         canvas.drawShadow(path, Colors.black, 4, false);
-        canvas.drawPath(path, Paint()..color = Colors.white);
+        canvas.drawPath(path, Paint()..color = style.bubble);
 
         if (overflow > 0) {
           _drawFace(
@@ -282,6 +309,7 @@ class MarkerIconFactory extends ChangeNotifier {
             left: _clusterPadding + faces * _clusterFaceStep,
             top: _clusterPadding,
             size: _clusterFaceSize,
+            style: style,
           );
         }
         // Right to left, so the leftmost face paints on top like the web stack.
@@ -293,6 +321,7 @@ class MarkerIconFactory extends ChangeNotifier {
             left: _clusterPadding + i * _clusterFaceStep,
             top: _clusterPadding,
             size: _clusterFaceSize,
+            style: style,
           );
         }
 
@@ -300,11 +329,11 @@ class MarkerIconFactory extends ChangeNotifier {
         canvas.drawCircle(
           dot,
           _clusterDotSize / 2,
-          Paint()..color = Colors.white,
+          Paint()..color = style.bubble,
         );
         canvas.drawCircle(
           dot,
-          _clusterDotSize / 2 - 2.5,
+          _clusterDotSize / 2 - 2,
           Paint()..color = allStale ? Colors.grey.shade600 : markerAccentColor,
         );
       },
@@ -546,9 +575,11 @@ class MarkerIconFactory extends ChangeNotifier {
   }
 
   /// Identity of a cluster bitmap. Selection is not part of it: the caller
-  /// scales the annotation instead of baking another bitmap.
-  String _liveId(List<MarkerPerson> members, bool allStale) {
-    final buffer = StringBuffer('cluster:$allStale');
+  /// scales the annotation instead of baking another bitmap. The theme style
+  /// is, so a theme switch cannot leave the old colours cached under the same
+  /// people.
+  String _liveId(List<MarkerPerson> members, bool allStale, ClusterStyle style) {
+    final buffer = StringBuffer('cluster:${style.id}:$allStale');
     for (final member in members) {
       buffer
         ..write('|')
@@ -630,22 +661,19 @@ class MarkerIconFactory extends ChangeNotifier {
     required double left,
     required double top,
     required double size,
+    required ClusterStyle style,
   }) {
     final rect = Rect.fromLTWH(left, top, size, size);
     final center = rect.center;
     if (person == null) {
-      canvas.drawCircle(
-        center,
-        size / 2,
-        Paint()..color = const Color(0xFF2B3134),
-      );
+      canvas.drawCircle(center, size / 2, Paint()..color = style.chip);
       _drawText(
         canvas,
         '+$overflow',
         center,
-        const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
+        TextStyle(
+          color: style.chipText,
+          fontSize: 11,
           fontWeight: FontWeight.w700,
         ),
       );
@@ -679,8 +707,8 @@ class MarkerIconFactory extends ChangeNotifier {
       size / 2 - 1,
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 2.5
-        ..color = Colors.white,
+        ..strokeWidth = 2
+        ..color = style.bubble,
     );
   }
 
