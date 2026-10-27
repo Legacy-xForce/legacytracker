@@ -10,6 +10,13 @@ with the public API reference under [`/docs`](https://tracker.legacy-group.tech/
 
 ## Install
 
+**Android** — install the `.apk` from the newest release. Once installed, the
+app updates itself: the server polls these releases and tells phones to install.
+
+<h3 align="center">
+<a href="https://github.com/Legacy-xForce/legacytracker/releases/latest" target="_blank"><img src="https://img.shields.io/badge/Android-Download_.apk-3DDC84?style=for-the-badge&logo=android&logoColor=3DDC84&labelColor=0B0B0B&color=0B0B0B" alt="Download the Android APK" width="200"></a>
+</h3>
+
 **iOS / iPadOS** — add the source once, then install and update from
 [SideStore](https://sidestore.io) (AltStore Classic works the same way). The app
 is unsigned in the release; SideStore re-signs it with your own Apple ID, so
@@ -29,13 +36,6 @@ hand instead if you prefer:
 ```
 https://github.com/Legacy-xForce/legacytracker/releases/latest/download/altstore-source.json
 ```
-
-**Android** — install the `.apk` from the newest release. Once installed, the
-app updates itself: the server polls these releases and tells phones to install.
-
-<h3 align="center">
-<a href="https://github.com/Legacy-xForce/legacytracker/releases/latest" target="_blank"><img src="https://img.shields.io/badge/Android-Download_.apk-3DDC84?style=for-the-badge&logo=android&logoColor=3DDC84&labelColor=0B0B0B&color=0B0B0B" alt="Download the Android APK" width="200"></a>
-</h3>
 
 Both platforms need one manual install. Sideloaded iOS builds get no push
 notifications, which is the one thing they give up against TestFlight — see
