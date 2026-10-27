@@ -61,9 +61,13 @@ The card's *Check* / *Install* buttons still work, for testing.
 
 The `Release Android and iOS` workflow does the same and also attaches an
 unsigned iOS IPA plus its SideStore source feed to the release (see below). It
-reuses the IPA that CI already built for the commit being tagged, and builds
-one on a macOS runner when there is nothing to reuse. To attach an existing
-IPA from a local release, pass `--ipa PATH`.
+publishes the two binaries CI already built for the commit being tagged, and
+waits for a CI run that is still going instead of building a second copy of it.
+What it adds is the signature: the APK from CI carries the runner's debug key,
+so the workflow hands it to `scripts/release-android.sh --apk PATH`, which
+strips that signature and signs the same bytes with the release key. If CI
+never ran for the commit, or ran red, the workflow builds what is missing on
+its own runners. Locally, pass `--ipa PATH` to attach an existing IPA.
 
 To try a build on a few phones first, pass `--prerelease`. The server ignores
 prereleases, so you can install the APK from the release page by hand. Roll it
@@ -81,7 +85,10 @@ failed and waits for the next one, and users would have to uninstall and
 reinstall.
 
 `src/client/android/app/build.gradle.kts` signs release builds with the key described in
-`src/client/android/key.properties` (git-ignored):
+`src/client/android/key.properties` (git-ignored). The release workflow uses no
+such file: it keeps the keystore outside the checkout and lets `apksigner` sign
+the APK the CI job built, so a signing secret is never written into the tree.
+Locally the file is how Gradle finds the key:
 
 ```properties
 storeFile=/absolute/path/to/legacytracker-release.jks

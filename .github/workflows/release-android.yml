@@ -16,10 +16,88 @@ on:
 permissions:
   contents: write
 
+# Phones get the exact bytes that went through CI's analyze, test and build for
+# the commit being tagged. The only thing this workflow adds is the Android
+# release signature; the iOS IPA stays unsigned on purpose, because SideStore
+# signs it with each user's own Apple ID.
+
 jobs:
-  ios:
-    name: Prepare unsigned iOS IPA
-    runs-on: macos-latest
+  ci-run:
+    name: Find the CI build of this commit
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      run-id: ${{ steps.find.outputs.run_id }}
+      apk: ${{ steps.find.outputs.has_apk }}
+      ipa: ${{ steps.find.outputs.has_ipa }}
+    steps:
+      - name: Look for a CI run of this commit
+        id: find
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ github.sha }}
+          REPO: ${{ github.repository }}
+        run: |
+          # Dispatching right after a push usually finds CI still running the
+          # same commit; waiting for it is far cheaper than a second set of
+          # builds. A run that ends red, or no run at all, falls through to the
+          # build-in-workflow path below.
+          pending=""
+          run_id=""
+          rows="$(gh api "repos/$REPO/actions/runs?head_sha=$COMMIT&per_page=100" --jq '
+            .workflow_runs[]
+            | select(.name == "CI" and .event == "push" and .head_sha == env.COMMIT)
+            | [.id, .status, .conclusion] | @tsv')"
+          while IFS=$'\t' read -r id status conclusion; do
+            [[ -n "$id" ]] || continue
+            if [[ "$status" == "completed" && "$conclusion" == "success" ]]; then
+              run_id="$id"
+              break
+            fi
+            if [[ "$status" != "completed" ]]; then
+              pending="$id"
+            fi
+          done <<<"$rows"
+
+          if [[ -z "$run_id" && -n "$pending" ]]; then
+            echo "CI run $pending is still going; waiting for it."
+            for _ in {1..80}; do
+              sleep 30
+              if [[ "$(gh api "repos/$REPO/actions/runs/$pending" --jq .status)" == "completed" ]]; then
+                break
+              fi
+            done
+            conclusion="$(gh api "repos/$REPO/actions/runs/$pending" --jq .conclusion)"
+            if [[ "$conclusion" == "success" ]]; then
+              run_id="$pending"
+            else
+              echo "::warning::CI run $pending ended as '$conclusion'; building the binaries in this workflow."
+            fi
+          fi
+
+          has_apk=false
+          has_ipa=false
+          if [[ -n "$run_id" ]]; then
+            names="$(gh api "repos/$REPO/actions/runs/$run_id/artifacts" --jq '
+              .artifacts[] | select(.expired | not) | .name')"
+            if grep -qx 'android-apk' <<<"$names"; then has_apk=true; fi
+            if grep -qx 'ios-unsigned-ipa' <<<"$names"; then has_ipa=true; fi
+            echo "Reusing https://github.com/$REPO/actions/runs/$run_id (apk=$has_apk ipa=$has_ipa)"
+          else
+            echo "No successful CI run for ${COMMIT:0:7}; this workflow builds both binaries."
+          fi
+          {
+            echo "run_id=$run_id"
+            echo "has_apk=$has_apk"
+            echo "has_ipa=$has_ipa"
+          } >>"$GITHUB_OUTPUT"
+
+  android:
+    name: Prepare the CI APK
+    runs-on: ubuntu-24.04
+    needs: ci-run
     permissions:
       contents: read
       actions: read
@@ -27,46 +105,81 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v7
 
-      - name: Find a usable IPA from CI
-        id: ci_ipa
-        env:
-          GH_TOKEN: ${{ github.token }}
-          COMMIT: ${{ github.sha }}
-          REF_NAME: ${{ github.ref_name }}
-          REPO: ${{ github.repository }}
-        run: |
-          run_id="$(gh api "repos/$REPO/actions/runs?head_sha=$COMMIT&per_page=100" --jq '
-            .workflow_runs[]
-            | select(.name == "CI" and .event == "push"
-                     and .head_sha == env.COMMIT and .head_branch == env.REF_NAME
-                     and .status == "completed" and .conclusion == "success")
-            | .id' | head -n 1)"
-          if [[ -n "$run_id" ]] && ! gh api "repos/$REPO/actions/runs/$run_id/artifacts" --jq '
-              .artifacts[]
-              | select(.name == "ios-unsigned-ipa" and (.expired | not))
-              | .id' | grep -q .; then
-            echo "CI run $run_id kept no ios-unsigned-ipa artifact; building one here."
-            run_id=""
-          fi
-          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
-          if [[ -n "$run_id" ]]; then
-            echo "Reusing the IPA from https://github.com/$REPO/actions/runs/$run_id"
-          else
-            echo "No successful CI run for ${COMMIT:0:7} on $REF_NAME; building the IPA here."
-          fi
+      - name: Download the CI APK
+        if: needs.ci-run.outputs.apk == 'true'
+        uses: actions/download-artifact@v8
+        with:
+          name: android-apk
+          path: ${{ github.workspace }}/src/client/build/app/outputs/flutter-apk
+          repository: ${{ github.repository }}
+          run-id: ${{ needs.ci-run.outputs.run-id }}
+          github-token: ${{ github.token }}
+
+      - name: Set up Java
+        if: needs.ci-run.outputs.apk != 'true'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        if: needs.ci-run.outputs.apk != 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.44.0
+          cache: true
+
+      - name: Cache Gradle
+        if: needs.ci-run.outputs.apk != 'true'
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('src/client/android/**/*.gradle*', 'src/client/android/**/gradle-wrapper.properties', 'src/client/pubspec.lock') }}
+          restore-keys: |
+            gradle-${{ runner.os }}-
+
+      # No key.properties here: Gradle falls back to the runner's debug key,
+      # exactly like the CI job does. The release job replaces that signature
+      # with the release key, so no signing secret touches this build.
+      - name: Build release APK
+        if: needs.ci-run.outputs.apk != 'true'
+        run: flutter build apk --release
+        working-directory: src/client
+
+      - name: Upload APK for signing
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-apk-to-sign
+          path: src/client/build/app/outputs/flutter-apk/app-release.apk
+          if-no-files-found: error
+          retention-days: 1
+
+  ios:
+    name: Prepare the CI IPA
+    runs-on: macos-latest
+    needs: ci-run
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v7
 
       - name: Download the CI IPA
-        if: steps.ci_ipa.outputs.run_id != ''
+        if: needs.ci-run.outputs.ipa == 'true'
         uses: actions/download-artifact@v8
         with:
           name: ios-unsigned-ipa
           path: ${{ github.workspace }}/src/client/build/ios/ipa
           repository: ${{ github.repository }}
-          run-id: ${{ steps.ci_ipa.outputs.run_id }}
+          run-id: ${{ needs.ci-run.outputs.run-id }}
           github-token: ${{ github.token }}
 
       - name: Set up Flutter
-        if: steps.ci_ipa.outputs.run_id == ''
+        if: needs.ci-run.outputs.ipa != 'true'
         uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -74,12 +187,12 @@ jobs:
           cache: true
 
       - name: Install Flutter dependencies
-        if: steps.ci_ipa.outputs.run_id == ''
+        if: needs.ci-run.outputs.ipa != 'true'
         run: flutter pub get
         working-directory: src/client
 
       - name: Cache Swift Package Manager
-        if: steps.ci_ipa.outputs.run_id == ''
+        if: needs.ci-run.outputs.ipa != 'true'
         uses: actions/cache@v6
         with:
           path: ~/Library/Caches/org.swift.swiftpm
@@ -88,14 +201,14 @@ jobs:
             spm-${{ runner.os }}-
 
       - name: Build iOS release app without code signing
-        if: steps.ci_ipa.outputs.run_id == ''
+        if: needs.ci-run.outputs.ipa != 'true'
         run: flutter build ios --release --no-codesign
         working-directory: src/client
 
       # Flutter cannot export an IPA with --no-codesign. Package the unsigned
       # app using the standard IPA Payload layout for artifact handoff.
       - name: Package unsigned IPA
-        if: steps.ci_ipa.outputs.run_id == ''
+        if: needs.ci-run.outputs.ipa != 'true'
         run: |
           mkdir -p build/ios/ipa/Payload
           cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
@@ -108,11 +221,12 @@ jobs:
         with:
           name: ios-unsigned-ipa
           path: src/client/build/ios/ipa/LegacyTracker.ipa
+          if-no-files-found: error
           retention-days: 1
 
   release:
-    name: Build and publish release
-    needs: ios
+    name: Sign the APK and publish
+    needs: [android, ios]
     runs-on: ubuntu-24.04
     steps:
       - name: Check out source
@@ -120,32 +234,19 @@ jobs:
         with:
           fetch-depth: 0
 
+      # apksigner and zipalign are shell scripts; the Android SDK that ships
+      # with the runner (ANDROID_HOME) provides them next to a Java runtime.
       - name: Set up Java
         uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Set up Flutter
-        uses: subosito/flutter-action@v2
+      - name: Download the APK to sign
+        uses: actions/download-artifact@v8
         with:
-          channel: stable
-          flutter-version: 3.44.0
-          cache: true
-
-      # No `flutter pub get` here on purpose: the runner's Flutter is older than
-      # the one that generated pubspec.lock, so resolving rewrites it, and
-      # release-android.sh refuses to publish from a dirty tree. The build inside
-      # the script resolves dependencies after that check.
-      - name: Cache Gradle
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('src/client/android/**/*.gradle*', 'src/client/android/**/gradle-wrapper.properties', 'src/client/pubspec.lock') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+          name: android-apk-to-sign
+          path: ${{ runner.temp }}/android-apk-to-sign
 
       - name: Download unsigned IPA
         uses: actions/download-artifact@v8
@@ -166,13 +267,6 @@ jobs:
           test -n "$ANDROID_KEY_PASSWORD"
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/legacytracker-release.jks"
           chmod 600 "$RUNNER_TEMP/legacytracker-release.jks"
-          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=%s\nkeyPassword=%s\n' \
-            "$RUNNER_TEMP/legacytracker-release.jks" \
-            "$ANDROID_KEYSTORE_PASSWORD" \
-            "$ANDROID_KEY_ALIAS" \
-            "$ANDROID_KEY_PASSWORD" \
-            > src/client/android/key.properties
-          chmod 600 src/client/android/key.properties
 
       - name: Validate restored Android signing key
         env:
@@ -189,9 +283,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_NOTES: ${{ inputs.notes }}
+          STAGED_APK: ${{ runner.temp }}/android-apk-to-sign/app-release.apk
           IOS_IPA: ${{ runner.temp }}/ios-unsigned-ipa/LegacyTracker.ipa
+          ANDROID_KEYSTORE: ${{ runner.temp }}/legacytracker-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          args=(--yes --ipa "$IOS_IPA")
+          args=(--yes --apk "$STAGED_APK" --ipa "$IOS_IPA")
           if [[ -n "$RELEASE_NOTES" ]]; then
             args+=(--notes "$RELEASE_NOTES")
           fi
