@@ -520,7 +520,9 @@ class _DayCell extends StatelessWidget {
                         km,
                         maxLines: 1,
                         style: theme.textTheme.labelSmall?.copyWith(
-                          color: textColor,
+                          // Quieter than the day number it sits under.
+                          color: textColor.withValues(alpha: 0.7),
+                          fontSize: 10,
                           fontWeight: FontWeight.w500,
                           height: 1,
                         ),
