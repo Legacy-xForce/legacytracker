@@ -5,7 +5,6 @@ import {
     deleteApiToken,
     listApiTokens,
     rotateApiToken,
-    updateApiTokenAllowedIps,
     type ApiToken,
     type ApiTokenScope,
     type IssuedApiToken
@@ -34,13 +33,6 @@ const issued = ref<IssuedApiToken | null>(null);
 const copied = ref(false);
 const pending = ref<{ action: 'rotate' | 'delete'; token: ApiToken } | null>(null);
 const busy = ref(false);
-/** The token whose settings panel is open, and the allowlist being edited there. */
-const editingId = ref<string | null>(null);
-const draft = ref<string[]>([]);
-const draftEntry = ref('');
-const saving = ref(false);
-/** Where the API sees this page coming from, offered as a one-click entry. */
-const yourIp = ref<string | null>(null);
 
 function message(error: unknown): string {
     return error instanceof Error ? error.message : 'Something went wrong.';
@@ -49,9 +41,7 @@ function message(error: unknown): string {
 async function load() {
     loadError.value = null;
     try {
-        const list = await listApiTokens();
-        tokens.value = list.tokens;
-        yourIp.value = list.yourIp;
+        tokens.value = await listApiTokens();
     } catch (error) {
         loadError.value = message(error);
     }
@@ -99,7 +89,6 @@ async function confirmPending() {
             await deleteApiToken(action.token.id);
             tokens.value = (tokens.value ?? []).filter((t) => t.id !== action.token.id);
             if (issued.value?.id === action.token.id) issued.value = null;
-            if (editingId.value === action.token.id) editingId.value = null;
             showToast(`Deleted “${action.token.name}”.`);
         }
         pending.value = null;
@@ -110,55 +99,6 @@ async function confirmPending() {
     }
 }
 
-/** Short phrase for a row and the save toast: "any address" or "2 addresses". */
-function allowlistNote(ips: string[]): string {
-    if (ips.length === 0) return 'any address';
-    return `${ips.length} address${ips.length === 1 ? '' : 'es'}`;
-}
-
-function toggleEdit(token: ApiToken) {
-    if (editingId.value === token.id) {
-        editingId.value = null;
-        return;
-    }
-    editingId.value = token.id;
-    draft.value = [...token.allowedIps];
-    draftEntry.value = '';
-}
-
-function addEntry(value: string | null) {
-    const entry = value?.trim() ?? '';
-    draftEntry.value = '';
-    if (!entry) return;
-    // The server owns validation and names whatever it refuses; a space could
-    // only come from pasting a whole list at once.
-    if (/\s/.test(entry)) {
-        showToast('Enter one address or CIDR prefix at a time.');
-        return;
-    }
-    if (!draft.value.includes(entry)) draft.value.push(entry);
-}
-
-function removeEntry(entry: string) {
-    draft.value = draft.value.filter((ip) => ip !== entry);
-}
-
-async function saveAllowlist() {
-    const token = (tokens.value ?? []).find((t) => t.id === editingId.value);
-    if (!token || saving.value) return;
-    saving.value = true;
-    try {
-        const updated = await updateApiTokenAllowedIps(token.id, draft.value);
-        tokens.value = (tokens.value ?? []).map((t) => (t.id === updated.id ? updated : t));
-        editingId.value = null;
-        showToast(`“${updated.name}” may now be used from ${allowlistNote(updated.allowedIps)}.`);
-    } catch (error) {
-        showToast(message(error));
-    } finally {
-        saving.value = false;
-    }
-}
-
 function usage(token: ApiToken): string {
     const created = `Created ${formatShortDate(token.createdAt)}`;
     if (token.lastUsedAt === null) return `${created} · Never used`;
@@ -166,10 +106,7 @@ function usage(token: ApiToken): string {
 }
 
 function onKey(event: KeyboardEvent) {
-    if (event.key !== 'Escape' || pending.value) return;
-    // Escape backs out one level at a time: the open panel, then the dialog.
-    if (editingId.value) editingId.value = null;
-    else emit('close');
+    if (event.key === 'Escape' && !pending.value) emit('close');
 }
 
 onMounted(() => {
@@ -211,7 +148,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     <p class="type-body-md text-on-surface-variant">
                         Let scripts and other apps use the tracker as you. Send a token in the
                         <code class="text-on-surface">X-API-Token</code> header. Tokens don't expire, so rotate or
-                        delete any you no longer trust, and edit one to limit it to the addresses that may use it.
+                        delete any you no longer trust.
                         <RouterLink to="/docs" target="_blank" class="text-primary inline-flex items-center gap-0.5">
                             API documentation <Icon name="openInNew" :size="14" />
                         </RouterLink>
@@ -311,144 +248,43 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             <li
                                 v-for="token in tokens"
                                 :key="token.id"
-                                class="bg-surface-container-high rounded-2xl"
+                                class="bg-surface-container-high flex items-center gap-3 rounded-2xl py-3 pr-2 pl-4"
                                 data-token-row
                             >
-                                <div class="flex items-center gap-3 py-3 pr-2 pl-4">
-                                    <div class="min-w-0 flex-1">
-                                        <p class="flex items-center gap-2">
-                                            <span class="type-title-sm truncate">{{ token.name }}</span>
-                                            <span
-                                                class="type-label-sm shrink-0 rounded-md px-1.5 py-0.5 uppercase"
-                                                :class="
-                                                    token.scope === 'write'
-                                                        ? 'bg-error-container text-on-error-container'
-                                                        : 'bg-secondary-container text-on-secondary-container'
-                                                "
-                                                >{{ token.scope }}</span
-                                            >
-                                        </p>
-                                        <p class="type-body-sm text-on-surface-variant mt-0.5 truncate font-mono">
-                                            {{ token.hint }}
-                                        </p>
-                                        <p class="type-body-sm text-on-surface-variant mt-0.5">{{ usage(token) }}</p>
-                                        <p
-                                            v-if="token.allowedIps.length"
-                                            class="type-body-sm text-on-surface-variant mt-0.5 truncate font-mono"
-                                            :title="token.allowedIps.join(', ')"
-                                            data-allowed-ips
+                                <div class="min-w-0 flex-1">
+                                    <p class="flex items-center gap-2">
+                                        <span class="type-title-sm truncate">{{ token.name }}</span>
+                                        <span
+                                            class="type-label-sm shrink-0 rounded-md px-1.5 py-0.5 uppercase"
+                                            :class="
+                                                token.scope === 'write'
+                                                    ? 'bg-error-container text-on-error-container'
+                                                    : 'bg-secondary-container text-on-secondary-container'
+                                            "
+                                            >{{ token.scope }}</span
                                         >
-                                            From {{ token.allowedIps.join(', ') }}
-                                        </p>
-                                    </div>
-                                    <button
-                                        class="text-primary type-label-lg hover:bg-on-surface/5 rounded-full px-3 py-2"
-                                        :aria-label="
-                                            editingId === token.id
-                                                ? `Close ${token.name} settings`
-                                                : `Edit ${token.name}`
-                                        "
-                                        :aria-expanded="editingId === token.id"
-                                        @click="toggleEdit(token)"
-                                    >
-                                        {{ editingId === token.id ? 'Done' : 'Edit' }}
-                                    </button>
+                                    </p>
+                                    <p class="type-body-sm text-on-surface-variant mt-0.5 truncate font-mono">
+                                        {{ token.hint }}
+                                    </p>
+                                    <p class="type-body-sm text-on-surface-variant mt-0.5">{{ usage(token) }}</p>
                                 </div>
-
-                                <div
-                                    v-if="editingId === token.id"
-                                    class="bg-surface-container-lowest border-outline-variant mx-2 mb-2 rounded-xl border p-3"
+                                <button
+                                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
+                                    :aria-label="`Rotate ${token.name}`"
+                                    title="Rotate"
+                                    @click="pending = { action: 'rotate', token }"
                                 >
-                                    <p class="type-label-md text-on-surface-variant tracking-[0.8px] uppercase">
-                                        Allowed addresses
-                                    </p>
-                                    <p class="type-body-sm text-on-surface-variant mt-1">
-                                        With nothing listed the token works from anywhere. Otherwise only these
-                                        addresses, or prefixes such as
-                                        <code class="text-on-surface font-mono">203.0.113.0/24</code>, may use it.
-                                    </p>
-                                    <ul v-if="draft.length" class="mt-2 flex flex-wrap gap-1.5">
-                                        <li
-                                            v-for="entry in draft"
-                                            :key="entry"
-                                            class="bg-surface-container-high type-body-sm flex items-center gap-1 rounded-lg py-1 pr-1 pl-2 font-mono"
-                                        >
-                                            {{ entry }}
-                                            <button
-                                                class="text-on-surface-variant hover:bg-on-surface/10 flex size-7 items-center justify-center rounded-full"
-                                                :aria-label="`Remove ${entry}`"
-                                                :title="`Remove ${entry}`"
-                                                @click="removeEntry(entry)"
-                                            >
-                                                <Icon name="close" :size="14" />
-                                            </button>
-                                        </li>
-                                    </ul>
-                                    <div class="mt-2 flex items-center gap-2">
-                                        <TextField
-                                            v-model="draftEntry"
-                                            label="Address or CIDR prefix"
-                                            icon="lock"
-                                            autocomplete="off"
-                                            data-allow-entry
-                                            class="min-w-0 flex-1"
-                                            @keyup.enter="addEntry(draftEntry)"
-                                        />
-                                        <button
-                                            class="text-primary hover:bg-on-surface/6 flex size-10 shrink-0 items-center justify-center rounded-full"
-                                            aria-label="Add address"
-                                            title="Add address"
-                                            data-add-entry
-                                            @click="addEntry(draftEntry)"
-                                        >
-                                            <Icon name="add" :size="20" />
-                                        </button>
-                                    </div>
-                                    <button
-                                        v-if="yourIp && !draft.includes(yourIp)"
-                                        class="text-primary type-label-md hover:bg-on-surface/5 mt-1 self-start rounded-full px-2 py-1.5"
-                                        data-add-your-ip
-                                        @click="addEntry(yourIp)"
-                                    >
-                                        Add your current address ({{ yourIp }})
-                                    </button>
-                                    <div class="mt-3 flex flex-wrap items-center gap-2">
-                                        <button
-                                            class="bg-primary text-on-primary type-label-lg flex h-10 items-center justify-center gap-2 rounded-full px-5 hover:brightness-110 disabled:opacity-60"
-                                            :disabled="saving"
-                                            data-save-allowlist
-                                            @click="saveAllowlist"
-                                        >
-                                            <Spinner v-if="saving" :size="18" />
-                                            <Icon v-else name="check" :size="18" />
-                                            Save
-                                        </button>
-                                        <button
-                                            v-if="draft.length"
-                                            class="text-on-surface-variant type-label-lg hover:bg-on-surface/5 rounded-full px-3 py-2"
-                                            @click="draft = []"
-                                        >
-                                            Allow from any address
-                                        </button>
-                                        <span class="min-w-0 flex-1"></span>
-                                        <button
-                                            class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
-                                            :aria-label="`Rotate ${token.name}`"
-                                            title="Rotate"
-                                            @click="pending = { action: 'rotate', token }"
-                                        >
-                                            <Icon name="refresh" :size="20" />
-                                        </button>
-                                        <button
-                                            class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
-                                            :aria-label="`Delete ${token.name}`"
-                                            title="Delete"
-                                            @click="pending = { action: 'delete', token }"
-                                        >
-                                            <Icon name="trash" :size="20" />
-                                        </button>
-                                    </div>
-                                </div>
+                                    <Icon name="refresh" :size="20" />
+                                </button>
+                                <button
+                                    class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
+                                    :aria-label="`Delete ${token.name}`"
+                                    title="Delete"
+                                    @click="pending = { action: 'delete', token }"
+                                >
+                                    <Icon name="trash" :size="20" />
+                                </button>
                             </li>
                         </ul>
                     </div>

@@ -1,5 +1,4 @@
 import crypto from "crypto";
-import net from "net";
 import type { Pool } from "pg";
 
 export const API_TOKEN_PREFIX = "legacy-tracker-";
@@ -8,12 +7,11 @@ export type ApiTokenScope = (typeof API_TOKEN_SCOPES)[number];
 
 export const MAX_API_TOKENS_PER_USER = 25;
 export const MAX_API_TOKEN_NAME_LENGTH = 60;
-export const MAX_ALLOWED_IPS_PER_TOKEN = 32;
 const DEFAULT_TOKEN_NAME = "API token";
 
 // Integrations may poll or upload every few seconds; caching keeps each call
-// from costing a lookup. Rotation, deletion and allowlist edits drop the
-// cached entry, so a change applies to the next request at once.
+// from costing a lookup. Rotation and deletion drop the cached entry, so a
+// replaced token stops working at once.
 const CACHE_TTL_MS = 60_000;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const TOUCH_INTERVAL_MS = 60_000;
@@ -26,8 +24,6 @@ export interface ApiTokenIdentity {
   userId: string;
   userName: string;
   scope: ApiTokenScope;
-  /** Addresses the token may be used from; empty means no restriction. */
-  allowedIps: string[];
 }
 
 /** What lists show: everything except the secret. */
@@ -36,7 +32,6 @@ export interface ApiTokenSummary {
   name: string;
   scope: ApiTokenScope;
   token_hint: string;
-  allowed_ips: string[];
   created_at: string;
   last_used_at: string | null;
   rotated_at: string | null;
@@ -51,16 +46,11 @@ export type ApiTokenInput =
   | { ok: true; value: { name: string; scope: ApiTokenScope } }
   | { ok: false; error: string };
 
-export type AllowedIpsInput =
-  | { ok: true; value: string[] }
-  | { ok: false; error: string };
-
 interface ApiTokenRow {
   id: string;
   name: string;
   scope: ApiTokenScope;
   token_hint: string;
-  allowed_ips: string[];
   created_at: Date;
   last_used_at: Date | null;
   rotated_at: Date | null;
@@ -71,14 +61,8 @@ interface CacheEntry {
   expiresAt: number;
 }
 
-interface AllowedIp {
-  bytes: number[];
-  prefix: number;
-  text: string;
-}
-
 const SUMMARY_COLUMNS =
-  "id, name, scope, token_hint, allowed_ips, created_at, last_used_at, rotated_at";
+  "id, name, scope, token_hint, created_at, last_used_at, rotated_at";
 
 export function generateApiToken(): string {
   return `${API_TOKEN_PREFIX}${crypto.randomUUID()}`;
@@ -147,203 +131,12 @@ export function isAllowedForScope(
   return verb === "POST" && route === "/api/v1/streams/ticket";
 }
 
-function ipv4Bytes(value: string): number[] | null {
-  return net.isIP(value) === 4 ? value.split(".").map(Number) : null;
-}
-
-/** The eight 16-bit words of an IPv6 address, `::` expanded. */
-function ipv6Words(value: string): number[] | null {
-  let text = value;
-  const tail = text.slice(text.lastIndexOf(":") + 1);
-  if (tail.includes(".")) {
-    // `::ffff:1.2.3.4` ends in a dotted quad standing for two words.
-    const four = ipv4Bytes(tail);
-    if (!four) {
-      return null;
-    }
-    const high = ((four[0] << 8) | four[1]).toString(16);
-    const low = ((four[2] << 8) | four[3]).toString(16);
-    text = `${text.slice(0, text.lastIndexOf(":") + 1)}${high}:${low}`;
-  }
-  const halves = text.split("::");
-  if (halves.length > 2) {
-    return null;
-  }
-  const words = (chunk: string): number[] =>
-    chunk.length === 0
-      ? []
-      : chunk.split(":").map((word) => parseInt(word, 16));
-  if (halves.length === 2) {
-    const left = words(halves[0]);
-    const right = words(halves[1]);
-    const zeros = 8 - left.length - right.length;
-    if (zeros < 0) {
-      return null;
-    }
-    return [...left, ...new Array<number>(zeros).fill(0), ...right];
-  }
-  const full = words(text);
-  return full.length === 8 ? full : null;
-}
-
-/**
- * Address as 4 or 16 bytes, with IPv4-mapped IPv6 (`::ffff:1.2.3.4`, what a
- * dual-stack socket reports for an IPv4 peer) collapsed to its 4-byte form so
- * the same host compares equal however it was written.
- */
-function addressBytes(value: string): number[] | null {
-  const four = ipv4Bytes(value);
-  if (four) {
-    return four;
-  }
-  if (net.isIP(value) !== 6) {
-    return null;
-  }
-  const words = ipv6Words(value);
-  if (!words) {
-    return null;
-  }
-  const bytes: number[] = [];
-  for (const word of words) {
-    bytes.push((word >> 8) & 0xff, word & 0xff);
-  }
-  if (
-    bytes.length === 16 &&
-    bytes.every((byte, index) =>
-      index < 10 ? byte === 0 : index < 12 ? byte === 0xff : true,
-    )
-  ) {
-    return bytes.slice(12);
-  }
-  return bytes;
-}
-
-/**
- * An allowlist entry: a bare address (one host) or `<address>/<prefix>`.
- * `text` is how the entry is stored and shown; null for anything that is not
- * an address, including IPv6 zone ids, which cannot be matched.
- */
-function parseCidr(entry: string): AllowedIp | null {
-  const parts = entry.trim().toLowerCase().split("/");
-  if (parts.length > 2) {
-    return null;
-  }
-  const [address, prefixText] = parts;
-  if (address.includes("%")) {
-    return null;
-  }
-  const bytes = addressBytes(address);
-  if (!bytes) {
-    return null;
-  }
-  const bits = bytes.length * 8;
-  if (prefixText !== undefined && !/^\d+$/.test(prefixText)) {
-    return null;
-  }
-  const prefix = prefixText === undefined ? bits : Number(prefixText);
-  if (prefix > bits) {
-    return null;
-  }
-  // Written from the resolved bytes where they differ from the input, so
-  // `::ffff:1.2.3.4` is stored as `1.2.3.4` and deduplicates against it.
-  const canonical = bytes.length === 4 ? bytes.join(".") : address;
-  return {
-    bytes,
-    prefix,
-    // A full-length prefix says nothing the bare address does not: keep the
-    // shorter form so `1.2.3.4` and `1.2.3.4/32` deduplicate.
-    text: prefix === bits ? canonical : `${canonical}/${prefix}`,
-  };
-}
-
-function sharesLeadingBits(a: number[], b: number[], prefix: number): boolean {
-  for (let bit = 0; bit < prefix; bit += 8) {
-    const taken = Math.min(8, prefix - bit);
-    const mask = (0xff << (8 - taken)) & 0xff;
-    if ((a[bit / 8] & mask) !== (b[bit / 8] & mask)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-/** Canonical text for a single address, or null if it is not one. */
-export function normalizeIp(value: string): string | null {
-  const text = value.trim().toLowerCase();
-  if (text.includes("/")) {
-    return null;
-  }
-  const entry = parseCidr(text);
-  return entry ? entry.text : null;
-}
-
-/** Validates a submitted allowlist: deduplicated, canonically written, small. */
-export function parseAllowedIps(value: unknown): AllowedIpsInput {
-  if (!Array.isArray(value)) {
-    return {
-      ok: false,
-      error: "`allowed_ips` must be a list of addresses or CIDR prefixes",
-    };
-  }
-  const entries: string[] = [];
-  for (const item of value) {
-    const entry =
-      typeof item === "string" ? parseCidr(item) : null;
-    if (!entry) {
-      return {
-        ok: false,
-        error: `\`${String(item)}\` is not an IP address or CIDR prefix`,
-      };
-    }
-    if (!entries.includes(entry.text)) {
-      entries.push(entry.text);
-    }
-  }
-  if (entries.length > MAX_ALLOWED_IPS_PER_TOKEN) {
-    return {
-      ok: false,
-      error: `\`allowed_ips\` holds at most ${MAX_ALLOWED_IPS_PER_TOKEN} entries`,
-    };
-  }
-  return { ok: true, value: entries };
-}
-
-/**
- * Whether `clientIp` may use a token restricted to `allowed`. An empty list is
- * no restriction: tokens predating the feature keep working from anywhere.
- * Families never match across, so an IPv4 entry excludes IPv6 callers — the
- * `::ffff:` form is the exception, since it *is* an IPv4 address.
- */
-export function ipMatchesAllowlist(
-  clientIp: string,
-  allowed: readonly string[],
-): boolean {
-  if (allowed.length === 0) {
-    return true;
-  }
-  const target = addressBytes(clientIp.trim().toLowerCase());
-  if (!target) {
-    return false;
-  }
-  for (const entry of allowed) {
-    const parsed = parseCidr(entry);
-    if (!parsed || parsed.bytes.length !== target.length) {
-      continue;
-    }
-    if (sharesLeadingBits(target, parsed.bytes, parsed.prefix)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 function toSummary(row: ApiTokenRow): ApiTokenSummary {
   return {
     id: row.id,
     name: row.name,
     scope: row.scope,
     token_hint: row.token_hint,
-    allowed_ips: row.allowed_ips,
     created_at: row.created_at.toISOString(),
     last_used_at: row.last_used_at?.toISOString() ?? null,
     rotated_at: row.rotated_at?.toISOString() ?? null,
@@ -354,10 +147,9 @@ export class ApiTokenLimitError extends Error {}
 
 /**
  * Personal, non-expiring credentials for integrations, sent as
- * `X-API-Token: legacy-tracker-<uuid>`. They act as their owner, limited by
- * scope and, optionally, by the source address they were last used from.
- * Only sha256(token) is stored, so a token is shown once and lost tokens are
- * rotated, not recovered.
+ * `X-API-Token: legacy-tracker-<uuid>`. They act as the user who created
+ * them, limited by scope. Only sha256(token) is stored, so a token is shown
+ * once and lost tokens are rotated, not recovered.
  */
 export class ApiTokens {
   private readonly cache = new Map<string, CacheEntry>();
@@ -415,9 +207,8 @@ export class ApiTokens {
        UPDATE api_tokens t
        SET token_hash = $3, token_hint = $4, rotated_at = now(), last_used_at = NULL
        FROM old WHERE t.id = old.id
-       RETURNING t.id, t.name, t.scope, t.token_hint, t.allowed_ips,
-                 t.created_at, t.last_used_at, t.rotated_at,
-                 old.token_hash AS old_hash`,
+       RETURNING t.id, t.name, t.scope, t.token_hint, t.created_at,
+                 t.last_used_at, t.rotated_at, old.token_hash AS old_hash`,
       [id, userId, hashApiToken(token), apiTokenHint(token)],
     );
     const row = rows[0];
@@ -426,30 +217,6 @@ export class ApiTokens {
     }
     this.forget(row.old_hash, row.id);
     return { ...toSummary(row), token };
-  }
-
-  /**
-   * Restricts a token to the given source addresses; an empty list removes the
-   * restriction. The cached identity holds the list, so it goes with the old
-   * value — the cache key is a hash of a secret this method never sees.
-   */
-  async updateAllowedIps(
-    userId: string,
-    id: string,
-    allowedIps: string[],
-  ): Promise<ApiTokenSummary | null> {
-    const { rows } = await this.pool.query<ApiTokenRow>(
-      `UPDATE api_tokens SET allowed_ips = $3
-       WHERE id = $1 AND user_id = $2
-       RETURNING ${SUMMARY_COLUMNS}`,
-      [id, userId, allowedIps],
-    );
-    const row = rows[0];
-    if (!row) {
-      return null;
-    }
-    this.forgetIdentity(row.id);
-    return toSummary(row);
   }
 
   async remove(userId: string, id: string): Promise<boolean> {
@@ -498,9 +265,8 @@ export class ApiTokens {
       user_id: string;
       scope: ApiTokenScope;
       name: string;
-      allowed_ips: string[];
     }>(
-      `SELECT t.id, t.user_id, t.scope, t.allowed_ips, u.name
+      `SELECT t.id, t.user_id, t.scope, u.name
        FROM api_tokens t
        JOIN users u ON u.id = t.user_id
        WHERE t.token_hash = $1`,
@@ -513,7 +279,6 @@ export class ApiTokens {
           userId: row.user_id,
           userName: row.name,
           scope: row.scope,
-          allowedIps: row.allowed_ips,
         }
       : null;
     this.cache.set(hash, {
@@ -543,16 +308,6 @@ export class ApiTokens {
 
   private forget(hash: string, tokenId: string): void {
     this.cache.delete(hash);
-    this.lastTouch.delete(tokenId);
-  }
-
-  /** Drops the cached identity of a token, whichever secret produced it. */
-  private forgetIdentity(tokenId: string): void {
-    for (const [hash, entry] of this.cache) {
-      if (entry.identity?.tokenId === tokenId) {
-        this.cache.delete(hash);
-      }
-    }
     this.lastTouch.delete(tokenId);
   }
 }

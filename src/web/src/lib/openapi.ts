@@ -39,7 +39,6 @@ const tokenSummary = {
     name: 'Home Assistant',
     scope: 'read',
     token_hint: 'legacy-tracker-01a1…1289',
-    allowed_ips: [],
     created_at: iso,
     last_used_at: null,
     rotated_at: null
@@ -107,10 +106,6 @@ export const openApiDocument = {
             '- **write**: everything your account can do, such as uploading positions, editing checkpoints or deleting',
             '  your history.',
             '',
-            'A token can also be limited to the addresses that may use it. List them (or CIDR prefixes such as',
-            '`198.51.100.0/24`) in the token’s **Edit** panel and anything else is refused with `403`. An empty list,',
-            'which is what every token starts with, allows any address.',
-            '',
             'Endpoints marked **Session only** take a signed-in session (`Authorization: Bearer <access token>` that',
             'Legacy Auth issued to a Legacy Tracker app) and refuse API tokens, so a leaked token cannot create new',
             'tokens or register devices. If both headers are present, `X-API-Token` wins.',
@@ -123,7 +118,7 @@ export const openApiDocument = {
             '| --- | --- |',
             '| 400 | The request is malformed; `error` says what is wrong. |',
             '| 401 | Missing, invalid, rotated or deleted credentials. |',
-            '| 403 | The credential is valid but may not do this: a read-only token, a token used from an address it does not allow, a session-only endpoint, a person who hides from you (`not_sharing`), or an account without tracker access. |',
+            '| 403 | The credential is valid but may not do this: a read-only token, a session-only endpoint, a person who hides from you (`not_sharing`), or an account without tracker access. |',
             '| 404 | Nothing with that id, or it is not yours. |',
             '| 409 | Conflicts, such as a checkpoint name that is taken. |',
             '| 500 | Something broke on our side. Retry later. |',
@@ -173,7 +168,7 @@ export const openApiDocument = {
         {
             name: 'Managing API tokens',
             description:
-                'Create and manage tokens from your profile in the phone app or the account menu on the web, or call these with a signed-in session. API tokens cannot manage tokens, so a leaked token cannot mint replacements. Only the web can change a token’s allowed addresses.'
+                'Create and manage tokens from your profile in the phone app or the account menu on the web, or call these with a signed-in session. API tokens cannot manage tokens, so a leaked token cannot mint replacements.'
         }
     ],
     paths: {
@@ -955,15 +950,10 @@ export const openApiDocument = {
                                         tokens: {
                                             type: 'array',
                                             items: { $ref: '#/components/schemas/ApiTokenSummary' }
-                                        },
-                                        your_ip: {
-                                            type: 'string',
-                                            description:
-                                                'The address this request arrived from, so a restriction can be written down instead of guessed.'
                                         }
                                     }
                                 },
-                                example: { tokens: [tokenSummary], your_ip: '203.0.113.7' }
+                                example: { tokens: [tokenSummary] }
                             }
                         }
                     },
@@ -1037,44 +1027,6 @@ export const openApiDocument = {
             }
         },
         '/api/v1/api-tokens/{id}': {
-            patch: {
-                tags: ['Managing API tokens'],
-                operationId: 'update-token',
-                summary: 'Change the addresses a token may be used from',
-                description:
-                    'Replaces the allowlist, which applies to the very next request. An empty list means no restriction, and that is what every token starts with. Requests from outside the list get `403 { "error": "This API token is not allowed from your address" }`, and the server log names the address it saw.',
-                security: sessionOnly,
-                parameters: [
-                    {
-                        name: 'id',
-                        in: 'path',
-                        required: true,
-                        description: 'Token id.',
-                        schema: { type: 'string', format: 'uuid' }
-                    }
-                ],
-                requestBody: {
-                    required: true,
-                    content: {
-                        'application/json': {
-                            schema: { $ref: '#/components/schemas/UpdateApiToken' },
-                            example: { allowed_ips: ['203.0.113.7', '198.51.100.0/24'] }
-                        }
-                    }
-                },
-                responses: {
-                    '200': {
-                        description: 'The token with the list as stored now.',
-                        content: {
-                            'application/json': {
-                                schema: { $ref: '#/components/schemas/ApiTokenSummary' },
-                                example: { ...tokenSummary, allowed_ips: ['203.0.113.7', '198.51.100.0/24'] }
-                            }
-                        }
-                    },
-                    ...commonErrors
-                }
-            },
             delete: {
                 tags: ['Managing API tokens'],
                 operationId: 'delete-token',
@@ -1399,18 +1351,12 @@ export const openApiDocument = {
             },
             ApiTokenSummary: {
                 type: 'object',
-                required: ['id', 'name', 'scope', 'token_hint', 'allowed_ips', 'created_at'],
+                required: ['id', 'name', 'scope', 'token_hint', 'created_at'],
                 properties: {
                     id: { type: 'string', format: 'uuid' },
                     name: { type: 'string' },
                     scope: { type: 'string', enum: ['read', 'write'] },
                     token_hint: { type: 'string' },
-                    allowed_ips: {
-                        type: 'array',
-                        items: { type: 'string' },
-                        description:
-                            'Addresses or CIDR prefixes allowed to use the token, as written by their owner. Empty means the token works from anywhere.'
-                    },
                     created_at: { type: 'string', format: 'date-time' },
                     last_used_at: { type: ['string', 'null'], format: 'date-time' },
                     rotated_at: { type: ['string', 'null'], format: 'date-time' }
@@ -1437,18 +1383,6 @@ export const openApiDocument = {
                 properties: {
                     name: { type: 'string', maxLength: 60, description: 'A label.' },
                     scope: { type: 'string', enum: ['read', 'write'], description: 'What the token may do.' }
-                }
-            },
-            UpdateApiToken: {
-                type: 'object',
-                required: ['allowed_ips'],
-                properties: {
-                    allowed_ips: {
-                        type: 'array',
-                        maxItems: 32,
-                        items: { type: 'string', description: 'An IPv4 or IPv6 address, or `<address>/<prefix>`.' },
-                        description: 'Replaces the list. An empty list means the token may be used from anywhere.'
-                    }
                 }
             }
         },

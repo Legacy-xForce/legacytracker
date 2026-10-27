@@ -8,8 +8,6 @@ export interface ApiToken {
     scope: ApiTokenScope;
     /** Non-secret label, e.g. `legacy-tracker-01a1…1289`. */
     hint: string;
-    /** Addresses or CIDR prefixes allowed to use it; empty means any. */
-    allowedIps: string[];
     createdAt: number;
     lastUsedAt: number | null;
     rotatedAt: number | null;
@@ -18,12 +16,6 @@ export interface ApiToken {
 /** A token as created or rotated: the only time its full value is known. */
 export interface IssuedApiToken extends ApiToken {
     token: string;
-}
-
-export interface ApiTokenList {
-    tokens: ApiToken[];
-    /** The address the API is answering from, for one-click allowlisting. */
-    yourIp: string | null;
 }
 
 function time(value: unknown): number | null {
@@ -40,9 +32,6 @@ export function parseApiToken(raw: unknown): ApiToken | null {
         name: typeof body.name === 'string' ? body.name : '',
         scope: body.scope,
         hint: typeof body.token_hint === 'string' ? body.token_hint : '',
-        allowedIps: Array.isArray(body.allowed_ips)
-            ? body.allowed_ips.filter((ip): ip is string => typeof ip === 'string')
-            : [],
         createdAt: time(body.created_at) ?? 0,
         lastUsedAt: time(body.last_used_at),
         rotatedAt: time(body.rotated_at)
@@ -64,14 +53,12 @@ async function ensureOk(response: Response): Promise<void> {
     throw new ApiError(message, response.status);
 }
 
-export async function listApiTokens(): Promise<ApiTokenList> {
+export async function listApiTokens(): Promise<ApiToken[]> {
     const response = await trackerFetch('/api/v1/api-tokens');
     await ensureOk(response);
-    const body = (await response.json()) as { tokens?: unknown; your_ip?: unknown };
-    const tokens = Array.isArray(body.tokens)
-        ? body.tokens.map(parseApiToken).filter((token): token is ApiToken => token !== null)
-        : [];
-    return { tokens, yourIp: typeof body.your_ip === 'string' ? body.your_ip : null };
+    const tokens = ((await response.json()) as { tokens?: unknown } | null)?.tokens;
+    if (!Array.isArray(tokens)) return [];
+    return tokens.map(parseApiToken).filter((token): token is ApiToken => token !== null);
 }
 
 export async function createApiToken(name: string, scope: ApiTokenScope): Promise<IssuedApiToken> {
@@ -88,19 +75,6 @@ export async function rotateApiToken(id: string): Promise<IssuedApiToken> {
     const response = await trackerFetch(`/api/v1/api-tokens/${encodeURIComponent(id)}/rotate`, { method: 'POST' });
     await ensureOk(response);
     return parseIssued(await response.json());
-}
-
-/** Replaces the addresses a token may be used from; an empty list lifts the limit. */
-export async function updateApiTokenAllowedIps(id: string, allowedIps: string[]): Promise<ApiToken> {
-    const response = await trackerFetch(`/api/v1/api-tokens/${encodeURIComponent(id)}`, {
-        method: 'PATCH',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ allowed_ips: allowedIps })
-    });
-    await ensureOk(response);
-    const token = parseApiToken(await response.json());
-    if (!token) throw new ApiError('Invalid token response.', 0);
-    return token;
 }
 
 export async function deleteApiToken(id: string): Promise<void> {

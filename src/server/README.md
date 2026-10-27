@@ -8,8 +8,7 @@ Node.js/TypeScript backend for the Legacy Tracker real-time location sharing app
 - Batched, idempotent location ingestion from the app's native tracking engine, with WebSocket broadcast to connected viewers
 - Live mode: while someone has the map open, devices are pushed (FCM) to stream in realtime; otherwise they batch
 - Long-lived device tokens for background uploads, one-time tickets for WebSocket upgrades
-- Personal API tokens (`X-API-Token`, read or write) for integrations, each
-  optionally limited to the addresses that may use it
+- Personal API tokens (`X-API-Token`, read or write) for integrations
 - Trip/session history for replay
 
 See [`docs/location-tracking.md`](../../docs/location-tracking.md) for the end-to-end design.
@@ -44,7 +43,6 @@ Create a `.env` file (or export variables):
 | `AUTH_ALLOWED_CLIENTS` | `tracker-spa,tracker-mobile` | OIDC clients (`client_id`) whose access tokens are accepted, and the `aud` of back-channel logout tokens. |
 | `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices and request Mapbox tokens. |
 | `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
-| `TRUSTED_PROXY_CIDRS` | Cloudflare's published ranges plus `loopback` and `uniquelocal` | Comma-separated networks whose `X-Forwarded-For` entries are believed. Sets Fastify's `trustProxy`, so it decides what `request.ip` is — currently only the API token address allowlist depends on it. Wrong values fail closed (allowlisted tokens denied, the denied address in each rejection log). |
 | `MAPBOX_SECRET_TOKEN` | — | Mapbox secret token with `tokens:write`, `styles:read` and `fonts:read`. Server-side only; mints the app's temporary tokens. The app cannot show a map until this is set. |
 | `MAPBOX_USERNAME` | — | Mapbox account that owns the temporary tokens. |
 | `MAPBOX_TOKEN_TTL_SECONDS` | `3300` | Lifetime of minted temporary tokens (60–3600). Tokens are cached per user and renewed five minutes before expiry. |
@@ -111,20 +109,7 @@ precedence over `Authorization`.
 - `write` tokens may do anything the user's session can, except the
   session-only routes below (`403`).
 - Token management, `POST /api/v1/devices` and `POST /api/v1/fcm-token` need a
-  signed-in session, so a leaked token can't mint replacements. Changing a
-  token's allowed addresses is session-only too, and only the web app does it.
-- A token may list the addresses allowed to use it (`allowed_ips`: plain IPv4 or
-  IPv6, or CIDR prefixes such as `198.51.100.0/24`, at most 32). Anything else
-  is `403 { "error": "This API token is not allowed from your address" }`, and
-  the rejection is logged with the address it saw. An empty list, which is what
-  every token starts with, allows any address; uploads through a device token
-  and the WebSocket itself (a single-use ticket) are not filtered.
-- The address a token is judged against comes from `X-Forwarded-For`, so it is
-  only as trustworthy as `TRUSTED_PROXY_CIDRS` (see [Environment](#2-configure-environment)):
-  production is Cloudflare → Traefik → this container and both are listed, which
-  is why a request that skips the CDN and reaches the proxy directly is still
-  matched by its real address. If the origin is reachable from outside that
-  chain, allowlisting can be walked around; firewall it or use a tunnel.
+  signed-in session, so a leaked token can't mint replacements.
 - Only `sha256(token)` is stored: the value is shown once, at creation or
   rotation. Up to 25 tokens per user.
 - Removing someone's tracker access also ends their integrations: a
@@ -133,10 +118,9 @@ precedence over `Authorization`.
 
 | Method   | Path                              | Auth | Description |
 |----------|-----------------------------------|------|-------------|
-| `GET`    | `/api/v1/api-tokens`              | JWT  | `{ "tokens": [{ "id", "name", "scope", "token_hint", "allowed_ips", "created_at", "last_used_at", "rotated_at" }], "your_ip": "203.0.113.7" }`, newest first. |
+| `GET`    | `/api/v1/api-tokens`              | JWT  | `{ "tokens": [{ "id", "name", "scope", "token_hint", "created_at", "last_used_at", "rotated_at" }] }`, newest first. |
 | `POST`   | `/api/v1/api-tokens`              | JWT  | Body `{ "name"?: "Home Assistant", "scope": "read" \| "write" }`. `201` with the summary plus `token`. `400` on a bad scope or at the limit. |
 | `POST`   | `/api/v1/api-tokens/:id/rotate`   | JWT  | Replaces the value (the old one stops working at once); returns the summary plus the new `token`. `404` if not yours. |
-| `PATCH`  | `/api/v1/api-tokens/:id`          | JWT  | Body `{ "allowed_ips": ["203.0.113.7", "198.51.100.0/24"] }` replaces the list (empty lifts the restriction). Returns the summary; applies to the next request at once. `400` on an entry that is not an address or prefix, `404` if not yours. |
 | `DELETE` | `/api/v1/api-tokens/:id`          | JWT  | `{ "deleted": true }`, or `404`. |
 
 ### Profile

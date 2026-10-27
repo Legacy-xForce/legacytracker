@@ -5,14 +5,10 @@ import {
   apiTokenHint,
   generateApiToken,
   hashApiToken,
-  ipMatchesAllowlist,
   isAllowedForScope,
   isApiTokenId,
   isApiTokenShape,
-  MAX_ALLOWED_IPS_PER_TOKEN,
   MAX_API_TOKEN_NAME_LENGTH,
-  normalizeIp,
-  parseAllowedIps,
   validateApiTokenInput,
 } from "../src/services/api-tokens";
 
@@ -99,101 +95,4 @@ test("write tokens may do anything the session can", () => {
   for (const method of ["GET", "POST", "PUT", "PATCH", "DELETE"]) {
     assert.equal(isAllowedForScope("write", method, "/api/v1/history"), true);
   }
-});
-
-test("addresses normalise, and anything else is refused", () => {
-  assert.equal(normalizeIp(" 203.0.113.7 "), "203.0.113.7");
-  assert.equal(normalizeIp("2001:DB8::1"), "2001:db8::1");
-  assert.equal(normalizeIp("::1"), "::1");
-  // What a dual-stack socket reports for an IPv4 peer is that IPv4 address.
-  assert.equal(normalizeIp("::ffff:203.0.113.7"), "203.0.113.7");
-  assert.equal(normalizeIp("203.0.113.7/24"), null);
-  assert.equal(normalizeIp("fe80::1%eth0"), null);
-  assert.equal(normalizeIp("tracker.example.com"), null);
-  assert.equal(normalizeIp("203.0.113"), null);
-  assert.equal(normalizeIp(""), null);
-});
-
-test("allowlists hold addresses and prefixes, canonically written", () => {
-  assert.deepEqual(
-    parseAllowedIps(["203.0.113.7", " 203.0.113.0/24 ", "2001:DB8::/64"]),
-    { ok: true, value: ["203.0.113.7", "203.0.113.0/24", "2001:db8::/64"] },
-  );
-  assert.deepEqual(parseAllowedIps(["::ffff:203.0.113.7"]), {
-    ok: true,
-    value: ["203.0.113.7"],
-  });
-  assert.deepEqual(parseAllowedIps(["172.20.0.4", "172.20.0.4/32"]), {
-    ok: true,
-    value: ["172.20.0.4"],
-  });
-  assert.deepEqual(parseAllowedIps([]), { ok: true, value: [] });
-});
-
-test("a bad entry is named, and a long list is refused", () => {
-  assert.deepEqual(parseAllowedIps(["203.0.113.7", "nope"]), {
-    ok: false,
-    error: "`nope` is not an IP address or CIDR prefix",
-  });
-  assert.deepEqual(parseAllowedIps(["203.0.113.7/33"]), {
-    ok: false,
-    error: "`203.0.113.7/33` is not an IP address or CIDR prefix",
-  });
-  for (const value of [
-    "203.0.113.7/",
-    "203.0.113.7/24/8",
-    "/24",
-    "",
-    "fe80::1%eth0",
-    "2001:db8::/129",
-    42,
-  ]) {
-    assert.equal(parseAllowedIps([value]).ok, false, String(value));
-  }
-  assert.equal(parseAllowedIps("203.0.113.7").ok, false);
-  assert.equal(parseAllowedIps(undefined).ok, false);
-  assert.equal(
-    parseAllowedIps(
-      Array.from({ length: MAX_ALLOWED_IPS_PER_TOKEN + 1 }, (_, i) =>
-        `203.0.113.${i}`,
-      ),
-    ).ok,
-    false,
-  );
-});
-
-test("an empty allowlist restricts nobody", () => {
-  assert.equal(ipMatchesAllowlist("203.0.113.7", []), true);
-  assert.equal(ipMatchesAllowlist("2001:db8::1", []), true);
-});
-
-test("addresses and prefixes match by their leading bits", () => {
-  assert.equal(ipMatchesAllowlist("203.0.113.7", ["203.0.113.7"]), true);
-  assert.equal(ipMatchesAllowlist("203.0.113.8", ["203.0.113.7"]), false);
-  assert.equal(ipMatchesAllowlist("203.0.113.7", ["203.0.113.7/32"]), true);
-  assert.equal(ipMatchesAllowlist("203.0.113.99", ["203.0.113.0/24"]), true);
-  assert.equal(ipMatchesAllowlist("203.0.112.99", ["203.0.113.0/24"]), false);
-  assert.equal(ipMatchesAllowlist("203.0.113.64", ["203.0.113.64/26"]), true);
-  assert.equal(ipMatchesAllowlist("203.0.113.99", ["203.0.113.64/26"]), true);
-  assert.equal(ipMatchesAllowlist("203.0.113.127", ["203.0.113.64/26"]), true);
-  assert.equal(ipMatchesAllowlist("203.0.113.63", ["203.0.113.64/26"]), false);
-  assert.equal(ipMatchesAllowlist("203.0.113.128", ["203.0.113.64/26"]), false);
-  assert.equal(ipMatchesAllowlist("8.8.8.8", ["0.0.0.0/0"]), true);
-  assert.equal(ipMatchesAllowlist("2001:db8:1::5", ["2001:db8::/32"]), true);
-  assert.equal(ipMatchesAllowlist("2001:db9:1::5", ["2001:db8::/32"]), false);
-  // 2001:db8::/64 is the first /64 only: word 4 must still be zero.
-  assert.equal(ipMatchesAllowlist("2001:db8::1:2:3:4", ["2001:db8::/64"]), true);
-  assert.equal(ipMatchesAllowlist("2001:db8:1::2", ["2001:db8::/64"]), false);
-});
-
-test("one token can list both families", () => {
-  const allowed = ["203.0.113.0/24", "2001:db8::/32"];
-  assert.equal(ipMatchesAllowlist("203.0.113.20", allowed), true);
-  assert.equal(ipMatchesAllowlist("2001:db8:dead::1", allowed), true);
-  assert.equal(ipMatchesAllowlist("198.51.100.1", allowed), false);
-  // A socket's IPv4-mapped form is the same host as the dotted quad.
-  assert.equal(ipMatchesAllowlist("::ffff:203.0.113.20", allowed), true);
-  // Families never cross, so listing IPv4 alone does not admit IPv6 callers.
-  assert.equal(ipMatchesAllowlist("2001:db8::1", ["0.0.0.0/0"]), false);
-  assert.equal(ipMatchesAllowlist("203.0.113.7", ["::/0"]), false);
 });

@@ -8,11 +8,8 @@ import pool from "./config/db";
 import {
   ApiTokenLimitError,
   ApiTokens,
-  ipMatchesAllowlist,
   isAllowedForScope,
   isApiTokenId,
-  normalizeIp,
-  parseAllowedIps,
   validateApiTokenInput,
 } from "./services/api-tokens";
 import { AndroidReleaseSource } from "./services/app-releases";
@@ -106,51 +103,7 @@ const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS ?? "")
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0);
 
-// Addresses we believe when a proxy reports where the client connected from.
-// Production is Cloudflare -> Traefik -> this container, so the CDN's edge
-// ranges and the private networks an in-network proxy reaches us from are
-// listed. `request.ip` then walks `X-Forwarded-For` from our own socket peer
-// leftwards and stops at the first address not on this list. Trusting
-// addresses rather than a hop count is what makes a forged chain fail: the
-// proxy always appends the caller's real address as the last hop, so spoofed
-// entries to its left are never reached. `trustProxy: true` would take the
-// leftmost entry instead, which the caller controls outright.
-// Cloudflare ranges: https://api.cloudflare.com/client/v4/ips (2026-10-27).
-const CLOUDFLARE_CIDRS = [
-  "173.245.48.0/20",
-  "103.21.244.0/22",
-  "103.22.200.0/22",
-  "103.31.4.0/22",
-  "141.101.64.0/18",
-  "108.162.192.0/18",
-  "190.93.240.0/20",
-  "188.114.96.0/20",
-  "197.234.240.0/22",
-  "198.41.128.0/17",
-  "162.158.0.0/15",
-  "104.16.0.0/13",
-  "104.24.0.0/14",
-  "172.64.0.0/13",
-  "131.0.72.0/22",
-  "2400:cb00::/32",
-  "2606:4700::/32",
-  "2803:f800::/32",
-  "2405:b500::/32",
-  "2405:8100::/32",
-  "2a06:98c0::/29",
-  "2c0f:f248::/32",
-];
-
-const TRUSTED_PROXY_CIDRS = (
-  process.env.TRUSTED_PROXY_CIDRS ??
-  ["loopback", "uniquelocal", ...CLOUDFLARE_CIDRS].join(",")
-)
-  .split(",")
-  .map((cidr) => cidr.trim())
-  .filter((cidr) => cidr.length > 0);
-
 const app = Fastify({
-  trustProxy: TRUSTED_PROXY_CIDRS,
   logger: {
     level: process.env.LOG_LEVEL ?? "info",
     transport: {
@@ -512,8 +465,7 @@ function readApiTokenHeader(request: FastifyRequest): string | null {
 /**
  * Identity from a personal API token (`X-API-Token`). It acts as its owner,
  * so every route behaves as it would for their session, but a read token is
- * turned away from anything that changes data, and a token limited to certain
- * source addresses is turned away from anywhere else.
+ * turned away from anything that changes data.
  */
 async function getApiTokenIdentity(
   request: FastifyRequest,
@@ -531,17 +483,6 @@ async function getApiTokenIdentity(
   const identity = await apiTokens.authenticate(token);
   if (!identity) {
     return { ok: false, reason: "unknown or revoked API token" };
-  }
-  if (!ipMatchesAllowlist(request.ip, identity.allowedIps)) {
-    // `request.ip` is resolved through TRUSTED_PROXY_CIDRS, so the address the
-    // owner needs to add is the one logged with this rejection.
-    return {
-      ok: false,
-      reason: "api token used outside its address allowlist",
-      detail: `token ${identity.tokenId}`,
-      forbidden: true,
-      error: "This API token is not allowed from your address",
-    };
   }
   if (
     !isAllowedForScope(
@@ -755,9 +696,6 @@ async function ensureBackendSchema(): Promise<void> {
     );
     await pool.query(
       "CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens (user_id)",
-    );
-    await pool.query(
-      "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS allowed_ips text[] NOT NULL DEFAULT '{}'",
     );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert
@@ -1587,13 +1525,7 @@ app.get("/api/v1/api-tokens", async (request, reply) => {
   if (!identity.ok) {
     return rejectRequest(request, reply, route, identity);
   }
-  return reply.send({
-    tokens: await apiTokens.list(identity.userId),
-    // Lets the dialog offer the address it is answering from instead of
-    // making the owner guess it: that is how an allowlist mistake stops being
-    // a lockout.
-    your_ip: normalizeIp(request.ip) ?? request.ip,
-  });
+  return reply.send({ tokens: await apiTokens.list(identity.userId) });
 });
 
 app.post("/api/v1/api-tokens", async (request, reply) => {
@@ -1645,32 +1577,6 @@ app.post("/api/v1/api-tokens/:id/rotate", async (request, reply) => {
     "[api-tokens] rotated token",
   );
   return reply.send(issued);
-});
-
-app.patch("/api/v1/api-tokens/:id", async (request, reply) => {
-  const route = "/api/v1/api-tokens/:id";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
-  const input = parseAllowedIps(
-    (request.body as { allowed_ips?: unknown } | null)?.allowed_ips,
-  );
-  if (!input.ok) {
-    return reply.code(400).send({ error: input.error });
-  }
-  const { id } = request.params as { id: string };
-  const updated = isApiTokenId(id)
-    ? await apiTokens.updateAllowedIps(identity.userId, id, input.value)
-    : null;
-  if (!updated) {
-    return reply.code(404).send({ error: "API token not found" });
-  }
-  app.log.info(
-    { userId: identity.userId, tokenId: id, allowedIps: updated.allowed_ips },
-    "[api-tokens] changed allowed addresses",
-  );
-  return reply.send(updated);
 });
 
 app.delete("/api/v1/api-tokens/:id", async (request, reply) => {
