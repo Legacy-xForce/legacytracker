@@ -11,7 +11,6 @@ import {
   ipMatchesAllowlist,
   isAllowedForScope,
   isApiTokenId,
-  normalizeIp,
   parseAllowedIps,
   validateApiTokenInput,
 } from "./services/api-tokens";
@@ -20,6 +19,10 @@ import {
   canModifyCheckpoint,
   validateCheckpointInput,
 } from "./services/checkpoints";
+import {
+  CLOUDFLARE_CIDRS,
+  clientAddressOf,
+} from "./services/client-address";
 import ConnectionManager from "./services/connection-manager";
 import { DeviceAuth } from "./services/device-auth";
 import {
@@ -115,32 +118,8 @@ const CORS_ALLOWED_ORIGINS = (process.env.CORS_ALLOWED_ORIGINS ?? "")
 // proxy always appends the caller's real address as the last hop, so spoofed
 // entries to its left are never reached. `trustProxy: true` would take the
 // leftmost entry instead, which the caller controls outright.
-// Cloudflare ranges: https://api.cloudflare.com/client/v4/ips (2026-10-27).
-const CLOUDFLARE_CIDRS = [
-  "173.245.48.0/20",
-  "103.21.244.0/22",
-  "103.22.200.0/22",
-  "103.31.4.0/22",
-  "141.101.64.0/18",
-  "108.162.192.0/18",
-  "190.93.240.0/20",
-  "188.114.96.0/20",
-  "197.234.240.0/22",
-  "198.41.128.0/17",
-  "162.158.0.0/15",
-  "104.16.0.0/13",
-  "104.24.0.0/14",
-  "172.64.0.0/13",
-  "131.0.72.0/22",
-  "2400:cb00::/32",
-  "2606:4700::/32",
-  "2803:f800::/32",
-  "2405:b500::/32",
-  "2405:8100::/32",
-  "2a06:98c0::/29",
-  "2c0f:f248::/32",
-];
-
+// See services/client-address.ts for the address API tokens are checked
+// against, which goes one step further and names the visitor behind Cloudflare.
 const TRUSTED_PROXY_CIDRS = (
   process.env.TRUSTED_PROXY_CIDRS ??
   ["loopback", "uniquelocal", ...CLOUDFLARE_CIDRS].join(",")
@@ -510,6 +489,24 @@ function readApiTokenHeader(request: FastifyRequest): string | null {
 }
 
 /**
+ * The address an API token is allowed or denied on. `request.ip` stops at the
+ * proxy in front of us, which behind Cloudflare is one of their addresses for
+ * everyone; see services/client-address.ts for what makes it the visitor.
+ */
+function apiClientAddress(request: FastifyRequest): string {
+  const forwarded = request.headers["x-forwarded-for"];
+  const connecting =
+    request.headers["cf-connecting-ip"] ?? request.headers["cf-client-ip"];
+  return (
+    clientAddressOf({
+      forwardedFor: Array.isArray(forwarded) ? forwarded.join(",") : forwarded,
+      connectingIp: Array.isArray(connecting) ? connecting[0] : connecting,
+      socketAddress: request.socket.remoteAddress,
+    }) ?? request.ip
+  );
+}
+
+/**
  * Identity from a personal API token (`X-API-Token`). It acts as its owner,
  * so every route behaves as it would for their session, but a read token is
  * turned away from anything that changes data, and a token limited to certain
@@ -532,13 +529,14 @@ async function getApiTokenIdentity(
   if (!identity) {
     return { ok: false, reason: "unknown or revoked API token" };
   }
-  if (!ipMatchesAllowlist(request.ip, identity.allowedIps)) {
-    // `request.ip` is resolved through TRUSTED_PROXY_CIDRS, so the address the
-    // owner needs to add is the one logged with this rejection.
+  const clientAddress = apiClientAddress(request);
+  if (!ipMatchesAllowlist(clientAddress, identity.allowedIps)) {
+    // The rejected address travels in the log line, because it is the one the
+    // owner has to add to lift the block.
     return {
       ok: false,
       reason: "api token used outside its address allowlist",
-      detail: `token ${identity.tokenId}`,
+      detail: `token ${identity.tokenId} from ${clientAddress}`,
       forbidden: true,
       error: "This API token is not allowed from your address",
     };
@@ -1592,7 +1590,7 @@ app.get("/api/v1/api-tokens", async (request, reply) => {
     // Lets the dialog offer the address it is answering from instead of
     // making the owner guess it: that is how an allowlist mistake stops being
     // a lockout.
-    your_ip: normalizeIp(request.ip) ?? request.ip,
+    your_ip: apiClientAddress(request),
   });
 });
 

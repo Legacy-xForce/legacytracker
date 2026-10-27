@@ -44,7 +44,7 @@ Create a `.env` file (or export variables):
 | `AUTH_ALLOWED_CLIENTS` | `tracker-spa,tracker-mobile` | OIDC clients (`client_id`) whose access tokens are accepted, and the `aud` of back-channel logout tokens. |
 | `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices and request Mapbox tokens. |
 | `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
-| `TRUSTED_PROXY_CIDRS` | Cloudflare's published ranges plus `loopback` and `uniquelocal` | Comma-separated networks whose `X-Forwarded-For` entries are believed. Sets Fastify's `trustProxy`, so it decides what `request.ip` is — currently only the API token address allowlist depends on it. Wrong values fail closed (allowlisted tokens denied, the denied address in each rejection log). |
+| `TRUSTED_PROXY_CIDRS` | Cloudflare's published ranges plus `loopback` and `uniquelocal` | Comma-separated networks whose `X-Forwarded-For` entries are believed. Sets Fastify's `trustProxy`, so it decides what `request.ip` is, which the logs carry. API token address checks resolve their own client address instead (see [API tokens](#api-tokens)); a wrong list here only mislabels logs. |
 | `MAPBOX_SECRET_TOKEN` | — | Mapbox secret token with `tokens:write`, `styles:read` and `fonts:read`. Server-side only; mints the app's temporary tokens. The app cannot show a map until this is set. |
 | `MAPBOX_USERNAME` | — | Mapbox account that owns the temporary tokens. |
 | `MAPBOX_TOKEN_TTL_SECONDS` | `3300` | Lifetime of minted temporary tokens (60–3600). Tokens are cached per user and renewed five minutes before expiry. |
@@ -119,12 +119,21 @@ precedence over `Authorization`.
   the rejection is logged with the address it saw. An empty list, which is what
   every token starts with, allows any address; uploads through a device token
   and the WebSocket itself (a single-use ticket) are not filtered.
-- The address a token is judged against comes from `X-Forwarded-For`, so it is
-  only as trustworthy as `TRUSTED_PROXY_CIDRS` (see [Environment](#2-configure-environment)):
-  production is Cloudflare → Traefik → this container and both are listed, which
-  is why a request that skips the CDN and reaches the proxy directly is still
-  matched by its real address. If the origin is reachable from outside that
-  chain, allowlisting can be walked around; firewall it or use a tunnel.
+- The address a token is judged against is the hop our proxy reported: the
+  rightmost `X-Forwarded-For` entry, or the socket peer when no proxy is in
+  front. Behind Cloudflare that hop is one of *their* addresses for everyone,
+  so a request whose edge falls inside Cloudflare's published ranges is answered
+  with the visitor named by `CF-Connecting-IP`, and any other request keeps its
+  edge. That header is believed only on that proof of where the request came
+  from, because Traefik forwards it untouched and a caller reaching us directly
+  could bring its own. Since the edge is what the proxy saw on the wire rather
+  than anything the caller wrote, a request that skips the CDN is still matched
+  by its real address. `TRUSTED_PROXY_CIDRS` (see
+  [Environment](#2-configure-environment)) shapes `request.ip`, which the
+  rejection log carries. See `src/services/client-address.ts`.
+- Restricting addresses is defence in depth, not an access boundary: the origin
+  is reachable directly as well as through Cloudflare, which is worth closing
+  for its own sake (firewall 443 to their ranges, or a tunnel).
 - Only `sha256(token)` is stored: the value is shown once, at creation or
   rotation. Up to 25 tokens per user.
 - Removing someone's tracker access also ends their integrations: a
