@@ -18,13 +18,55 @@ permissions:
 
 jobs:
   ios:
-    name: Build unsigned iOS IPA
+    name: Prepare unsigned iOS IPA
     runs-on: macos-latest
+    permissions:
+      contents: read
+      actions: read
     steps:
       - name: Check out source
         uses: actions/checkout@v7
 
+      - name: Find a usable IPA from CI
+        id: ci_ipa
+        env:
+          GH_TOKEN: ${{ github.token }}
+          COMMIT: ${{ github.sha }}
+          REF_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          run_id="$(gh api "repos/$REPO/actions/runs?head_sha=$COMMIT&per_page=100" --jq '
+            .workflow_runs[]
+            | select(.name == "CI" and .event == "push"
+                     and .head_sha == env.COMMIT and .head_branch == env.REF_NAME
+                     and .status == "completed" and .conclusion == "success")
+            | .id' | head -n 1)"
+          if [[ -n "$run_id" ]] && ! gh api "repos/$REPO/actions/runs/$run_id/artifacts" --jq '
+              .artifacts[]
+              | select(.name == "ios-unsigned-ipa" and (.expired | not))
+              | .id' | grep -q .; then
+            echo "CI run $run_id kept no ios-unsigned-ipa artifact; building one here."
+            run_id=""
+          fi
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+          if [[ -n "$run_id" ]]; then
+            echo "Reusing the IPA from https://github.com/$REPO/actions/runs/$run_id"
+          else
+            echo "No successful CI run for ${COMMIT:0:7} on $REF_NAME; building the IPA here."
+          fi
+
+      - name: Download the CI IPA
+        if: steps.ci_ipa.outputs.run_id != ''
+        uses: actions/download-artifact@v8
+        with:
+          name: ios-unsigned-ipa
+          path: ${{ github.workspace }}/src/client/build/ios/ipa
+          repository: ${{ github.repository }}
+          run-id: ${{ steps.ci_ipa.outputs.run_id }}
+          github-token: ${{ github.token }}
+
       - name: Set up Flutter
+        if: steps.ci_ipa.outputs.run_id == ''
         uses: subosito/flutter-action@v2
         with:
           channel: stable
@@ -32,10 +74,12 @@ jobs:
           cache: true
 
       - name: Install Flutter dependencies
+        if: steps.ci_ipa.outputs.run_id == ''
         run: flutter pub get
         working-directory: src/client
 
       - name: Cache Swift Package Manager
+        if: steps.ci_ipa.outputs.run_id == ''
         uses: actions/cache@v6
         with:
           path: ~/Library/Caches/org.swift.swiftpm
@@ -44,12 +88,14 @@ jobs:
             spm-${{ runner.os }}-
 
       - name: Build iOS release app without code signing
+        if: steps.ci_ipa.outputs.run_id == ''
         run: flutter build ios --release --no-codesign
         working-directory: src/client
 
       # Flutter cannot export an IPA with --no-codesign. Package the unsigned
       # app using the standard IPA Payload layout for artifact handoff.
       - name: Package unsigned IPA
+        if: steps.ci_ipa.outputs.run_id == ''
         run: |
           mkdir -p build/ios/ipa/Payload
           cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
