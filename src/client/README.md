@@ -22,4 +22,8 @@ cd android && ./gradlew testDebugUnitTest                     # native engine te
 ```
 
 Only Android and iOS targets are supported. Android releases are built with
-`scripts/release-android.sh` from the repository root.
+`scripts/release-android.sh` from the repository root. The same run publishes
+the unsigned iOS IPA and an AltStore/SideStore source feed, so an iPhone adds
+the feed once and updates from SideStore:
+`https://github.com/Legacy-xForce/legacytracker/releases/latest/download/altstore-source.json`.
+See `docs/app-updates.md` for what a sideloaded install does not get (push).

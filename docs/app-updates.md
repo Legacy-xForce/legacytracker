@@ -60,9 +60,10 @@ The card's *Check* / *Install* buttons still work, for testing.
    recorded.
 
 The `Release Android and iOS` workflow does the same and also attaches an
-unsigned iOS IPA to the release. It reuses the IPA that CI already built for the
-commit being tagged, and builds one on a macOS runner when there is nothing to
-reuse. To attach an existing IPA from a local release, pass `--ipa PATH`.
+unsigned iOS IPA plus its SideStore source feed to the release (see below). It
+reuses the IPA that CI already built for the commit being tagged, and builds
+one on a macOS runner when there is nothing to reuse. To attach an existing
+IPA from a local release, pass `--ipa PATH`.
 
 To try a build on a few phones first, pass `--prerelease`. The server ignores
 prereleases, so you can install the APK from the release page by hand. Roll it
@@ -136,5 +137,47 @@ it, phones still find releases on their 6-hourly check.
   key now.
 - **iOS** can't install its own updates outside the App Store. The options
   there are TestFlight, an Apple Developer Enterprise / custom-app
-  distribution, or patching Dart code over the air with a service such as
-  Shorebird.
+  distribution, a sideloaded source such as SideStore (see below), or
+  patching Dart code over the air with a service such as Shorebird.
+
+## iOS installs (SideStore / AltStore)
+
+An iOS release is a signed-by-the-user install: CI builds it with
+`--no-codesign`, and SideStore re-signs the IPA on the phone with whoever's
+Apple ID they use. The release page is not the delivery mechanism — a source
+feed is, so the same `scripts/release-android.sh` run publishes both under
+fixed asset names:
+
+```
+https://github.com/Legacy-xForce/legacytracker/releases/latest/download/altstore-source.json
+https://github.com/Legacy-xForce/legacytracker/releases/latest/download/LegacyTracker.ipa
+```
+
+`releases/latest/` ignores prereleases and always resolves to the newest
+stable release, which is why the names carry no version. The feed is
+generated, never hand-edited: it reads the bundle id and minimum iOS out of
+`ios/Runner.xcodeproj/project.pbxproj`, the size and SHA-256 from the IPA it
+just packaged, and `versions[0]` is what AltStore clients compare against the
+installed app, so a new release shows up as an update in the app's own list.
+
+To install: add the feed URL in SideStore (Browse → Sources → add), or use a
+one-tap redirect from [altdirect](https://altdirect.app), which only turns a
+feed URL into an `sidestore://source?url=` deep link:
+
+```
+https://altdirect.app/?url=https://github.com/Legacy-xForce/legacytracker/releases/latest/download/altstore-source.json&r=sidestore
+```
+
+What a sideloaded install does not get:
+
+- **No push.** The app is signed with the user's team, not ours, so our
+  APNs key cannot address it and FCM data messages (`lt_cmd`) never arrive.
+  Live mode still works while the engine is awake — `live_ttl_s` comes back
+  with every upload (`TrackingEngine.applyLiveTtl`) — but a stationary,
+  backgrounded phone is not woken by someone opening a map. Notifications
+  need TestFlight or App Store, where we sign the binary.
+- **Free Apple ID limits.** Three sideloaded apps at a time, re-signed every
+  7 days; SideStore refreshes it when the phone is on the same Wi-Fi as a
+  helper or when the app is opened. A paid developer account raises this to
+  one year, on the *user's* account, not ours.
+- **Manual first install**, like Android: the source has to be added once.
