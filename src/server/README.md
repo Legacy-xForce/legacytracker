@@ -112,7 +112,8 @@ precedence over `Authorization`.
   session-only routes below (`403`).
 - Token management, `POST /api/v1/devices` and `POST /api/v1/fcm-token` need a
   signed-in session, so a leaked token can't mint replacements. Changing a
-  token's allowed addresses is session-only too, and only the web app does it.
+  token's allowed addresses is session-only too, and only the web app and the
+  phone app do it.
 - A token may list the addresses allowed to use it (`allowed_ips`: plain IPv4 or
   IPv6, or CIDR prefixes such as `198.51.100.0/24`, at most 32). Anything else
   is `403 { "error": "This API token is not allowed from your address" }`, and

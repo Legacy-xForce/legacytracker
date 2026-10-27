@@ -31,6 +31,12 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
   String? _loadError;
   IssuedApiToken? _issued;
 
+  /// The token whose settings are open, and the address the API saw this
+  /// session's list request come from.
+  String? _expandedId;
+  String? _yourIp;
+  bool _saving = false;
+
   @override
   void initState() {
     super.initState();
@@ -47,8 +53,13 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
       _loadError = null;
     });
     try {
-      final tokens = await _service.list(await _accessToken());
-      if (mounted) setState(() => _tokens = tokens);
+      final listed = await _service.list(await _accessToken());
+      if (mounted) {
+        setState(() {
+          _tokens = listed.tokens;
+          _yourIp = listed.yourIp;
+        });
+      }
     } catch (error) {
       if (mounted) setState(() => _loadError = error.toString());
     } finally {
@@ -77,6 +88,41 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
       });
     } catch (error) {
       if (mounted) _showMessage(error.toString());
+    }
+  }
+
+  void _expand(String? id) => setState(() => _expandedId = id);
+
+  /// Saves a token's address list. The panel stays open when the server
+  /// refuses an entry, so what it named can be fixed in place.
+  Future<void> _saveAddresses(ApiToken token, List<String> allowedIps) async {
+    if (_saving) return;
+    setState(() => _saving = true);
+    try {
+      final updated = await _service.updateAllowedIps(
+        await _accessToken(),
+        token.id,
+        allowedIps,
+      );
+      if (!mounted) return;
+      setState(() {
+        _tokens = [
+          for (final t in _tokens ?? const <ApiToken>[])
+            if (t.id == updated.id) updated else t,
+        ];
+        _expandedId = null;
+      });
+      final count = updated.allowedIps.length;
+      _showMessage(
+        count == 0
+            ? '"${updated.name}" works from any address again.'
+            : '"${updated.name}" works from $count '
+                  'address${count == 1 ? '' : 'es'}.',
+      );
+    } catch (error) {
+      if (mounted) _showMessage(error.toString());
+    } finally {
+      if (mounted) setState(() => _saving = false);
     }
   }
 
@@ -117,6 +163,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
       setState(() {
         _tokens = _tokens?.where((t) => t.id != token.id).toList();
         if (_issued?.token.id == token.id) _issued = null;
+        if (_expandedId == token.id) _expandedId = null;
       });
       _showMessage('Token deleted.');
     } catch (error) {
@@ -218,6 +265,12 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
               for (final token in tokens) ...[
                 _TokenTile(
                   token: token,
+                  expanded: _expandedId == token.id,
+                  yourIp: _yourIp,
+                  saving: _saving,
+                  onToggle: () =>
+                      _expand(_expandedId == token.id ? null : token.id),
+                  onSave: (ips) => _saveAddresses(token, ips),
                   onRotate: () => _rotate(token),
                   onDelete: () => _delete(token),
                 ),
@@ -374,8 +427,9 @@ class _Intro extends StatelessWidget {
                   Text(
                     'Scripts and other apps can use the tracker as you by '
                     'sending a token in the X-API-Token header. Tokens don\'t '
-                    'expire, so rotate or delete any you no longer trust. The '
-                    'API is documented at /docs on the web map.',
+                    'expire, so rotate or delete any you no longer trust, and '
+                    'open one to limit the addresses that may use it. The API '
+                    'is documented at /docs on the web map.',
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: scheme.onSurfaceVariant,
                     ),
@@ -471,11 +525,21 @@ class _IssuedCard extends StatelessWidget {
 class _TokenTile extends StatelessWidget {
   const _TokenTile({
     required this.token,
+    required this.expanded,
+    required this.yourIp,
+    required this.saving,
+    required this.onToggle,
+    required this.onSave,
     required this.onRotate,
     required this.onDelete,
   });
 
   final ApiToken token;
+  final bool expanded;
+  final String? yourIp;
+  final bool saving;
+  final VoidCallback onToggle;
+  final void Function(List<String> allowedIps) onSave;
   final VoidCallback onRotate;
   final VoidCallback onDelete;
 
@@ -490,78 +554,278 @@ class _TokenTile extends StatelessWidget {
         : 'Used ${formatUpdatedAgo(DateTime.now().difference(lastUsed))}';
     return Card(
       clipBehavior: Clip.antiAlias,
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Flexible(
-                        child: Text(
-                          token.name,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              token.name,
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.titleSmall?.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 1,
+                            ),
+                            decoration: BoxDecoration(
+                              color: write
+                                  ? scheme.errorContainer
+                                  : scheme.secondaryContainer,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              write ? 'WRITE' : 'READ',
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: write
+                                    ? scheme.onErrorContainer
+                                    : scheme.onSecondaryContainer,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        token.hint,
+                        overflow: TextOverflow.ellipsis,
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          fontFamily: 'monospace',
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      Text(
+                        'Created ${formatShortDate(token.createdAt)} · $usage',
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: scheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (token.allowedIps.isNotEmpty)
+                        Text(
+                          'From ${token.allowedIps.join(', ')}',
+                          maxLines: 2,
                           overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall?.copyWith(
-                            fontWeight: FontWeight.w600,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            fontFamily: 'monospace',
+                            color: scheme.onSurfaceVariant,
                           ),
                         ),
-                      ),
-                      const SizedBox(width: 8),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 6,
-                          vertical: 1,
-                        ),
-                        decoration: BoxDecoration(
-                          color: write
-                              ? scheme.errorContainer
-                              : scheme.secondaryContainer,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          write ? 'WRITE' : 'READ',
-                          style: theme.textTheme.labelSmall?.copyWith(
-                            color: write
-                                ? scheme.onErrorContainer
-                                : scheme.onSecondaryContainer,
-                          ),
-                        ),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 2),
-                  Text(
-                    token.hint,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      fontFamily: 'monospace',
-                      color: scheme.onSurfaceVariant,
+                ),
+                IconButton(
+                  tooltip: expanded
+                      ? 'Close ${token.name} settings'
+                      : 'Edit ${token.name}',
+                  icon: Icon(
+                    expanded ? Icons.close_rounded : Icons.tune_rounded,
+                  ),
+                  onPressed: onToggle,
+                ),
+              ],
+            ),
+          ),
+          if (expanded)
+            _AllowedAddresses(
+              tokenName: token.name,
+              initial: token.allowedIps,
+              yourIp: yourIp,
+              busy: saving,
+              onSave: onSave,
+              onRotate: onRotate,
+              onDelete: onDelete,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Where a token's addresses are set, and where its destructive actions live:
+/// both belong to reviewing one token rather than to the list around it.
+class _AllowedAddresses extends StatefulWidget {
+  const _AllowedAddresses({
+    required this.tokenName,
+    required this.initial,
+    required this.yourIp,
+    required this.busy,
+    required this.onSave,
+    required this.onRotate,
+    required this.onDelete,
+  });
+
+  final String tokenName;
+  final List<String> initial;
+  final String? yourIp;
+  final bool busy;
+  final void Function(List<String> allowedIps) onSave;
+  final VoidCallback onRotate;
+  final VoidCallback onDelete;
+
+  @override
+  State<_AllowedAddresses> createState() => _AllowedAddressesState();
+}
+
+class _AllowedAddressesState extends State<_AllowedAddresses> {
+  final _entry = TextEditingController();
+  late List<String> _draft = List.of(widget.initial);
+
+  @override
+  void dispose() {
+    _entry.dispose();
+    super.dispose();
+  }
+
+  void _add([String? value]) {
+    final entry = (value ?? _entry.text).trim();
+    _entry.clear();
+    if (entry.isEmpty) return;
+    // The server owns validation and names whatever it refuses; a space could
+    // only come from pasting a whole list at once.
+    if (entry.contains(RegExp(r'\s'))) {
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(
+          const SnackBar(
+            content: Text('Enter one address or CIDR prefix at a time.'),
+          ),
+        );
+      return;
+    }
+    if (_draft.contains(entry)) return;
+    setState(() => _draft = [..._draft, entry]);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final yourIp = widget.yourIp;
+    return Container(
+      width: double.infinity,
+      color: scheme.surfaceContainerHighest,
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'ALLOWED ADDRESSES',
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: scheme.onSurfaceVariant,
+              fontWeight: FontWeight.w600,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'With nothing listed the token works from anywhere. Otherwise only '
+            'these addresses, or prefixes such as 198.51.100.0/24, may use it.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+          if (_draft.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final entry in _draft)
+                  Chip(
+                    label: Text(
+                      entry,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    backgroundColor: scheme.surface,
+                    side: BorderSide(color: scheme.outlineVariant),
+                    deleteIcon: const Icon(Icons.close_rounded, size: 18),
+                    onDeleted: () => setState(
+                      () => _draft = _draft.where((e) => e != entry).toList(),
                     ),
                   ),
-                  Text(
-                    'Created ${formatShortDate(token.createdAt)} · $usage',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            IconButton(
-              tooltip: 'Rotate ${token.name}',
-              icon: const Icon(Icons.autorenew_rounded),
-              onPressed: onRotate,
-            ),
-            IconButton(
-              tooltip: 'Delete ${token.name}',
-              icon: const Icon(Icons.delete_outline_rounded),
-              onPressed: onDelete,
+              ],
             ),
           ],
-        ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _entry,
+                  textInputAction: TextInputAction.done,
+                  autocorrect: false,
+                  decoration: const InputDecoration(
+                    labelText: 'Address or CIDR prefix',
+                    prefixIcon: Icon(Icons.lock_outline_rounded),
+                  ),
+                  onSubmitted: _add,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Add address',
+                icon: const Icon(Icons.add_rounded),
+                onPressed: _add,
+              ),
+            ],
+          ),
+          if (yourIp != null && !_draft.contains(yourIp))
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                icon: const Icon(Icons.my_location_rounded, size: 18),
+                label: Text('Add my current address ($yourIp)'),
+                onPressed: () => _add(yourIp),
+              ),
+            ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              FilledButton.icon(
+                icon: widget.busy
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.check_rounded),
+                label: const Text('Save'),
+                onPressed: widget.busy ? null : () => widget.onSave(_draft),
+              ),
+              if (_draft.isNotEmpty)
+                TextButton(
+                  onPressed: () => setState(() => _draft = const []),
+                  child: const Text('Allow from any address'),
+                ),
+              const Spacer(),
+              IconButton(
+                tooltip: 'Rotate ${widget.tokenName}',
+                icon: const Icon(Icons.autorenew_rounded),
+                onPressed: widget.busy ? null : widget.onRotate,
+              ),
+              IconButton(
+                tooltip: 'Delete ${widget.tokenName}',
+                icon: const Icon(Icons.delete_outline_rounded),
+                onPressed: widget.busy ? null : widget.onDelete,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }

@@ -14,6 +14,16 @@ class ApiTokenException implements Exception {
   String toString() => message;
 }
 
+/// The account's tokens, and the address the API read that request from —
+/// offered as a one-click entry, so limiting a token does not mean guessing
+/// where it will be seen to come from.
+class ApiTokenList {
+  const ApiTokenList({required this.tokens, this.yourIp});
+
+  final List<ApiToken> tokens;
+  final String? yourIp;
+}
+
 /// Creates, lists, rotates and deletes the user's personal API tokens. These
 /// calls need the signed-in session's access token; API tokens themselves
 /// can't manage tokens.
@@ -25,14 +35,14 @@ class ApiTokenService {
   final Uri _baseUri;
   final http.Client _httpClient;
 
-  Future<List<ApiToken>> list(String accessToken) async {
+  Future<ApiTokenList> list(String accessToken) async {
     final response = await _send(
       () => _httpClient.get(
         _uri('/api/v1/api-tokens'),
         headers: _headers(accessToken),
       ),
     );
-    _check(response, expected: 200);
+    _check(response, expected: 200, fallback: 'The tokens could not be read.');
     final body = _json(response);
     final tokens = <ApiToken>[];
     for (final json in body['tokens'] as List<dynamic>? ?? const []) {
@@ -42,7 +52,10 @@ class ApiTokenService {
         // A malformed entry only drops that row.
       }
     }
-    return tokens;
+    return ApiTokenList(
+      tokens: tokens,
+      yourIp: body['your_ip'] is String ? body['your_ip'] as String : null,
+    );
   }
 
   Future<IssuedApiToken> create(
@@ -57,7 +70,11 @@ class ApiTokenService {
         body: jsonEncode({'name': name, 'scope': scope.name}),
       ),
     );
-    _check(response, expected: 201);
+    _check(
+      response,
+      expected: 201,
+      fallback: 'The token could not be created.',
+    );
     return _issued(response);
   }
 
@@ -68,8 +85,40 @@ class ApiTokenService {
         headers: _headers(accessToken),
       ),
     );
-    _check(response, expected: 200);
+    _check(
+      response,
+      expected: 200,
+      fallback: 'The token could not be rotated.',
+    );
     return _issued(response);
+  }
+
+  /// Replaces the addresses a token may be used from; an empty list lifts the
+  /// restriction. Returns the token as the server now has it.
+  Future<ApiToken> updateAllowedIps(
+    String accessToken,
+    String id,
+    List<String> allowedIps,
+  ) async {
+    final response = await _send(
+      () => _httpClient.patch(
+        _uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}'),
+        headers: _headers(accessToken, json: true),
+        body: jsonEncode({'allowed_ips': allowedIps}),
+      ),
+    );
+    _check(
+      response,
+      expected: 200,
+      fallback: 'The addresses could not be saved.',
+    );
+    try {
+      return ApiToken.fromJson(_json(response));
+    } on Object {
+      throw ApiTokenException(
+        'The server sent an unexpected reply. Try again.',
+      );
+    }
   }
 
   Future<void> delete(String accessToken, String id) async {
@@ -79,7 +128,11 @@ class ApiTokenService {
         headers: _headers(accessToken),
       ),
     );
-    _check(response, expected: 200);
+    _check(
+      response,
+      expected: 200,
+      fallback: 'The token could not be deleted.',
+    );
   }
 
   IssuedApiToken _issued(http.Response response) {
@@ -115,15 +168,17 @@ class ApiTokenService {
     }
   }
 
-  void _check(http.Response response, {required int expected}) {
+  void _check(
+    http.Response response, {
+    required int expected,
+    required String fallback,
+  }) {
     if (response.statusCode == expected) return;
     switch (response.statusCode) {
       case 404:
         throw ApiTokenException('This token no longer exists.');
       case 400:
-        throw ApiTokenException(
-          _serverMessage(response) ?? 'The token could not be created.',
-        );
+        throw ApiTokenException(_serverMessage(response) ?? fallback);
       default:
         throw ApiTokenException(
           'Something went wrong (${response.statusCode}). Try again.',

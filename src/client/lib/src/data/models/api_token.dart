@@ -21,6 +21,7 @@ class ApiToken {
     required this.createdAt,
     this.lastUsedAt,
     this.rotatedAt,
+    this.allowedIps = const [],
   });
 
   factory ApiToken.fromJson(Map<String, dynamic> json) {
@@ -34,11 +35,16 @@ class ApiToken {
       createdAt: DateTime.parse(json['created_at'] as String),
       lastUsedAt: _date(json['last_used_at']),
       rotatedAt: _date(json['rotated_at']),
+      allowedIps: _addresses(json['allowed_ips']),
     );
   }
 
   static DateTime? _date(Object? value) =>
       value is String ? DateTime.tryParse(value) : null;
+
+  static List<String> _addresses(Object? value) => value is List
+      ? value.whereType<String>().toList(growable: false)
+      : const [];
 
   final String id;
   final String name;
@@ -49,6 +55,9 @@ class ApiToken {
   final DateTime createdAt;
   final DateTime? lastUsedAt;
   final DateTime? rotatedAt;
+
+  /// Addresses or CIDR prefixes allowed to use it; empty means anywhere.
+  final List<String> allowedIps;
 }
 
 /// A token as created or rotated: the only time its value is known.
