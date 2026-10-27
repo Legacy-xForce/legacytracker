@@ -274,6 +274,9 @@ Swift engine has not been compiled (needs Xcode). Verify on real devices:
 - [ ] Battery over a normal day vs the previous build (Settings → Battery).
 - [ ] Profile tab status card flags missing "Allow all the time" / precise /
       physical activity / battery optimization.
+- [ ] Installing a newer build opens the physical activity and battery
+      optimization dialogs once (and not again on the next launch of that
+      build); on a build whose dialogs were already answered, nothing asks.
 
 ## Known limits
 
