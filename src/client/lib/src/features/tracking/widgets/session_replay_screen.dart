@@ -263,6 +263,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   final MapScene _scene = MapScene();
   String? _sceneSpec;
 
+  /// The rider's last rendered bitmap, kept across speed-bucket changes so
+  /// the marker never has a frame without one.
+  MarkerImage? _lastRiderImage;
+
   @override
   void initState() {
     super.initState();
@@ -321,7 +325,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final showBeam = moving && heading != null && heading.isFinite;
 
     final colors = MarkerColors.from(Theme.of(context).colorScheme);
-    final markerImage = _imageFor(
+    final riderImage = _imageFor(
       'replay:${widget.userId}:${colors.id}:$speedBucket',
       () => _icons.personMarker(
         MarkerPerson(
@@ -333,6 +337,11 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
         colors: colors,
       ),
     );
+    if (riderImage != null) _lastRiderImage = riderImage;
+    // A new speed bucket renders asynchronously; keep the previous bitmap on
+    // screen until the new one lands, or the avatar blinks out for a frame
+    // at every bucket change - which is what made playback flicker.
+    final markerImage = _lastRiderImage;
     final beamImage = showBeam
         ? _imageFor(
             'beam:${colors.accent.toARGB32()}',

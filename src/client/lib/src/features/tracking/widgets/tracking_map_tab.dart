@@ -107,6 +107,12 @@ class TrackingMapTabState extends State<TrackingMapTab>
     with TickerProviderStateMixin {
   final MarkerIconFactory _icons = MarkerIconFactory();
   final Map<String, MarkerImage> _images = {};
+
+  /// The last rendered bitmap per marker slot, kept while the next one (a
+  /// new speed bucket, battery level, avatar) renders asynchronously -
+  /// without it a marker blinks out for a frame at every change.
+  final Map<String, MarkerImage> _slotImages = {};
+  final Set<String> _seenSlots = {};
   final Set<String> _pendingImages = {};
 
   /// Bumped whenever the icon factory rebuilds, so a render already in flight
@@ -807,6 +813,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
     }
 
     final markers = <MapMarker>[];
+    _seenSlots.clear();
     for (final group in clusterMarkers(
       entries,
       zoom: _cameraZoom,
@@ -839,7 +846,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
               '${person.isCharging}',
       ].join(',');
       final colors = _markerColors;
-      final image = _imageFor(
+      final slotId = single
+          ? 'user-${group.members.first.value.profile.id}'
+          : 'cluster-${group.members.map((m) => m.value.profile.id).join('-')}';
+      var image = _imageFor(
         single
             ? 'person:${colors.id}:$signature'
             : 'cluster:${_clusterStyle.id}:$signature',
@@ -847,7 +857,16 @@ class TrackingMapTabState extends State<TrackingMapTab>
             ? _icons.personMarker(persons.first, colors: colors)
             : _icons.clusterMarker(persons, style: _clusterStyle),
       );
+      // A new speed bucket or battery level re-renders asynchronously; keep
+      // the slot's previous bitmap on screen until the new one lands, so the
+      // marker never blinks out mid-motion.
+      if (image != null) {
+        _slotImages[slotId] = image;
+      } else {
+        image = _slotImages[slotId];
+      }
       if (image == null) continue;
+      _seenSlots.add(slotId);
 
       final member = group.members.first.value;
       final person = persons.first;
@@ -881,9 +900,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
           : 1.0;
       markers.add(
         MapMarker(
-          id: single
-              ? 'user-${member.profile.id}'
-              : 'cluster-${group.members.map((m) => m.value.profile.id).join('-')}',
+          id: slotId,
           position: single ? group.members.first.point : group.center,
           image: image,
           layer: single ? MapMarkerLayer.person : MapMarkerLayer.cluster,
@@ -962,6 +979,9 @@ class TrackingMapTabState extends State<TrackingMapTab>
       }
     }
 
+    // Slots that no longer exist (people who left the map, clusters that
+    // split) must not pin their last bitmap forever.
+    _slotImages.removeWhere((id, _) => !_seenSlots.contains(id));
     return markers;
   }
 
