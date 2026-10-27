@@ -5,6 +5,13 @@ allprojects {
     }
 }
 
+// Apply Kotlin plugin to all subprojects (required by mapbox_maps_flutter)
+subprojects {
+    plugins.withId("com.android.library") {
+        apply(plugin = "org.jetbrains.kotlin.android")
+    }
+}
+
 val newBuildDir: Directory =
     rootProject.layout.buildDirectory
         .dir("../../build")

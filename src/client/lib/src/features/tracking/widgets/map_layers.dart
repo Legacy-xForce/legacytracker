@@ -1,43 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_map/flutter_map.dart';
 
 import 'tracking_map_layer.dart';
 
-/// Tile layers for the given [layer], shared by every map screen so terrain
-/// switching stays consistent across live tracking and replay.
-List<Widget> buildMapTileLayers(MapLayer layer) {
-  switch (layer) {
-    case MapLayer.satellite:
-      return [
-        TileLayer(
-          urlTemplate:
-              'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-          userAgentPackageName: 'com.example.legacytracker',
-        ),
-        TileLayer(
-          urlTemplate:
-              'https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}',
-          userAgentPackageName: 'com.example.legacytracker',
-        ),
-      ];
-    case MapLayer.terrain:
-      return [
-        TileLayer(
-          urlTemplate: 'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png',
-          subdomains: const ['a', 'b', 'c'],
-          userAgentPackageName: 'com.example.legacytracker',
-        ),
-      ];
-    case MapLayer.standard:
-      return [
-        TileLayer(
-          urlTemplate: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-          subdomains: const ['a', 'b', 'c'],
-          userAgentPackageName: 'com.example.legacytracker',
-        ),
-      ];
-  }
-}
+/// Shared map chrome. Mapbox styles live on the map widget itself (see
+/// [MapboxStyles]); this file only holds the floating controls every map
+/// screen shows.
 
 /// A floating card holding a column of map buttons, separated by hairlines,
 /// so related controls read as one group instead of a stack of FABs.
@@ -100,8 +67,8 @@ class MapControlButton extends StatelessWidget {
   }
 }
 
-/// Switches [MapLayer]; shared by every map screen that offers terrain
-/// switching. Meant to sit inside a [MapControlGroup].
+/// Switches [MapLayer]; shared by every map screen. Meant to sit inside a
+/// [MapControlGroup].
 class MapLayerButton extends StatelessWidget {
   const MapLayerButton({
     super.key,
@@ -115,7 +82,6 @@ class MapLayerButton extends StatelessWidget {
   static const _options = [
     (MapLayer.standard, 'Standard', Icons.map_outlined),
     (MapLayer.satellite, 'Satellite', Icons.satellite_alt_outlined),
-    (MapLayer.terrain, 'Terrain', Icons.terrain_outlined),
   ];
 
   @override
@@ -134,7 +100,7 @@ class MapLayerButton extends StatelessWidget {
       icon: const Icon(Icons.layers_outlined),
       itemBuilder: (context) => [
         for (final (layer, label, icon) in _options)
-          PopupMenuItem(
+          PopupMenuItem<MapLayer>(
             value: layer,
             child: Row(
               children: [

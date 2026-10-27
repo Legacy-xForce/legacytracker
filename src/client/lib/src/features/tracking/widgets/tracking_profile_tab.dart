@@ -17,6 +17,7 @@ import '../local_avatar_store.dart';
 import '../map_settings.dart';
 import '../tracking_controller.dart';
 import 'appearance_card.dart';
+import 'map_variant_card.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_status_card.dart';
 import 'user_avatar.dart';
@@ -75,6 +76,8 @@ class TrackingProfileTab extends StatelessWidget {
           const SizedBox(height: 24),
           const _SectionLabel('Map'),
           const DefaultMapStyleCard(),
+          const SizedBox(height: 8),
+          const MapVariantCard(),
           const SizedBox(height: 24),
           const _SectionLabel('Places'),
           Card(
@@ -381,11 +384,6 @@ class DefaultMapStyleCard extends StatelessWidget {
                     value: MapLayer.satellite,
                     icon: Icon(Icons.satellite_alt_outlined),
                     label: Text('Satellite'),
-                  ),
-                  ButtonSegment(
-                    value: MapLayer.terrain,
-                    icon: Icon(Icons.terrain_outlined),
-                    label: Text('Terrain'),
                   ),
                 ],
                 selected: {settings.defaultLayer},

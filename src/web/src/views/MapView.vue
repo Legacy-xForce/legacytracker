@@ -19,6 +19,7 @@ import PersonRow from '../components/people/PersonRow.vue';
 import AppearanceDialog from '../components/ui/AppearanceDialog.vue';
 import Icon from '../components/ui/Icon.vue';
 import MenuItem from '../components/ui/MenuItem.vue';
+import MapVariantPicker from '../components/ui/MapVariantPicker.vue';
 import PopoverMenu from '../components/ui/PopoverMenu.vue';
 import Spinner from '../components/ui/Spinner.vue';
 import { useMediaQuery } from '../composables/useMediaQuery';
@@ -29,8 +30,7 @@ import { decodeJwt } from '../lib/jwt';
 import { hasPosition } from '../lib/peers';
 import { storage } from '../lib/storage';
 import { useAppearanceStore } from '../stores/appearance';
-import { getTheme } from '../theme/themes';
-import { lightPresetFor, MAP_STYLES, type MapStyle } from '../lib/styles';
+import { resolveMapPreset, MAP_STYLES, type MapStyle } from '../lib/styles';
 import { useCheckpointsStore } from '../stores/checkpoints';
 import { useEventsStore } from '../stores/events';
 import { useHistoryStore } from '../stores/history';
@@ -57,7 +57,6 @@ let eventsTimer: ReturnType<typeof setInterval> | undefined;
 
 const mapView = ref<InstanceType<typeof PeersMap> | null>(null);
 const wide = useMediaQuery('(min-width: 768px)');
-const systemDark = useMediaQuery('(prefers-color-scheme: dark)');
 const viewportHeight = ref(window.innerHeight);
 // Markers re-check staleness every few seconds; the panel's counters tick every second.
 const mapNow = useNow();
@@ -65,10 +64,8 @@ const now = useNow(1_000);
 
 const showCheckpoints = ref(storage.get(CHECKPOINTS_KEY) !== 'false');
 const mapStyle = ref<MapStyle>(readStyle());
-const lightPreset = computed(() => {
-    const mode = getTheme(appearance.theme).mode;
-    return lightPresetFor(mode === 'system' ? (systemDark.value ? 'dark' : 'light') : mode);
-});
+// Re-evaluated as `now` ticks, so Auto crosses into dawn/day/dusk/night on its own.
+const lightPreset = computed(() => resolveMapPreset(appearance.mapVariant, now.value));
 const styleMenu = ref(false);
 const accountMenu = ref(false);
 const appearanceOpen = ref(false);
@@ -313,6 +310,13 @@ watch(replaying, (isReplaying) => {
                         :checked="option.id === mapStyle"
                         @click="chooseStyle(option.id)"
                     />
+                    <div class="bg-outline-variant mx-3 my-2 h-px" />
+                    <p class="type-body-sm text-on-surface-variant px-4 pb-2">
+                        Map lighting &middot; Auto follows the time of day
+                    </p>
+                    <div class="px-4 pb-4">
+                        <MapVariantPicker />
+                    </div>
                 </PopoverMenu>
                 <MapControlButton
                     v-if="self && hasPosition(self)"

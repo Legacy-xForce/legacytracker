@@ -13,6 +13,7 @@ import batteryAlert from '@material-symbols/svg-400/rounded/battery_alert-fill.s
 import batteryCharging from '@material-symbols/svg-400/rounded/battery_charging_full-fill.svg?raw';
 import batteryFull from '@material-symbols/svg-400/rounded/battery_full-fill.svg?raw';
 import bolt from '@material-symbols/svg-400/rounded/bolt-fill.svg?raw';
+import brightnessAuto from '@material-symbols/svg-400/rounded/brightness_auto.svg?raw';
 import calendarMonth from '@material-symbols/svg-400/rounded/calendar_month-fill.svg?raw';
 import check from '@material-symbols/svg-400/rounded/check.svg?raw';
 import chevronLeft from '@material-symbols/svg-400/rounded/chevron_left.svg?raw';
@@ -20,6 +21,7 @@ import chevronRight from '@material-symbols/svg-400/rounded/chevron_right.svg?ra
 import close from '@material-symbols/svg-400/rounded/close.svg?raw';
 import contentCopy from '@material-symbols/svg-400/rounded/content_copy.svg?raw';
 import dateRange from '@material-symbols/svg-400/rounded/date_range.svg?raw';
+import darkMode from '@material-symbols/svg-400/rounded/dark_mode.svg?raw';
 import cloudOff from '@material-symbols/svg-400/rounded/cloud_off-fill.svg?raw';
 import directions from '@material-symbols/svg-400/rounded/directions-fill.svg?raw';
 import directionsCar from '@material-symbols/svg-400/rounded/directions_car-fill.svg?raw';
@@ -33,6 +35,7 @@ import info from '@material-symbols/svg-400/rounded/info.svg?raw';
 import key from '@material-symbols/svg-400/rounded/key-fill.svg?raw';
 import landscape from '@material-symbols/svg-400/rounded/landscape.svg?raw';
 import layers from '@material-symbols/svg-400/rounded/layers.svg?raw';
+import lightMode from '@material-symbols/svg-400/rounded/light_mode.svg?raw';
 import location from '@material-symbols/svg-400/rounded/location_on.svg?raw';
 import locationOff from '@material-symbols/svg-400/rounded/location_off.svg?raw';
 import lock from '@material-symbols/svg-400/rounded/lock.svg?raw';
@@ -44,6 +47,7 @@ import myLocation from '@material-symbols/svg-400/rounded/my_location-fill.svg?r
 import nearMe from '@material-symbols/svg-400/rounded/near_me-fill.svg?raw';
 import openInNew from '@material-symbols/svg-400/rounded/open_in_new.svg?raw';
 import palette from '@material-symbols/svg-400/rounded/palette.svg?raw';
+import partlyCloudyDay from '@material-symbols/svg-400/rounded/partly_cloudy_day.svg?raw';
 import pause from '@material-symbols/svg-400/rounded/pause-fill.svg?raw';
 import person from '@material-symbols/svg-400/rounded/person.svg?raw';
 import place from '@material-symbols/svg-400/rounded/location_on-fill.svg?raw';
@@ -65,6 +69,7 @@ import trophy from '@material-symbols/svg-400/rounded/trophy-fill.svg?raw';
 import trendingUp from '@material-symbols/svg-400/rounded/trending_up.svg?raw';
 import visibility from '@material-symbols/svg-400/rounded/visibility.svg?raw';
 import visibilityOff from '@material-symbols/svg-400/rounded/visibility_off.svg?raw';
+import wbTwilight from '@material-symbols/svg-400/rounded/wb_twilight.svg?raw';
 
 const raw = {
     add,
@@ -79,6 +84,7 @@ const raw = {
     batteryCharging,
     batteryFull,
     bolt,
+    brightnessAuto,
     calendarMonth,
     check,
     chevronLeft,
@@ -87,6 +93,7 @@ const raw = {
     cloudOff,
     contentCopy,
     dateRange,
+    darkMode,
     directions,
     directionsCar,
     error,
@@ -99,6 +106,7 @@ const raw = {
     key,
     landscape,
     layers,
+    lightMode,
     location,
     locationOff,
     locationSearching,
@@ -110,6 +118,7 @@ const raw = {
     nearMe,
     openInNew,
     palette,
+    partlyCloudyDay,
     pause,
     person,
     place,
@@ -130,7 +139,8 @@ const raw = {
     trophy,
     trendingUp,
     visibility,
-    visibilityOff
+    visibilityOff,
+    wbTwilight
 };
 
 export type IconName = keyof typeof raw;

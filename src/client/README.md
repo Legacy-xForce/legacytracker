@@ -1,17 +1,25 @@
-# legacytracker
+# Legacy Tracker phone app
 
-A new Flutter project.
+Flutter UI for the Legacy Tracker Android/iOS app. A native tracking engine
+records and uploads positions; Flutter renders the live map, people list,
+history/replay, checkpoints and calendar events.
 
-## Getting Started
+The map uses Mapbox Standard / Standard Satellite through
+`mapbox_maps_flutter`. Release builds carry no Mapbox token: the app fetches a
+short-lived temporary token from the tracker backend at runtime. See
+`docs/mapbox.md` at the repository root for token provisioning, the spike
+harness and the release-token check.
 
-This project is a starting point for a Flutter application.
+## Commands
 
-A few resources to get you started if this is your first Flutter project:
+```bash
+flutter pub get
+flutter analyze
+flutter test
+flutter run --dart-define=BACKEND_URL=http://10.0.2.2:3000   # debug/profile only
+flutter run -t lib/main_mapcheck.dart --dart-define=MAPBOX_TOKEN=pk.…  # map spike
+cd android && ./gradlew testDebugUnitTest                     # native engine tests
+```
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Only Android and iOS targets are supported. Android releases are built with
+`scripts/release-android.sh` from the repository root.

@@ -1,5 +1,5 @@
 name: legacytracker
-description: "A new Flutter project."
+description: "Legacy Tracker Android/iOS phone app"
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -34,8 +34,8 @@ dependencies:
   cupertino_icons: ^1.0.8
   provider: ^6.0.6
   permission_handler: ^12.0.2
-  flutter_map: ^8.3.0
   latlong2: ^0.9.0
+  mapbox_maps_flutter: ^2.30.1
   http: ^1.1.0
   web_socket_channel: ^2.3.0
   shared_preferences: ^2.1.1

@@ -140,12 +140,14 @@ function paint() {
         }
     });
     // A dark edge keeps the route readable on any tiles, as on the phone.
+    // Emissive at 1: the Standard style dims non-emissive lines to black under
+    // the dawn/dusk/night presets, which is what made the route go dark.
     target.addLayer({
         id: EDGE_LAYER,
         type: 'line',
         source: EDGE_SOURCE,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#000', 'line-opacity': 0.35, 'line-width': 8 }
+        paint: { 'line-color': '#000', 'line-opacity': 0.35, 'line-width': 8, 'line-emissive-strength': 1 }
     });
     // One line per run of similar speed: red when slow, green when fast.
     target.addLayer({
@@ -153,7 +155,7 @@ function paint() {
         type: 'line',
         source: ROUTE_SOURCE,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': ['get', 'color'], 'line-width': 5 }
+        paint: { 'line-color': ['get', 'color'], 'line-width': 5, 'line-emissive-strength': 1 }
     });
 
     endpoints = [endpoint(route[0], 'var(--color-online)'), endpoint(route[route.length - 1], 'var(--color-arrival)')];

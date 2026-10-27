@@ -15,6 +15,7 @@ import '../../data/network/device_service.dart';
 import '../location/battery_service.dart';
 import '../location/tracking_engine.dart';
 import '../location/tracking_permissions.dart';
+import 'last_known_center.dart';
 
 /// UI-side view of location sharing.
 ///
@@ -41,6 +42,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
              avatarUrl: 'https://avatars.githubusercontent.com/u/38632219?v=4',
            ) {
     WidgetsBinding.instance.addObserver(this);
+    unawaited(_restoreCenter());
     _peerSubscription = backend.peerStream.listen((data) {
       peers = data;
       notifyListeners();
@@ -90,7 +92,40 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
         lastLocation!.longitude.isFinite) {
       return LatLng(lastLocation!.latitude, lastLocation!.longitude);
     }
-    return AppConstants.defaultMapCenter;
+    // Before the engine's first fix lands, fall back to where this device
+    // last saw the user, so the map opens on a place instead of the globe.
+    return _cachedCenter ?? AppConstants.defaultMapCenter;
+  }
+
+  late final LastKnownCenter _lastCenter = LastKnownCenter(selfProfile.id);
+  LatLng? _cachedCenter;
+  LatLng? _lastStoredCenter;
+  bool _disposed = false;
+
+  /// Whether the map has a real place to open on: a live fix, or the one
+  /// cached from the last session.
+  bool get hasKnownLocation => lastLocation != null || _cachedCenter != null;
+
+  Future<void> _restoreCenter() async {
+    final center = await _lastCenter.load();
+    if (center == null || _disposed) return;
+    _cachedCenter = center;
+    if (lastLocation == null) notifyListeners();
+  }
+
+  /// Keep the newest fix for the next cold start. Written only when the
+  /// position moved a block, so a drive does not hammer the preferences.
+  void _rememberCenter(LocationPoint point) {
+    final stored = _lastStoredCenter;
+    if (stored != null &&
+        (point.latitude - stored.latitude).abs() < 0.0005 &&
+        (point.longitude - stored.longitude).abs() < 0.0005) {
+      return;
+    }
+    final center = LatLng(point.latitude, point.longitude);
+    _lastStoredCenter = center;
+    _cachedCenter = center;
+    unawaited(_lastCenter.save(center));
   }
 
   // ── App lifecycle ─────────────────────────────────────────────────────────
@@ -312,6 +347,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
         final point = TrackingFix.fromMap(event).toLocationPoint();
         if (!point.latitude.isFinite || !point.longitude.isFinite) return;
         lastLocation = point;
+        _rememberCenter(point);
         history = [point, ...history].take(40).toList();
         selfProfile.lastLocation = point;
         selfProfile.history = history;
@@ -406,6 +442,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   void dispose() {
     // The engine is deliberately left running: tracking outlives the UI.
     // Signing out stops it (see AuthProvider).
+    _disposed = true;
     WidgetsBinding.instance.removeObserver(this);
     _engineSubscription?.cancel();
     _peerSubscription?.cancel();
