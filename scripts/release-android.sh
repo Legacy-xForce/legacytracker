@@ -116,14 +116,13 @@ certs="$("$apksigner" verify --print-certs "$asset" 2>&1)"
 verify_status=$?
 set -e
 ((verify_status == 0)) || die "apksigner could not verify the APK:\n$certs"
-fingerprint="$(sed -n \
-  -e 's/^Signer #1 certificate SHA-256 digest: //p' \
-  -e 's/^V2 Signer: certificate SHA-256 digest: //p' \
-  <<<"$certs" | head -n 1)"
-subject="$(sed -n \
-  -e 's/^Signer #1 certificate DN: //p' \
-  -e 's/^V2 Signer: certificate DN: //p' \
-  <<<"$certs" | head -n 1)"
+# apksigner repeats the same certificate under a label per signing scheme it
+# finds ("Signer #1 certificate …", "V2 Signer: certificate …",
+# "V3.0 Signer: certificate …"), and which of those appear depends on the
+# build-tools on the runner, so match any of them.
+signer='^(Signer #[0-9]+|V[0-9.]+ Signer):? certificate '
+fingerprint="$(sed -n -E -e "s/${signer}SHA-256 digest: //p" <<<"$certs" | head -n 1)"
+subject="$(sed -n -E -e "s/${signer}DN: //p" <<<"$certs" | head -n 1)"
 [[ -n "$fingerprint" ]] || die "could not read the APK signing certificate from apksigner:\n$certs"
 if [[ -f "$cert_file" ]]; then
   expected="$(tr -d '[:space:]' <"$cert_file")"
