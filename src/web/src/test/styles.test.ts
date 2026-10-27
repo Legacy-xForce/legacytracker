@@ -149,4 +149,20 @@ describe('applyStandardTheme', () => {
         ]);
         expect(paints).toContainEqual(['satellite', 'raster-brightness-max', 0.45]);
     });
+
+    it('survives a style that is not done loading', () => {
+        // The initial mount calls this before the style exists; throwing
+        // here killed PeersMap's onMounted and left every layer on the map
+        // (replay included) without a map to draw on.
+        const map = {
+            setConfigProperty: () => {
+                throw new Error('Style is not done loading.');
+            },
+            getStyle: () => {
+                throw new Error('Style is not done loading.');
+            }
+        } as unknown as MapboxMap;
+
+        expect(() => applyStandardTheme(map, 'dusk')).not.toThrow();
+    });
 });

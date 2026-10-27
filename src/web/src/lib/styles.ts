@@ -85,16 +85,22 @@ export function applyStandardTheme(map: MapboxMap, preset: MapLightPreset): void
     try {
         map.setConfigProperty('basemap', 'lightPreset', preset);
     } catch {
-        // A style that does not expose the basemap import still gets the
-        // raster dimming below, so it respects the variant as far as it can.
+        // A style that is not loaded yet, or that does not expose the basemap
+        // import, cannot take the preset; the style.load handler retries.
     }
-    const style = map.getStyle();
-    if (!style) return;
-    const light = SATELLITE_LIGHT[preset];
-    for (const layer of style.layers ?? []) {
-        if (layer.type !== 'raster') continue;
-        map.setPaintProperty(layer.id, 'raster-brightness-min', light.brightness);
-        map.setPaintProperty(layer.id, 'raster-brightness-max', light.brightness);
-        map.setPaintProperty(layer.id, 'raster-saturation', light.saturation);
+    try {
+        const style = map.getStyle();
+        if (!style) return;
+        const light = SATELLITE_LIGHT[preset];
+        for (const layer of style.layers ?? []) {
+            if (layer.type !== 'raster') continue;
+            map.setPaintProperty(layer.id, 'raster-brightness-min', light.brightness);
+            map.setPaintProperty(layer.id, 'raster-brightness-max', light.brightness);
+            map.setPaintProperty(layer.id, 'raster-saturation', light.saturation);
+        }
+    } catch {
+        // getStyle throws "Style is not done loading" during the initial
+        // mount; nothing here may escape, or PeersMap's onMounted dies
+        // before publishing the map and every layer on it goes blind.
     }
 }
