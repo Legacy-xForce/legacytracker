@@ -4,9 +4,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legacytracker/src/data/models/user_model.dart';
 import 'package:legacytracker/src/data/network/auth_service.dart';
+import 'package:legacytracker/src/data/network/checkpoint_service.dart';
 import 'package:legacytracker/src/data/network/oidc_service.dart';
 import 'package:legacytracker/src/data/network/profile_service.dart';
 import 'package:legacytracker/src/features/auth/auth_provider.dart';
+import 'package:legacytracker/src/features/checkpoints/checkpoints_provider.dart';
 import 'package:legacytracker/src/features/tracking/local_avatar_store.dart';
 import 'package:legacytracker/src/features/tracking/widgets/tracking_users_drawer.dart';
 import 'package:provider/provider.dart';
@@ -173,6 +175,21 @@ void main() {
     expect(find.text('All people'), findsNothing);
   });
 
+  testWidgets('the header checkpoints button opens the places screen', (
+    tester,
+  ) async {
+    final host = _DrawerHost();
+    await tester.pumpWidget(host.build());
+
+    // It sits where the avatar stack was, in the peek header, so the places
+    // are one tap away without opening the sheet.
+    expect(find.text('Checkpoints'), findsOneWidget);
+
+    await tester.tap(find.text('Checkpoints'));
+    await tester.pumpAndSettle();
+    expect(find.text('Search checkpoints'), findsOneWidget);
+  });
+
   testWidgets('collapse folds the sheet back to its peek', (tester) async {
     final key = GlobalKey<TrackingUsersDrawerState>();
     final sizes = <double>[];
@@ -247,6 +264,12 @@ class _DrawerHost {
       providers: [
         Provider<LocalAvatarStore?>.value(value: null),
         ChangeNotifierProvider<AuthProvider>.value(value: _auth),
+        // The header button opens CheckpointsScreen, which reads it.
+        ChangeNotifierProvider<CheckpointsProvider>(
+          create: (_) => CheckpointsProvider(
+            service: CheckpointService(baseUrl: 'https://tracker.example'),
+          ),
+        ),
       ],
       child: MaterialApp(
         home: Scaffold(
