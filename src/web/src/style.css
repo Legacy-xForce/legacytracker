@@ -159,37 +159,6 @@ html[data-theme='catppuccin-latte'] {
     color-scheme: light;
 }
 
-/* Adaptive follows the system brightness; the light teal fallback is used on
-   the web, which has no Material You wallpaper palette. */
-html[data-theme='adaptive'] {
-    color-scheme: dark;
-}
-
-@media (prefers-color-scheme: light) {
-    html[data-theme='adaptive'] {
-        --color-surface: #f4fbf8;
-        --color-surface-container-lowest: #ffffff;
-        --color-surface-container-low: #eff5f2;
-        --color-surface-container: #e9efed;
-        --color-surface-container-high: #e3eae7;
-        --color-surface-container-highest: #dde4e1;
-        --color-on-surface: #161d1c;
-        --color-on-surface-variant: #3f4947;
-        --color-outline: #6f7977;
-        --color-outline-variant: #bec9c6;
-        --color-primary: #006a60;
-        --color-on-primary: #ffffff;
-        --color-primary-container: #9ef2e4;
-        --color-on-primary-container: #005048;
-        --color-secondary-container: #cce8e2;
-        --color-on-secondary-container: #334b47;
-        --color-error: #ba1a1a;
-        --color-error-container: #ffdad6;
-        --color-on-error-container: #93000a;
-        color-scheme: light;
-    }
-}
-
 /* Material 3 type scale, as Flutter applies it. */
 @utility type-headline-sm {
     font-size: 24px;

@@ -1,15 +1,9 @@
 import { storage } from '../lib/storage';
 
 export type ThemeId =
-    | 'teal'
-    | 'oled'
-    | 'catppuccin-mocha'
-    | 'catppuccin-macchiato'
-    | 'catppuccin-frappe'
-    | 'catppuccin-latte'
-    | 'adaptive';
+    'teal' | 'oled' | 'catppuccin-mocha' | 'catppuccin-macchiato' | 'catppuccin-frappe' | 'catppuccin-latte';
 
-export type ThemeMode = 'dark' | 'light' | 'system';
+export type ThemeMode = 'dark' | 'light';
 
 export interface AppTheme {
     id: ThemeId;
@@ -73,13 +67,6 @@ export const THEMES: AppTheme[] = [
         shortLabel: 'Latte',
         mode: 'light',
         preview: { canvas: '#eff1f5', raised: '#e6e9ef', accent: '#8839ef', text: '#4c4f69' }
-    },
-    {
-        id: 'adaptive',
-        label: 'Adaptive',
-        shortLabel: 'Adaptive',
-        mode: 'system',
-        preview: { canvas: '#0e1513', raised: '#eff1f5', accent: '#82d5c8', text: '#4c4f69' }
     }
 ];
 
@@ -106,12 +93,11 @@ export function getStoredTheme(): ThemeId {
 export function applyTheme(id: ThemeId): void {
     const theme = getTheme(id);
     const root = document.documentElement;
-    const scheme = theme.mode === 'system' ? 'dark light' : theme.mode;
 
     root.dataset.theme = theme.id;
-    root.style.colorScheme = scheme;
+    root.style.colorScheme = theme.mode;
 
-    document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', scheme);
+    document.querySelector('meta[name="color-scheme"]')?.setAttribute('content', theme.mode);
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', theme.preview.canvas);
 }
 

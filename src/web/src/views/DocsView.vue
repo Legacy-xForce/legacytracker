@@ -8,8 +8,7 @@ import { getStoredTheme, getTheme } from '../theme/themes';
 // Scalar renders the OpenAPI document. Follow the theme the app already
 // applied so the public reference does not flash a different palette.
 const theme = getTheme(getStoredTheme());
-const darkMode =
-    theme.mode === 'dark' || (theme.mode === 'system' && window.matchMedia('(prefers-color-scheme: dark)').matches);
+const darkMode = theme.mode === 'dark';
 </script>
 
 <template>
