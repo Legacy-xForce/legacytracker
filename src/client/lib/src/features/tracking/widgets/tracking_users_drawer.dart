@@ -16,6 +16,7 @@ import '../../../data/network/history_service.dart';
 import '../../../data/network/location_refresh_service.dart';
 import '../../../data/network/sharing_service.dart';
 import '../../auth/auth_provider.dart';
+import '../../checkpoints/checkpoints_screen.dart';
 import '../local_avatar_store.dart';
 import '../sharing_provider.dart';
 import '../tracking_controller.dart';
@@ -222,6 +223,19 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     widget.onSelectionCleared();
   }
 
+  void _openCheckpoints() {
+    final last = widget.selfProfile.lastLocation;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => CheckpointsScreen(
+          initialCenter: last == null
+              ? null
+              : LatLng(last.latitude, last.longitude),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final selfAvatarBytes = context.watch<LocalAvatarStore?>()?.bytes;
@@ -305,7 +319,7 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                         users: users,
                         showingDetail: detailUser != null && !_isCollapsed,
                         onBack: _closeDetail,
-                        onSelect: _openDetail,
+                        onCheckpoints: _openCheckpoints,
                       ),
                     ),
                     Expanded(
@@ -362,14 +376,14 @@ class _SheetHeader extends StatelessWidget {
     required this.users,
     required this.showingDetail,
     required this.onBack,
-    required this.onSelect,
+    required this.onCheckpoints,
   });
 
   final double height;
   final List<_DrawerUser> users;
   final bool showingDetail;
   final VoidCallback onBack;
-  final ValueChanged<UserProfile> onSelect;
+  final VoidCallback onCheckpoints;
 
   @override
   Widget build(BuildContext context) {
@@ -459,9 +473,18 @@ class _SheetHeader extends StatelessWidget {
                       ),
                     ),
                   ],
-                  const Spacer(),
-                  if (!showingDetail)
-                    _AvatarStack(users: users, onSelect: onSelect),
+                  if (showingDetail)
+                    const Spacer()
+                  else
+                    // Expanded rather than a Spacer plus a fixed-width button:
+                    // the label ellipsizes into whatever the "People" count
+                    // leaves, so a large text scale cannot overflow the header.
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerRight,
+                        child: _CheckpointsButton(onTap: onCheckpoints),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -472,48 +495,53 @@ class _SheetHeader extends StatelessWidget {
   }
 }
 
-/// A few overlapping faces in the header — a glance at who's sharing. Tapping
-/// one opens that person, so the collapsed sheet is a single tap away.
-class _AvatarStack extends StatelessWidget {
-  const _AvatarStack({required this.users, this.onSelect});
+/// The header's compact action: the group's named places, which the map shows
+/// instead of the street. Secondary on purpose — listing people is what this
+/// sheet is for. Its label gives way to an ellipsis on narrow screens or under
+/// large text, so the header row never overflows.
+class _CheckpointsButton extends StatelessWidget {
+  const _CheckpointsButton({required this.onTap});
 
-  final ValueChanged<UserProfile>? onSelect;
-
-  final List<_DrawerUser> users;
-
-  static const _size = 28.0;
-  static const _step = 20.0;
-  static const _max = 4;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final shown = users.take(_max).toList();
-    final ring = Theme.of(context).colorScheme.surfaceContainerLow;
-    return SizedBox(
-      width: _size + (shown.length - 1) * _step,
-      height: _size,
-      child: Stack(
-        children: [
-          for (var i = shown.length - 1; i >= 0; i--)
-            Positioned(
-              left: i * _step,
-              child: GestureDetector(
-                onTap: onSelect == null
-                    ? null
-                    : () => onSelect!(shown[i].profile),
-                child: UserAvatar(
-                  userId: shown[i].profile.id,
-                  name: shown[i].profile.name,
-                  avatarUrl: shown[i].profile.avatarUrl,
-                  imageBytes: shown[i].avatarBytes,
-                  size: _size,
-                  ringColor: ring,
-                  ringWidth: 2,
-                  dimmed: shown[i].isStale,
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return Semantics(
+      button: true,
+      child: Material(
+        color: scheme.secondaryContainer,
+        borderRadius: BorderRadius.circular(999),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(999),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(
+                  Icons.place_outlined,
+                  size: 16,
+                  color: scheme.onSecondaryContainer,
                 ),
-              ),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    'Checkpoints',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.labelMedium?.copyWith(
+                      color: scheme.onSecondaryContainer,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
             ),
-        ],
+          ),
+        ),
       ),
     );
   }

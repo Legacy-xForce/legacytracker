@@ -344,6 +344,10 @@ void main() {
       expect(find.text('2 going'), findsOneWidget);
       expect(find.text('user1'), findsOneWidget);
       expect(find.text('Open in Legacy Calendar'), findsOneWidget);
+      // Both actions are filled buttons; the calendar one is the secondary (tonal) variant.
+      expect(find.widgetWithText(FilledButton, 'Go'), findsOneWidget);
+      expect(find.widgetWithText(FilledButton, 'Open in Legacy Calendar'), findsOneWidget);
+      expect(find.byType(TextButton), findsNothing);
       await tester.pumpWidget(const SizedBox());
     });
 

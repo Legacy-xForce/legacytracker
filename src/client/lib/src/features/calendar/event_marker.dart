@@ -168,8 +168,11 @@ class _EventDetailsSheetState extends State<EventDetailsSheet> {
               ),
             ],
             const SizedBox(height: 12),
+            // Both buttons are full width (the theme's minimumSize), so they
+            // stack and the gap between them is the wrap's run spacing.
             Wrap(
               spacing: 8,
+              runSpacing: 8,
               children: [
                 if (event.point != null || event.location != null)
                   FilledButton.icon(
@@ -177,7 +180,7 @@ class _EventDetailsSheetState extends State<EventDetailsSheet> {
                     icon: const Icon(Icons.directions_rounded, size: 18),
                     label: const Text('Go'),
                   ),
-                TextButton.icon(
+                FilledButton.tonalIcon(
                   onPressed: _openInCalendar,
                   icon: const Icon(Icons.open_in_new_rounded, size: 18),
                   label: const Text('Open in Legacy Calendar'),
