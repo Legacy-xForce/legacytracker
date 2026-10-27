@@ -115,7 +115,15 @@ async function select(id: string) {
 }
 
 function showPeople() {
+    selectedId.value = null;
     view.value = 'people';
+}
+
+// The viewer moved the map themselves, so nobody they picked is on screen any more:
+// let go of the highlight, the camera and the details the marker opened.
+function deselect() {
+    selectedId.value = null;
+    if (view.value === 'person') view.value = 'people';
 }
 
 function showTravel() {
@@ -250,6 +258,7 @@ watch(replaying, (isReplaying) => {
             :insets="insets"
             :hidden="replaying"
             @select="select"
+            @deselect="deselect"
         >
             <CheckpointsLayer v-if="showCheckpoints && !replaying" :checkpoints="checkpoints.checkpoints" />
             <EventsLayer v-if="events.available && events.enabled && !replaying" :events="events.events" />

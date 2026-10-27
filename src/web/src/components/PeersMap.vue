@@ -30,7 +30,7 @@ const props = withDefaults(
     }>(),
     { mapStyle: 'standard', lightPreset: 'day', insets: () => NO_INSETS, hidden: false }
 );
-const emit = defineEmits<{ select: [id: string] }>();
+const emit = defineEmits<{ select: [id: string]; deselect: [] }>();
 
 const element = ref<HTMLElement | null>(null);
 let map: MapboxMap | null = null;
@@ -322,8 +322,13 @@ onMounted(() => {
     // A style switch resets config properties, so re-apply the theme on every load.
     map.on('style.load', applyTheme);
     applyTheme();
-    // Panning by hand means "let me look around": stop following.
-    map.on('dragstart', () => (following.value = null));
+    // Panning by hand means "let me look around": stop following and let go of
+    // whoever is highlighted. Only a real drag gets here, never a tap on a
+    // marker or a camera move of our own.
+    map.on('dragstart', () => {
+        following.value = null;
+        emit('deselect');
+    });
     map.on('zoomstart', () => (zooming = true));
     map.on('zoomend', () => {
         zooming = false;
