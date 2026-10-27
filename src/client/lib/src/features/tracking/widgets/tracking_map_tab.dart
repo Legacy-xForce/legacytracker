@@ -119,11 +119,6 @@ class TrackingMapTabState extends State<TrackingMapTab>
   /// with the older bitmaps cannot write itself back into the cache.
   int _iconEpoch = 0;
 
-  /// The web's pulse breathes once every 1.2s; 16 steps at 150ms give that
-  /// without a frame-by-frame rebuild.
-  Timer? _pulseTimer;
-  int _pulseStep = 0;
-
   /// What the map draws. Marker positions change ~10x a second; rebuilding the
   /// drawer and the control column alongside them is what made the map
   /// stutter, so motion updates this scene and the map re-syncs on its own.
@@ -175,7 +170,6 @@ class TrackingMapTabState extends State<TrackingMapTab>
 
   @override
   void dispose() {
-    _pulseTimer?.cancel();
     _icons
       ..removeListener(_handleIconsChanged)
       ..dispose();
@@ -686,26 +680,6 @@ class TrackingMapTabState extends State<TrackingMapTab>
     _scene.markChanged();
   }
 
-  /// 0.725 → 1 → 0.725, matching PeerMarker.vue's keyframes.
-  double get _pulseScale {
-    final step = _pulseStep <= 7 ? _pulseStep : 15 - _pulseStep;
-    return 0.725 + 0.275 * (step / 7);
-  }
-
-  void _syncPulseTimer(bool moving) {
-    if (!moving) {
-      _pulseTimer?.cancel();
-      _pulseTimer = null;
-      if (_pulseStep != 0) _pulseStep = 0;
-      return;
-    }
-    _pulseTimer ??= Timer.periodic(const Duration(milliseconds: 150), (_) {
-      if (!mounted) return;
-      _pulseStep = (_pulseStep + 1) % 16;
-      _publishScene();
-    });
-  }
-
   void _publishScene() {
     if (!mounted) return;
     _refreshScene(
@@ -756,8 +730,6 @@ class TrackingMapTabState extends State<TrackingMapTab>
         );
       }
     }
-
-    _syncPulseTimer(markers.any((m) => m.layer == MapMarkerLayer.pulse));
 
     // Skip the notify when nothing moved: the drawer rebuilds for other
     // reasons, and re-syncing identical annotations is pure overhead.
@@ -870,26 +842,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
 
       final member = group.members.first.value;
       final person = persons.first;
-      if (single && person.isMoving) {
-        final pulse = _imageFor(
-          'pulse:${person.isStale ? 'stale' : colors.id}',
-          () => _icons.pulseMarker(
-            person.isStale ? MarkerColors.staleRing : colors.accent,
-          ),
-        );
-        if (pulse != null) {
-          markers.add(
-            MapMarker(
-              id: 'pulse-${person.id}',
-              position: group.members.first.point,
-              image: pulse,
-              layer: MapMarkerLayer.pulse,
-              // The web scales the whole marker, pulse included.
-              iconSize: _pulseScale * (person.isSelected ? 1.18 : 1.08),
-            ),
-          );
-        }
-      }
+      final heading = member.profile.lastLocation?.heading;
       // The web scales the whole marker: selected 1.18, moving 1.08.
       final markerScale = single
           ? person.isSelected
@@ -898,6 +851,28 @@ class TrackingMapTabState extends State<TrackingMapTab>
                 ? 1.08
                 : 1.0
           : 1.0;
+      if (single && person.isMoving && heading != null && heading.isFinite) {
+        // PeerMarker.vue's cone under anyone on the move; stale keeps its
+        // offline grey, like the ring and the badges.
+        final beam = _imageFor(
+          'beam:${person.isStale ? 'stale' : colors.id}',
+          () => _icons.headingBeam(
+            person.isStale ? MarkerColors.staleRing : colors.accent,
+          ),
+        );
+        if (beam != null) {
+          markers.add(
+            MapMarker(
+              id: 'beam-${person.id}',
+              position: group.members.first.point,
+              image: beam,
+              layer: MapMarkerLayer.beam,
+              rotation: heading,
+              iconSize: markerScale,
+            ),
+          );
+        }
+      }
       markers.add(
         MapMarker(
           id: slotId,

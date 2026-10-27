@@ -73,10 +73,10 @@ class MarkerPerson {
 }
 
 /// Marker colours derived from the app theme, so the avatar ring, the badge
-/// pills and the pulse follow whatever palette the user picked - including
-/// dynamic Material You - instead of baking the teal scheme into bitmaps that
-/// then look wrong under a light theme. The ring is the colour of the pill
-/// under the avatar, which is what the web does with its badge tokens.
+/// pills and the heading beam follow whatever palette the user picked -
+/// including dynamic Material You - instead of baking the teal scheme into
+/// bitmaps that then look wrong under a light theme. The ring is the colour of
+/// the pill under the avatar, which is what the web does with its badge tokens.
 class MarkerColors {
   const MarkerColors({
     required this.accent,
@@ -103,7 +103,7 @@ class MarkerColors {
     peerPillText: Colors.white,
   );
 
-  /// The accent: pulse, heading beam and the cluster tail dot.
+  /// The accent: heading beam and the cluster tail dot.
   final Color accent;
 
   /// Your ring and your badge pill share one colour, as do everyone else's.
@@ -198,8 +198,8 @@ class MarkerIconFactory extends ChangeNotifier {
   static const _badgeGap = 4.0;
   static const _badgePadX = 8.0;
 
-  /// The web client's person marker: the avatar inside a ring, a soft pulse and
-  /// a speed badge while moving, and the battery badge below. Selection and
+  /// The web client's person marker: the avatar inside a ring, a speed badge
+  /// while moving and the battery badge below. Selection and
   /// motion scaling are applied by the caller as the annotation's icon size.
   /// The ring and both pills take [colors] from the app theme; stale keeps its
   /// fixed offline greys because that is a state, not a palette.
@@ -466,21 +466,6 @@ class MarkerIconFactory extends ChangeNotifier {
     iconPainter.dispose();
     textPainter.dispose();
     return image;
-  }
-
-  /// The soft pulse under a moving person, sized by the caller so it can breathe
-  /// without re-rendering anything: the web fades and scales this circle.
-  Future<MarkerImage> pulseMarker(Color color) async {
-    final id = 'pulse-${color.toARGB32()}';
-    final cached = _cached(id);
-    if (cached != null) return cached;
-    return _render(80, 80, (canvas) {
-      canvas.drawCircle(
-        const Offset(40, 40),
-        40,
-        Paint()..color = color.withValues(alpha: 0.22),
-      );
-    }, id: id);
   }
 
   /// A rounded-square calendar pin in the event's colour.

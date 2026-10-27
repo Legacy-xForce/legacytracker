@@ -18,7 +18,6 @@ import 'tracking_map_layer.dart';
 enum MapMarkerLayer {
   label,
   beam,
-  pulse,
   base,
   event,
   person,
@@ -424,8 +423,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       await manager.setIconAllowOverlap(true);
       await manager.setIconIgnorePlacement(true);
       await manager.setTextAllowOverlap(true);
-      // Mapbox delivers a tap only to the topmost annotation, so the beam,
-      // pulse and name pills must not compete with the people underneath.
+      // Mapbox delivers a tap only to the topmost annotation, so the beam and
+      // name pills must not compete with the people underneath.
       if (_interactiveLayers.contains(entry.key)) _registerTaps(manager);
     }
     await labelManager.setIconAllowOverlap(true);

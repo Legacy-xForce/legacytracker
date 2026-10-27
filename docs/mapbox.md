@@ -129,10 +129,12 @@ to an embedded token. The token request has no body and deliberately sends no
   (`km/h`) and a battery badge under the avatar (dark pill, accent for
   yourself, grey when stale). Selection and motion scale the annotation
   (1.18 / 1.08) rather than adding bitmaps.
-- The moving pulse is its own annotation whose `iconSize` breathes between
-  0.725 and 1 every 1.2 s (16 steps of 150 ms), because it has to change over
-  time; the heading beam is a 56° cone reaching 77 px, rotated per annotation.
-  Neither re-renders a bitmap per frame.
+- The heading beam is a 56° cone reaching 77 px, its own annotation rotated per
+  marker and scaled with it, so nothing re-renders a bitmap per frame. The web
+  also pulses a translucent circle under a moving person; the app deliberately
+  does not. A native annotation only changes on the ~10 fps scene tick, so a
+  breathing `iconSize` (the web's CSS 0.725 → 1 every 1.2 s) lands as ~16
+  quantised steps that strobe and trail the marker they sit under.
 - Groups use the web's cluster bubble: up to three faces with a 2 px ring, a
   `+N` overflow face and a tail dot on the shared location, at 38 px faces and
   46 / 8 / 12 px metrics. The bubble is painted in the same colour as the
@@ -157,7 +159,7 @@ to an embedded token. The token request has no body and deliberately sends no
   layer carries the payload instead, so a tap resolves to the person you can
   actually see. The cluster, cluster-face, event and replay-endpoint layers
   subscribe as well, plus the checkpoint polygon manager (tapping a circle
-  opens that checkpoint's editor); beams, pulses and checkpoint name pills are
+  opens that checkpoint's editor); beams and checkpoint name pills are
   decoration and must never sit between a finger and a person.
 - Annotation managers are created once per map. On every `style.load` the
   widget re-adds style images and repopulates the managers: the sprite is wiped
@@ -180,9 +182,10 @@ clients.
 
 A Mapbox annotation manager is one style layer: markers, labels, checkpoint
 circles and each route layer get their own, created in draw order - route
-casing, route lines, checkpoint polygons, checkpoint name pills, heading beams,
-base markers, events, person bitmaps, clusters, cluster-face hit areas, person
-hit areas.
+casing, route lines, checkpoint polygons, checkpoint name pills, heading
+beams, base markers, events, person bitmaps, clusters, cluster-face hit areas,
+person hit areas. Every `MapMarkerLayer` value needs a manager: a layer
+without one is skipped by the sync, so its annotations simply never appear.
 
 The replay route is a dark casing under speed-coloured runs, mirroring the
 working web layer (`src/web/src/components/ReplayLayer.vue`: `line-color`

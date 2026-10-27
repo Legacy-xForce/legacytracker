@@ -273,6 +273,29 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
             : _icons.clusterMarker(persons, style: ClusterStyle.light),
       );
       if (image == null) continue;
+      final person = persons.first;
+      if (single && person.isMoving) {
+        final accent = person.isStale
+            ? MarkerColors.staleRing
+            : markerAccentColor;
+        // The cone the live map puts under a moving person, so the harness can
+        // show it without a login or a backend.
+        final beam = _imageFor(
+          'beam:${person.isStale ? 'stale' : 'accent'}',
+          () => _icons.headingBeam(accent),
+        );
+        if (beam != null) {
+          markers.add(
+            MapMarker(
+              id: 'beam-${person.id}',
+              position: group.members.first.point,
+              image: beam,
+              layer: MapMarkerLayer.beam,
+              rotation: group.members.first.value.heading,
+            ),
+          );
+        }
+      }
       markers.add(
         MapMarker(
           id: single
