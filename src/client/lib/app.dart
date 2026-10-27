@@ -141,6 +141,20 @@ class App extends StatelessWidget {
                 );
               }
 
+              if (themeSettings.themeId == AppThemeId.oledAdaptive) {
+                // The phone's accents over the OLED's black surfaces. Held to
+                // dark: a white background would not be an OLED theme.
+                final adaptiveOnBlack = buildAppTheme(
+                  oledSurfaces(darkDynamic ?? adaptiveScheme(Brightness.dark)),
+                );
+                return _materialApp(
+                  auth,
+                  themeMode: ThemeMode.dark,
+                  theme: adaptiveOnBlack,
+                  darkTheme: adaptiveOnBlack,
+                );
+              }
+
               final selected = buildThemeFor(themeSettings.themeId);
               return _materialApp(
                 auth,

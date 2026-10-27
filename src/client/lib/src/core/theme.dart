@@ -2,12 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 /// Themes shipped with the app. The teal one is the original look; the
-/// Catppuccin flavours and OLED match Legacy Calendar's palette, and adaptive
-/// follows the phone's wallpaper and light/dark setting where the platform
-/// supports it.
+/// Catppuccin flavours and OLED match Legacy Calendar's palette, and the two
+/// adaptive themes take their accents from the phone's wallpaper where the
+/// platform supports it — Adaptive also follows its light/dark setting, while
+/// OLED Adaptive stays pure black.
 enum AppThemeId {
   teal,
   oled,
+  oledAdaptive,
   catppuccinMocha,
   catppuccinMacchiato,
   catppuccinFrappe,
@@ -52,6 +54,14 @@ class AppTheme {
   final Brightness brightness;
   final AppThemePreview preview;
 
+  /// Whether the accents come from the phone's own palette (Material You)
+  /// rather than the theme's fixed one.
+  bool get usesSystemAccents =>
+      id == AppThemeId.adaptive || id == AppThemeId.oledAdaptive;
+
+  /// Whether the whole theme follows the platform's light/dark setting. The
+  /// background stays pure black whatever the system says, so OLED Adaptive
+  /// does not.
   bool get followsSystem => id == AppThemeId.adaptive;
 }
 
@@ -72,6 +82,18 @@ const appThemes = <AppTheme>[
     id: AppThemeId.oled,
     label: 'OLED',
     description: 'Pure black for OLED screens',
+    brightness: Brightness.dark,
+    preview: AppThemePreview(
+      canvas: Color(0xFF000000),
+      raised: Color(0xFF0D1312),
+      accent: Color(0xFF82D5C8),
+      text: Color(0xFFDDE4E1),
+    ),
+  ),
+  AppTheme(
+    id: AppThemeId.oledAdaptive,
+    label: 'OLED Adaptive',
+    description: "Pure black with your phone's accents",
     brightness: Brightness.dark,
     preview: AppThemePreview(
       canvas: Color(0xFF000000),
@@ -163,6 +185,9 @@ ColorScheme schemeFor(AppThemeId id, Brightness brightness) {
         brightness: brightness,
       );
     case AppThemeId.oled:
+    case AppThemeId.oledAdaptive:
+      // With nothing to adapt to, OLED Adaptive is just OLED; the app layers
+      // the phone's accents over these surfaces in its DynamicColorBuilder.
       return _oledScheme();
     case AppThemeId.catppuccinMocha:
       return _catppuccinScheme(_CatppuccinPalette.mocha);
@@ -339,11 +364,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
   );
 }
 
-ColorScheme _oledScheme() {
-  final base = ColorScheme.fromSeed(
-    seedColor: Colors.teal,
-    brightness: Brightness.dark,
-  );
+/// [base] with the OLED's pure-black surface ramp pasted over it. The accents
+/// stay whatever [base] was seeded with, which is what lets OLED Adaptive reuse
+/// the same black surfaces under the phone's own palette.
+ColorScheme oledSurfaces(ColorScheme base) {
   const black = Color(0xFF000000);
   const onSurface = Color(0xFFDDE4E1);
   return base.copyWith(
@@ -361,8 +385,13 @@ ColorScheme _oledScheme() {
     outlineVariant: const Color(0xFF26302E),
     inverseSurface: onSurface,
     onInverseSurface: const Color(0xFF0E1513),
-    inversePrimary: const Color(0xFF00504A),
     surfaceTint: Colors.transparent,
+  );
+}
+
+ColorScheme _oledScheme() {
+  return oledSurfaces(
+    ColorScheme.fromSeed(seedColor: Colors.teal, brightness: Brightness.dark),
   );
 }
 

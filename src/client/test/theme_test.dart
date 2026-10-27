@@ -20,6 +20,20 @@ void main() {
     }
   });
 
+  test('OLED Adaptive keeps the black surfaces under the phone accents', () {
+    final phone = ColorScheme.fromSeed(
+      seedColor: Colors.purple,
+      brightness: Brightness.dark,
+    );
+    final scheme = oledSurfaces(phone);
+
+    expect(scheme.surface, const Color(0xFF000000));
+    expect(scheme.surfaceContainerLowest, const Color(0xFF000000));
+    expect(scheme.primary, phone.primary);
+    expect(scheme.secondaryContainer, phone.secondaryContainer);
+    expect(scheme.error, phone.error);
+  });
+
   test('teal is the default', () {
     SharedPreferences.setMockInitialValues({});
     expect(ThemeSettings().themeId, AppThemeId.teal);
