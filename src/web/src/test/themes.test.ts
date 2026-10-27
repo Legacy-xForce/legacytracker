@@ -25,8 +25,7 @@ describe('themes', () => {
             'catppuccin-mocha',
             'catppuccin-macchiato',
             'catppuccin-frappe',
-            'catppuccin-latte',
-            'adaptive'
+            'catppuccin-latte'
         ]);
         expect(THEME_STORAGE_KEY).toBe('legacytracker.theme');
     });
@@ -62,10 +61,10 @@ describe('themes', () => {
         expect(document.querySelector('meta[name="theme-color"]')?.getAttribute('content')).toBe('#eff1f5');
     });
 
-    it('lets adaptive follow the system', () => {
-        applyTheme('adaptive');
+    it('drops the retired adaptive theme back to teal', () => {
+        localStorage.setItem(THEME_STORAGE_KEY, 'adaptive');
 
-        expect(document.documentElement.style.colorScheme).toBe('dark light');
-        expect(document.querySelector('meta[name="color-scheme"]')?.getAttribute('content')).toBe('dark light');
+        expect(isThemeId('adaptive')).toBe(false);
+        expect(getStoredTheme()).toBe(DEFAULT_THEME_ID);
     });
 });

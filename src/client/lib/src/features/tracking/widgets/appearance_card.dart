@@ -141,10 +141,10 @@ class _ThemeSwatch extends StatelessWidget {
         shape: BoxShape.circle,
         color: theme.followsSystem ? null : preview.canvas,
         gradient: theme.followsSystem
-            ? const LinearGradient(
+            ? LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: [Color(0xFF0E1513), Color(0xFFEFF1F5)],
+                colors: [preview.canvas, preview.raised],
               )
             : null,
         border: Border.all(
@@ -152,7 +152,9 @@ class _ThemeSwatch extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: theme.followsSystem
+        // A dot for a theme whose accents come from the phone: its colour is
+        // only an example, so the fixed bars would over-claim the palette.
+        child: theme.usesSystemAccents
             ? Container(
                 width: 9,
                 height: 9,

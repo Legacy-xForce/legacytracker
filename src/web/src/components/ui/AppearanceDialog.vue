@@ -2,7 +2,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import Icon from './Icon.vue';
 import { useAppearanceStore } from '../../stores/appearance';
-import { THEMES, type AppTheme } from '../../theme/themes';
+import { THEMES } from '../../theme/themes';
 
 const open = defineModel<boolean>({ required: true });
 const appearance = useAppearanceStore();
@@ -14,16 +14,6 @@ function close() {
 
 function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape' && open.value) close();
-}
-
-function swatchStyle(theme: AppTheme) {
-    return theme.id === 'adaptive'
-        ? { background: 'linear-gradient(135deg, #0e1513 0 50%, #eff1f5 50% 100%)' }
-        : { backgroundColor: theme.preview.canvas };
-}
-
-function modeLabel(theme: AppTheme) {
-    return theme.mode === 'system' ? 'follows the system' : theme.mode;
 }
 
 watch(open, async (isOpen) => {
@@ -56,7 +46,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     <div>
                         <h2 id="appearance-title" class="type-title-lg font-bold">Appearance</h2>
                         <p class="type-body-sm text-on-surface-variant mt-1">
-                            OLED, Catppuccin or adaptive. Saved on this device only.
+                            OLED or Catppuccin. Saved on this device only.
                         </p>
                     </div>
                     <button
@@ -76,7 +66,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         type="button"
                         role="radio"
                         :aria-checked="appearance.theme === option.id"
-                        :aria-label="`${option.label}, ${modeLabel(option)}`"
+                        :aria-label="`${option.label}, ${option.mode}`"
                         class="flex min-h-11 items-center gap-2 rounded-full border py-1 pr-3 pl-1.5 transition-colors"
                         :class="
                             appearance.theme === option.id
@@ -87,15 +77,9 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     >
                         <span
                             class="border-outline-variant flex size-7 shrink-0 items-center justify-center rounded-full border"
-                            :style="swatchStyle(option)"
+                            :style="{ backgroundColor: option.preview.canvas }"
                         >
                             <span
-                                v-if="option.id === 'adaptive'"
-                                class="size-2.5 rounded-full border-2 border-white/80"
-                                :style="{ backgroundColor: option.preview.accent }"
-                            />
-                            <span
-                                v-else
                                 class="flex size-4 flex-col items-center justify-center gap-[3px] rounded-[4px]"
                                 :style="{ backgroundColor: option.preview.raised }"
                             >
