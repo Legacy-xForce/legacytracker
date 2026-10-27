@@ -59,9 +59,10 @@ The card's *Check* / *Install* buttons still work, for testing.
    for confirmation, creates the GitHub release and checks the digest GitHub
    recorded.
 
-The `Release Android and iOS` workflow does the same and also builds an
-unsigned iOS IPA on a macOS runner, attaching it to the release next to the
-APK. To attach an existing IPA from a local release, pass `--ipa PATH`.
+The `Release Android and iOS` workflow does the same and also attaches an
+unsigned iOS IPA to the release. It reuses the IPA that CI already built for the
+commit being tagged, and builds one on a macOS runner when there is nothing to
+reuse. To attach an existing IPA from a local release, pass `--ipa PATH`.
 
 To try a build on a few phones first, pass `--prerelease`. The server ignores
 prereleases, so you can install the APK from the release page by hand. Roll it
