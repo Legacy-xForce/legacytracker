@@ -3,13 +3,18 @@
 # from the tracker server within minutes and install it in the background —
 # see docs/app-updates.md.
 #
-#   scripts/release-android.sh [--notes "What changed"] [--ipa PATH] [--prerelease] [--allow-dirty] [--yes]
+#   scripts/release-android.sh [--notes "What changed"] [--apk PATH] [--ipa PATH] [--prerelease] [--allow-dirty] [--yes]
 #
 # The version comes from src/client/pubspec.yaml (`version: 1.2.0+12`). Bump
 # the build number after the `+` for every release: phones only install a
 # higher one.
 #
 #   --notes TEXT    release notes, shown in the app's update card
+#   --apk PATH      APK to publish, already built by CI and signed here with
+#                   the release key. Needs ANDROID_KEYSTORE plus
+#                   ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS and
+#                   ANDROID_KEY_PASSWORD. Without it the APK is built from
+#                   this checkout, signed by Gradle from android/key.properties.
 #   --ipa PATH      unsigned iOS IPA to attach to the same release. Also
 #                   publishes an AltStore/SideStore source feed next to it,
 #                   both under fixed asset names so their URLs never move.
@@ -27,6 +32,7 @@ repo="${ANDROID_RELEASES_REPO:-Legacy-xForce/legacytracker}"
 cert_file="$client/android/release-signing-cert.sha256"
 
 notes=""
+apk=""
 ipa=""
 prerelease=()
 allow_dirty=false
@@ -34,11 +40,12 @@ assume_yes=false
 while (($#)); do
   case "$1" in
     --notes) notes="${2:?--notes needs a value}"; shift 2 ;;
+    --apk) apk="${2:?--apk needs a value}"; shift 2 ;;
     --ipa) ipa="${2:?--ipa needs a value}"; shift 2 ;;
     --prerelease) prerelease=(--prerelease); shift ;;
     --allow-dirty) allow_dirty=true; shift ;;
     --yes) assume_yes=true; shift ;;
-    -h | --help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,25p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -67,16 +74,43 @@ commit="$(git -C "$root" rev-parse HEAD)"
 [[ -n "$(git -C "$root" branch -r --contains "$commit")" ]] ||
   die "commit ${commit:0:7} isn't pushed; push it first (the release tag points at it)"
 
-# ── Build ────────────────────────────────────────────────────────────────────
-(cd "$client" && flutter build apk --release)
-asset="$client/build/legacytracker-$name-$code.apk"
-cp "$client/build/app/outputs/flutter-apk/app-release.apk" "$asset"
-
-# ── Signing ──────────────────────────────────────────────────────────────────
+# ── APK ──────────────────────────────────────────────────────────────────────
 sdk="$(sed -n 's/^sdk\.dir=//p' "$client/android/local.properties" 2>/dev/null || true)"
 sdk="${sdk:-${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}}"
-apksigner="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name apksigner 2>/dev/null | sort -V | tail -1)"
-[[ -x "$apksigner" ]] || die "apksigner not found under ${sdk:-<no Android SDK>}/build-tools"
+find_build_tool() {
+  local tool
+  tool="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name "$1" 2>/dev/null | sort -V | tail -1)"
+  [[ -x "$tool" ]] || die "$1 not found under ${sdk:-<no Android SDK>}/build-tools"
+  echo "$tool"
+}
+apksigner="$(find_build_tool apksigner)"
+zipalign="$(find_build_tool zipalign)"
+
+asset="$client/build/legacytracker-$name-$code.apk"
+mkdir -p "$(dirname "$asset")"
+if [[ -n "$apk" ]]; then
+  # CI's APK carries the runner's debug key; apksigner strips that and puts the
+  # release key on the bytes CI validated.
+  [[ -f "$apk" ]] || die "APK not found: $apk"
+  for var in ANDROID_KEYSTORE ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+    [[ -n "${!var:-}" ]] || die "--apk needs $var to be set"
+  done
+  [[ -f "$ANDROID_KEYSTORE" ]] || die "keystore not found: $ANDROID_KEYSTORE"
+  aligned="$client/build/.to-sign.apk"
+  "$zipalign" -f -p 4 "$apk" "$aligned"
+  # minSdk 24, so v2/v3 is what Android checks — the same schemes Gradle put
+  # on past releases. Naming them keeps the output the same across build-tools.
+  "$apksigner" sign --ks "$ANDROID_KEYSTORE" --ks-key-alias "$ANDROID_KEY_ALIAS" \
+    --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+    --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+    --out "$asset" "$aligned"
+  rm -f "$aligned"
+else
+  (cd "$client" && flutter build apk --release)
+  cp "$client/build/app/outputs/flutter-apk/app-release.apk" "$asset"
+fi
+
+# ── Signing ──────────────────────────────────────────────────────────────────
 set +e
 certs="$("$apksigner" verify --print-certs "$asset" 2>&1)"
 verify_status=$?

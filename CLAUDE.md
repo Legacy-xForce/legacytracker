@@ -48,7 +48,7 @@ cd android && ./gradlew testDebugUnitTest                    # Kotlin engine tes
 ```
 `test-location.mjs` (repo root) simulates a GPS drive against a server (`--server http://localhost:3000`).
 
-Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`, then run the `Release Android and iOS` workflow (or `scripts/release-android.sh`). The workflow also attaches an unsigned iOS IPA to the release, together with the AltStore/SideStore source feed the script generates from it (`--ipa PATH` locally); both are uploaded under fixed names so `releases/latest/download/...` never moves. Phones only install a higher build number, and every Android release must be signed with the same key (`android/release-signing-cert.sha256`). Sideloaded iOS builds get no push — see `docs/app-updates.md`.
+Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`, then run the `Release Android and iOS` workflow (or `scripts/release-android.sh`). The workflow publishes the APK and IPA that CI already built for the commit being tagged — waiting for a CI run that is still going, and building either binary only when there is nothing to reuse — and its only added step is signing the APK with `apksigner`, which replaces CI's debug key. It also attaches the unsigned IPA together with the AltStore/SideStore source feed the script generates from it (`--ipa PATH` locally, `--apk PATH` plus `ANDROID_KEYSTORE*` env for a CI-built APK); both are uploaded under fixed names so `releases/latest/download/...` never moves. Phones only install a higher build number, and every Android release must be signed with the same key (`android/release-signing-cert.sha256`). Sideloaded iOS builds get no push — see `docs/app-updates.md`.
 
 ## Architecture
 

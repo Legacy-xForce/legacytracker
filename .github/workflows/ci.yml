@@ -38,6 +38,9 @@ jobs:
       - name: Build release APK
         run: flutter build apk --release
         working-directory: src/client
+      # No key.properties on CI, so Gradle falls back to the runner's debug key.
+      # The release workflow re-signs this APK with the release key; publishing
+      # it as it is here would be refused by every installed phone.
       - name: Upload APK artifact
         uses: actions/upload-artifact@v7
         with:
