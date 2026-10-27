@@ -3,7 +3,9 @@ import 'package:flutter/material.dart';
 import '../../core/formatters.dart';
 import '../../core/periods.dart';
 import '../../data/models/leaderboard_entry.dart';
+import '../../data/models/user_model.dart';
 import '../../data/network/leaderboard_service.dart';
+import '../tracking/widgets/location_history_screen.dart';
 import '../tracking/widgets/user_avatar.dart';
 
 /// The travel leaderboard: who went furthest this week, this month or over
@@ -131,6 +133,22 @@ class _TravelTabState extends State<TravelTab> {
     _load(Period.containing(kind, DateTime.now()));
   }
 
+  /// A ranked person's own trips: the same history screen the map drawer opens.
+  void _openHistory(LeaderboardEntry entry) {
+    final accessToken = widget.getAccessToken();
+    if (accessToken == null) return;
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => LocationHistoryScreen(
+          user: UserProfile(id: entry.userId, name: entry.name),
+          baseUrl: widget.baseUrl,
+          accessToken: accessToken,
+          canDelete: entry.userId == widget.selfId,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -225,6 +243,7 @@ class _TravelTabState extends State<TravelTab> {
                         medal: entry.rank <= 3 && entry.tripCount > 0
                             ? _medals[entry.rank - 1]
                             : null,
+                        onTap: () => _openHistory(entry),
                       ),
                       const SizedBox(height: 10),
                     ],
@@ -317,6 +336,7 @@ class _EntryCard extends StatelessWidget {
     required this.isSelf,
     required this.share,
     required this.medal,
+    required this.onTap,
   });
 
   final LeaderboardEntry entry;
@@ -326,11 +346,15 @@ class _EntryCard extends StatelessWidget {
   final double share;
   final Color? medal;
 
+  /// Opens this person's trips.
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     return Card(
+      clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(18),
         side: isSelf
@@ -340,99 +364,102 @@ class _EntryCard extends StatelessWidget {
               )
             : BorderSide.none,
       ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 28,
-                  height: 28,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: medal,
-                  ),
-                  child: Text(
-                    '${entry.rank}',
-                    semanticsLabel: 'Rank ${entry.rank}',
-                    style: theme.textTheme.labelLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                      color: medal != null
-                          ? const Color(0xFF1A1300)
-                          : scheme.onSurfaceVariant,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 28,
+                    height: 28,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: medal,
+                    ),
+                    child: Text(
+                      '${entry.rank}',
+                      semanticsLabel: 'Rank ${entry.rank}',
+                      style: theme.textTheme.labelLarge?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: medal != null
+                            ? const Color(0xFF1A1300)
+                            : scheme.onSurfaceVariant,
+                      ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 12),
-                UserAvatar(userId: entry.userId, name: entry.name, size: 40),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        isSelf ? '${entry.name} (you)' : entry.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.w600,
+                  const SizedBox(width: 12),
+                  UserAvatar(userId: entry.userId, name: entry.name, size: 40),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          isSelf ? '${entry.name} (you)' : entry.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.titleSmall?.copyWith(
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                      ),
-                      Text(
-                        entry.tripCount > 0
-                            ? '${entry.tripCount} '
-                                  '${entry.tripCount == 1 ? 'trip' : 'trips'} · '
-                                  '${formatTripDuration(entry.duration)}'
-                            : 'No trips',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
+                        Text(
+                          entry.tripCount > 0
+                              ? '${entry.tripCount} '
+                                    '${entry.tripCount == 1 ? 'trip' : 'trips'} · '
+                                    '${formatTripDuration(entry.duration)}'
+                              : 'No trips',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  formatDistance(entry.distanceMeters),
-                  style: theme.textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.w700,
-                    fontFeatures: const [FontFeature.tabularFigures()],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(999),
-              child: LinearProgressIndicator(
-                value: share.clamp(0, 1),
-                minHeight: 6,
-                backgroundColor: scheme.surfaceContainerHighest,
-              ),
-            ),
-            if (entry.tripCount > 0) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  _StatChip(
-                    icon: Icons.speed_outlined,
-                    label: '${entry.avgSpeedKmh.round()} km/h avg',
-                  ),
-                  _StatChip(
-                    icon: Icons.speed_rounded,
-                    label: '${entry.topSpeedKmh.round()} km/h top',
+                  const SizedBox(width: 8),
+                  Text(
+                    formatDistance(entry.distanceMeters),
+                    style: theme.textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w700,
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
                   ),
                 ],
               ),
+              const SizedBox(height: 12),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: share.clamp(0, 1),
+                  minHeight: 6,
+                  backgroundColor: scheme.surfaceContainerHighest,
+                ),
+              ),
+              if (entry.tripCount > 0) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: [
+                    _StatChip(
+                      icon: Icons.speed_outlined,
+                      label: '${entry.avgSpeedKmh.round()} km/h avg',
+                    ),
+                    _StatChip(
+                      icon: Icons.speed_rounded,
+                      label: '${entry.topSpeedKmh.round()} km/h top',
+                    ),
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );

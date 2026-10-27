@@ -34,6 +34,12 @@ export function formatDistance(meters: number): string {
     return `${km.toFixed(km < 10 ? 1 : 0)} km`;
 }
 
+/** A calendar day's total in whole km, short enough to sit under the day number: "12km". */
+export function formatDayKilometers(meters: number): string {
+    // Only days with trips get a label, so rounding down to "0km" would contradict the highlight.
+    return `${Math.max(1, Math.round(meters / 1000))}km`;
+}
+
 export function escapeHtml(text: string): string {
     return text
         .replace(/&/g, '&amp;')

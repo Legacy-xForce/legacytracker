@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 import 'package:legacytracker/src/core/periods.dart';
 import 'package:legacytracker/src/data/models/leaderboard_entry.dart';
 import 'package:legacytracker/src/data/network/leaderboard_service.dart';
+import 'package:legacytracker/src/features/tracking/widgets/location_history_screen.dart';
 import 'package:legacytracker/src/features/travel/travel_tab.dart';
 
 void main() {
@@ -169,6 +170,15 @@ void main() {
         find.widgetWithIcon(IconButton, Icons.chevron_right_rounded),
       );
       expect(next.onPressed, isNull);
+    });
+
+    testWidgets('tapping a person opens their trips', (tester) async {
+      await pump(tester);
+
+      await tester.tap(find.text('Bo'));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(LocationHistoryScreen), findsOneWidget);
     });
 
     testWidgets('switches to months and steps back', (tester) async {
