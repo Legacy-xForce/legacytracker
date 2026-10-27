@@ -479,25 +479,27 @@ class _DayCell extends StatelessWidget {
           ? scheme.onSurface.withValues(alpha: 0.25)
           : scheme.onSurfaceVariant;
     }
-    final dots = hasTrips ? summary!.trips.clamp(1, 3) : 0;
+    final km = hasTrips ? formatDayKilometers(summary!.distanceMeters) : '';
 
     return SizedBox(
       height: 46,
       child: Center(
         child: Material(
           color: fill ?? Colors.transparent,
-          shape: CircleBorder(
+          // A circle for the usual day, a pill once the km label needs the room.
+          shape: StadiumBorder(
             side: isToday && !isSelected
                 ? BorderSide(color: scheme.primary, width: 1.5)
                 : BorderSide.none,
           ),
           child: InkWell(
-            customBorder: const CircleBorder(),
+            customBorder: const StadiumBorder(),
             // Only days with trips lead anywhere.
             onTap: hasTrips ? onTap : null,
-            child: SizedBox(
-              width: 40,
+            child: Container(
               height: 40,
+              constraints: const BoxConstraints(minWidth: 40),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -511,23 +513,17 @@ class _DayCell extends StatelessWidget {
                       height: 1.1,
                     ),
                   ),
-                  if (dots > 0)
+                  if (km.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.only(top: 2),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var i = 0; i < dots; i++)
-                            Container(
-                              width: 4,
-                              height: 4,
-                              margin: const EdgeInsets.symmetric(horizontal: 1),
-                              decoration: BoxDecoration(
-                                color: textColor,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                        ],
+                      child: Text(
+                        km,
+                        maxLines: 1,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: textColor,
+                          fontWeight: FontWeight.w500,
+                          height: 1,
+                        ),
                       ),
                     ),
                 ],

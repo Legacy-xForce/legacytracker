@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import Icon from '../ui/Icon.vue';
-import { formatMonth } from '../../lib/format';
+import { formatDayKilometers, formatMonth } from '../../lib/format';
 import type { DaySummary } from '../../stores/history';
 
 const props = defineProps<{
@@ -16,6 +16,16 @@ const emit = defineEmits<{ month: [delta: number]; select: [day: Date] }>();
 
 const WEEKDAYS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
+interface Cell {
+    day: number;
+    date: Date;
+    trips: number;
+    km: string;
+    today: boolean;
+    future: boolean;
+    selected: boolean;
+}
+
 const cells = computed(() => {
     const year = props.month.getFullYear();
     const month = props.month.getMonth();
@@ -25,20 +35,16 @@ const cells = computed(() => {
     const now = new Date();
     const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const selected = props.selectedDay?.getTime();
-    const list: ({
-        day: number;
-        date: Date;
-        trips: number;
-        today: boolean;
-        future: boolean;
-        selected: boolean;
-    } | null)[] = Array.from({ length: leading }, () => null);
+    const list: (Cell | null)[] = Array.from({ length: leading }, () => null);
     for (let day = 1; day <= count; day++) {
         const date = new Date(year, month, day);
+        const summary = props.days.get(day);
+        const trips = summary?.trips ?? 0;
         list.push({
             day,
             date,
-            trips: props.days.get(day)?.trips ?? 0,
+            trips,
+            km: trips ? formatDayKilometers(summary?.distanceMeters ?? 0) : '',
             today: date.getTime() === today,
             future: date.getTime() > today,
             selected: date.getTime() === selected
@@ -46,6 +52,12 @@ const cells = computed(() => {
     }
     return list;
 });
+
+/** What the cell shows, so the accessible name matches it. */
+function ariaLabel(cell: Cell): string {
+    const day = cell.date.toDateString();
+    return cell.trips ? `${day}, ${cell.trips} trips, ${cell.km}` : day;
+}
 </script>
 
 <template>
@@ -84,7 +96,7 @@ const cells = computed(() => {
                 <div v-for="(cell, i) in cells" :key="i" class="flex h-[46px] items-center justify-center">
                     <button
                         v-if="cell"
-                        class="flex size-10 flex-col items-center justify-center rounded-full transition-colors"
+                        class="flex h-10 min-w-10 flex-col items-center justify-center rounded-full px-1 whitespace-nowrap transition-colors"
                         :class="[
                             cell.selected
                                 ? 'bg-primary text-on-primary'
@@ -97,20 +109,14 @@ const cells = computed(() => {
                         ]"
                         :disabled="!cell.trips"
                         :data-has-trips="cell.trips ? '' : undefined"
-                        :aria-label="`${cell.date.toDateString()}${cell.trips ? `, ${cell.trips} trips` : ''}`"
+                        :aria-label="ariaLabel(cell)"
                         @click="emit('select', cell.date)"
                     >
                         <span class="type-body-md leading-[1.1]" :class="{ 'font-bold': cell.trips || cell.today }">{{
                             cell.day
                         }}</span>
-                        <!-- Only days with trips lead anywhere: a dot per trip, up to three. -->
-                        <span v-if="cell.trips" class="mt-0.5 flex gap-0.5">
-                            <span
-                                v-for="dot in Math.min(cell.trips, 3)"
-                                :key="dot"
-                                class="size-1 rounded-full bg-current"
-                            />
-                        </span>
+                        <!-- Only days with trips lead anywhere: their total, in whole km. -->
+                        <span v-if="cell.trips" class="type-label-sm mt-0.5 leading-none">{{ cell.km }}</span>
                     </button>
                 </div>
             </div>

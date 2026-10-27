@@ -67,4 +67,15 @@ void main() {
     expect(formatDistance(5120), '5.1 km');
     expect(formatDistance(43400), '43 km');
   });
+
+  test('formatDayKilometers rounds to whole km', () {
+    expect(formatDayKilometers(5120), '5km');
+    expect(formatDayKilometers(12400), '12km');
+    expect(formatDayKilometers(43400), '43km');
+  });
+
+  test('formatDayKilometers never reads 0km', () {
+    // A day is only labelled when it has trips, however short they were.
+    expect(formatDayKilometers(300), '1km');
+  });
 }

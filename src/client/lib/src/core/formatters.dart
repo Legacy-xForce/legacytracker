@@ -51,6 +51,13 @@ String formatDistance(double meters) {
   return '${km.toStringAsFixed(km < 10 ? 1 : 0)} km';
 }
 
+/// A calendar day's total in whole km, short enough to sit under the day
+/// number: "12km". Only days with trips get one, so it never reads "0km".
+String formatDayKilometers(double meters) {
+  final km = (meters / 1000).round();
+  return '${km < 1 ? 1 : km}km';
+}
+
 const monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June', 'July', //
   'August', 'September', 'October', 'November', 'December',
