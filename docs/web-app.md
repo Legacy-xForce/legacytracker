@@ -48,8 +48,11 @@ narrow ones get the app's bottom sheet (tap or drag the header).
 People look the same as on the phone: the same colour per person (the app's
 palette and hash), the Legacy Auth profile picture
 (`/auth/profile-picture/{id}`, the same place Legacy Calendar links to) or the
-initial, a heading beam, pulse and speed badge on the move, and a battery
-badge. Someone not heard from for 90 minutes is greyed out, never see-through.
+initial, a heading beam and speed badge on the move, and a battery badge. The
+pulse breathing under a moving person is the web's own: the app draws no such
+circle, because a native annotation cannot scale one smoothly without strobing
+(see `mapbox.md`). Someone not heard from for 90 minutes is greyed out, never
+see-through.
 People close together on screen fold into one bubble of faces; a face selects
 that person, the rest of the bubble zooms in.
 
