@@ -1,0 +1,52 @@
+# Toolchain for the Legacy Tracker monorepo.
+# `mise install` once, then commands below pick the right versions per directory.
+
+[tools]
+node = "22"          # matches CI (web) and is new enough for the server
+java = "21"          # AGP 9 / Gradle 9 for the Android app
+flutter = "3.44.0"   # matches CI; brings Dart 3.12
+
+[env]
+ANDROID_HOME = "{{env.HOME}}/Android/Sdk"
+ANDROID_SDK_ROOT = "{{env.HOME}}/Android/Sdk"
+# cmdline-tools/sdkmanager, adb and the emulator, without touching ~/.bashrc
+_.path = [
+  "{{env.HOME}}/Android/Sdk/cmdline-tools/latest/bin",
+  "{{env.HOME}}/Android/Sdk/platform-tools",
+  "{{env.HOME}}/Android/Sdk/emulator",
+]
+
+[tasks."server:dev"]
+dir = "src/server"
+run = "npm run dev"
+
+[tasks."server:test"]
+dir = "src/server"
+run = "npm test"
+
+[tasks."web:dev"]
+dir = "src/web"
+run = "npm run dev"
+
+[tasks."web:test"]
+dir = "src/web"
+run = "npm test"
+
+[tasks."app:analyze"]
+dir = "src/client"
+run = "flutter analyze"
+
+[tasks."app:test"]
+dir = "src/client"
+run = "flutter test"
+
+[tasks."app:android-test"]
+dir = "src/client/android"
+# :app only — plugin modules (e.g. url_launcher_android) ship tests that fail
+# against this dependency set; the engine tests live in the app module.
+run = "./gradlew :app:testDebugUnitTest"
+
+# The local PostGIS container from earlier setups is reused, not recreated:
+# legacytracker-dev-db (postgis/postgis:18-3.6) on 127.0.0.1:5433.
+[tasks."db:psql"]
+run = "docker exec -it legacytracker-dev-db psql -U postgres -d legacytracker_prod"
