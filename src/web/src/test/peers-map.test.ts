@@ -1,6 +1,9 @@
 import { mount } from '@vue/test-utils';
+import type { Map as MapboxMap } from 'mapbox-gl';
 import { beforeAll, describe, expect, it } from 'vitest';
+import { h, defineComponent, type ShallowRef } from 'vue';
 import PeersMap from '../components/PeersMap.vue';
+import { useMap } from '../lib/mapContext';
 import type { Peer } from '../lib/peers';
 
 function peer(id: string, name: string, latitude: number | null, longitude: number | null): Peer {
@@ -26,6 +29,11 @@ beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 800 });
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
 });
+
+/** Mapbox's own gesture events, which the jsdom stand-in fires by name (see mapbox-mock.ts). */
+function fire(map: MapboxMap, type: string) {
+    (map as unknown as { fire(type: string): void }).fire(type);
+}
 
 describe('PeersMap', () => {
     it('mounts and draws a marker for each person with a position', async () => {
@@ -83,6 +91,36 @@ describe('PeersMap', () => {
 
         expect(document.querySelector('.peer-marker')).toBe(before);
         expect(before?.textContent).toContain('40%');
+        wrapper.unmount();
+    });
+
+    it('lets go of the person it was holding when the viewer pans the map', async () => {
+        // A layer slot is the only way in to the map PeersMap owns.
+        const injected: ShallowRef<MapboxMap | null>[] = [];
+        const grabber = defineComponent({
+            setup() {
+                injected.push(useMap());
+                return () => null;
+            }
+        });
+        const wrapper = mount(PeersMap, {
+            attachTo: document.body,
+            props: { peers: [peer('a', 'Ada', 45.1, 9.2)], selfId: '', selectedId: 'a', now: Date.now() },
+            slots: { default: () => h(grabber) }
+        });
+        const marker = () => document.querySelector('.peer-marker') as HTMLElement;
+
+        wrapper.vm.focus('a');
+        expect(wrapper.vm.following).toBe('a');
+        expect(marker().style.transform).toBe('scale(1.18)');
+
+        fire(injected[0].value!, 'dragstart');
+        expect(wrapper.emitted('deselect')).toHaveLength(1);
+        expect(wrapper.vm.following).toBeNull();
+
+        // Once the panel takes the selection back down, the marker is an ordinary one.
+        await wrapper.setProps({ selectedId: null });
+        expect(marker().style.transform).toBe('scale(1)');
         wrapper.unmount();
     });
 });

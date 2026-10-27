@@ -66,7 +66,9 @@ reload its tiles.
   mode when every browser tab is hidden; returning to the tab reconnects.
   Markers glide between fixes over about the time between them, as in the app,
   and a selected person stays centred in the uncovered part of the map until
-  you pan away.
+  you pan away. Being selected is the same thing as being looked at: a pan you
+  make by hand drops the highlight, the following and the details card alike,
+  and puts the people list back.
 - **People**: you first, then everyone with a position, then those who hide
   from you. Each row shows the street (or the saved place they are in), how
   long they've been there, moving, or last seen, and battery. Selecting someone
