@@ -46,7 +46,7 @@ function left(index: number): string {
             :height="CLUSTER.bubbleHeight + CLUSTER.tailHeight"
             aria-hidden="true"
         >
-            <path :d="bubble" fill="#fff" />
+            <path :d="bubble" class="peer-cluster__path" />
         </svg>
         <!-- Leftmost on top, both visually and for clicks. -->
         <span
@@ -60,8 +60,8 @@ function left(index: number): string {
                 :user-id="member.id"
                 :name="member.name"
                 :size="CLUSTER.faceSize"
-                ring-color="#fff"
-                :ring-width="2.5"
+                :ring-color="'var(--color-surface-container-highest)'"
+                :ring-width="2"
                 :dimmed="member.stale"
             />
         </span>
@@ -90,22 +90,29 @@ function left(index: number): string {
     filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
 }
 
+/* The bubble is the same colour as the avatar rings on the map (the peer
+   pill token), so a cluster reads as one object with the people list; the
+   face rings and the dot border match it to cut the overlapping faces apart. */
+.peer-cluster__path {
+    fill: var(--color-surface-container-highest);
+}
+
 .peer-cluster__face {
     position: absolute;
-    top: 5px;
+    top: 4px;
     border-radius: 9999px;
 }
 
 .peer-cluster__more {
-    width: 42px;
-    height: 42px;
+    width: 38px;
+    height: 38px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: #2b3134;
-    box-shadow: inset 0 0 0 2.5px #fff;
-    color: #fff;
-    font-size: 14px;
+    background: var(--color-on-surface);
+    box-shadow: inset 0 0 0 2px var(--color-surface-container-highest);
+    color: var(--color-surface);
+    font-size: 12px;
     font-weight: 700;
 }
 
@@ -113,12 +120,12 @@ function left(index: number): string {
     position: absolute;
     left: 50%;
     bottom: 0;
-    width: 14px;
-    height: 14px;
-    margin-left: -7px;
+    width: 12px;
+    height: 12px;
+    margin-left: -6px;
     border-radius: 9999px;
     background: var(--color-beam);
-    border: 2.5px solid #fff;
+    border: 2px solid var(--color-surface-container-highest);
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.38);
 }
 

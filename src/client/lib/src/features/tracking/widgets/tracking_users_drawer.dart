@@ -38,6 +38,7 @@ class TrackingUsersDrawer extends StatefulWidget {
     required this.selectedUserId,
     this.selectionTick = 0,
     required this.onUserSelected,
+    required this.onSelectionCleared,
     this.onExtentChanged,
   });
 
@@ -52,6 +53,10 @@ class TrackingUsersDrawer extends StatefulWidget {
   final int selectionTick;
   final ValueChanged<UserProfile> onUserSelected;
 
+  /// The sheet went back to the list (header back button or Android back), so
+  /// the selection that highlights the marker has to be dropped too.
+  final VoidCallback onSelectionCleared;
+
   /// The fraction of the map's height the sheet currently covers, so the map
   /// can keep a focused marker in the part that's still visible.
   final ValueChanged<double>? onExtentChanged;
@@ -60,10 +65,10 @@ class TrackingUsersDrawer extends StatefulWidget {
   static const double expandedSize = 0.6;
 
   @override
-  State<TrackingUsersDrawer> createState() => _TrackingUsersDrawerState();
+  State<TrackingUsersDrawer> createState() => TrackingUsersDrawerState();
 }
 
-class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
+class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
   static const double _expandedSize = TrackingUsersDrawer.expandedSize;
 
   /// Drag handle plus the "People" header: what stays visible collapsed.
@@ -71,17 +76,23 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   final DraggableScrollableController _sheetController =
       DraggableScrollableController();
+  Timer? _sheetTimer;
 
   // Recomputed from the available height on every layout.
   double _collapsedSize = 0.1;
   double _sheetSize = 0.1;
-  String? _detailUserId;
 
   @override
   void initState() {
     super.initState();
     _sheetController.addListener(_handleSheetChanged);
-    _detailUserId = widget.selectedUserId;
+    // The controller does not notify for its initial size, so the map would
+    // keep an inset of 0 (and paint its logo under the sheet) until the first
+    // drag. Report the real extent once the sheet is laid out.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_sheetController.isAttached) return;
+      widget.onExtentChanged?.call(_sheetController.size);
+    });
   }
 
   @override
@@ -93,13 +104,17 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     if (widget.selectedUserId != null &&
         (widget.selectedUserId != oldWidget.selectedUserId ||
             widget.selectionTick != oldWidget.selectionTick)) {
-      setState(() => _detailUserId = widget.selectedUserId);
-      _expand();
+      // During didUpdateWidget the sheet may not have a layout yet, and
+      // expanding then is a silent no-op; wait for the frame.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _expand();
+      });
     }
   }
 
   @override
   void dispose() {
+    _sheetTimer?.cancel();
     _sheetController.removeListener(_handleSheetChanged);
     _sheetController.dispose();
     super.dispose();
@@ -115,18 +130,45 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   bool get _isCollapsed => _sheetSize <= _collapsedSize + 0.01;
 
+  /// Collapse back to the peek header, for the Android back gesture: a back
+  /// press that leaves the detail means the sheet should stop covering the
+  /// map too, not only drop the selection.
+  void collapse() {
+    if (_sheetController.isAttached && _sheetController.size > _collapsedSize) {
+      _animateTo(_collapsedSize);
+    }
+  }
+
   void _expand() {
     if (_sheetController.isAttached && _sheetController.size < _expandedSize) {
       _animateTo(_expandedSize);
     }
   }
 
+  /// Drives the sheet ourselves instead of `DraggableScrollableController
+  /// .animateTo`: that future can stay pending when the sheet rebuilds under
+  /// it (which is exactly what a selection does), and the sheet silently never
+  /// opened. Stepping `jumpTo` is what the animation does internally anyway.
   void _animateTo(double size) {
-    _sheetController.animateTo(
-      size,
-      duration: const Duration(milliseconds: 240),
-      curve: Curves.easeOutCubic,
-    );
+    if (!_sheetController.isAttached) return;
+    _sheetTimer?.cancel();
+    final from = _sheetController.size;
+    if (from == size) return;
+    const steps = 16;
+    var step = 0;
+    _sheetTimer = Timer.periodic(const Duration(milliseconds: 15), (timer) {
+      if (!_sheetController.isAttached) {
+        timer.cancel();
+        return;
+      }
+      step++;
+      final t = Curves.easeOutCubic.transform(step / steps);
+      _sheetController.jumpTo(from + (size - from) * t);
+      if (step >= steps) {
+        timer.cancel();
+        _sheetTimer = null;
+      }
+    });
   }
 
   void _toggle() => _animateTo(_isCollapsed ? _expandedSize : _collapsedSize);
@@ -171,12 +213,13 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
   void _openDetail(UserProfile profile) {
     widget.onUserSelected(profile);
-    setState(() => _detailUserId = profile.id);
     _expand();
   }
 
   void _closeDetail() {
-    setState(() => _detailUserId = null);
+    // Clearing the parent's selection is what removes the ring around the
+    // person on the map; doing it only here locally left them selected forever.
+    widget.onSelectionCleared();
   }
 
   @override
@@ -204,9 +247,9 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
     ];
 
     _DrawerUser? detailUser;
-    if (_detailUserId != null) {
+    if (widget.selectedUserId != null) {
       for (final user in users) {
-        if (user.profile.id == _detailUserId) {
+        if (user.profile.id == widget.selectedUserId) {
           detailUser = user;
           break;
         }
@@ -262,6 +305,7 @@ class _TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                         users: users,
                         showingDetail: detailUser != null && !_isCollapsed,
                         onBack: _closeDetail,
+                        onSelect: _openDetail,
                       ),
                     ),
                     Expanded(
@@ -318,12 +362,14 @@ class _SheetHeader extends StatelessWidget {
     required this.users,
     required this.showingDetail,
     required this.onBack,
+    required this.onSelect,
   });
 
   final double height;
   final List<_DrawerUser> users;
   final bool showingDetail;
   final VoidCallback onBack;
+  final ValueChanged<UserProfile> onSelect;
 
   @override
   Widget build(BuildContext context) {
@@ -347,18 +393,46 @@ class _SheetHeader extends StatelessWidget {
               child: Row(
                 children: [
                   if (showingDetail) ...[
-                    IconButton(
-                      onPressed: onBack,
-                      icon: const Icon(Icons.arrow_back_rounded),
-                      tooltip: 'All people',
-                      visualDensity: VisualDensity.compact,
-                      style: IconButton.styleFrom(
-                        padding: EdgeInsets.zero,
-                        minimumSize: const Size.square(36),
+                    // The whole "All people" row is the back button. The
+                    // label used to sit outside the arrow's IconButton, so
+                    // tapping it fell through to the header's toggle gesture
+                    // and collapsed the sheet instead of going back.
+                    Tooltip(
+                      message: 'All people',
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onBack,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Semantics(
+                            button: true,
+                            label: 'All people',
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(
+                                2,
+                                8,
+                                14,
+                                8,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.arrow_back_rounded,
+                                    color: theme.colorScheme.onSurface,
+                                  ),
+                                  const SizedBox(width: 6),
+                                  Text(
+                                    'All people',
+                                    style: theme.textTheme.titleMedium,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    Text('All people', style: theme.textTheme.titleMedium),
                   ] else ...[
                     Text(
                       'People',
@@ -386,7 +460,8 @@ class _SheetHeader extends StatelessWidget {
                     ),
                   ],
                   const Spacer(),
-                  if (!showingDetail) _AvatarStack(users: users),
+                  if (!showingDetail)
+                    _AvatarStack(users: users, onSelect: onSelect),
                 ],
               ),
             ),
@@ -397,9 +472,12 @@ class _SheetHeader extends StatelessWidget {
   }
 }
 
-/// A few overlapping faces in the header — a glance at who's sharing.
+/// A few overlapping faces in the header — a glance at who's sharing. Tapping
+/// one opens that person, so the collapsed sheet is a single tap away.
 class _AvatarStack extends StatelessWidget {
-  const _AvatarStack({required this.users});
+  const _AvatarStack({required this.users, this.onSelect});
+
+  final ValueChanged<UserProfile>? onSelect;
 
   final List<_DrawerUser> users;
 
@@ -419,15 +497,20 @@ class _AvatarStack extends StatelessWidget {
           for (var i = shown.length - 1; i >= 0; i--)
             Positioned(
               left: i * _step,
-              child: UserAvatar(
-                userId: shown[i].profile.id,
-                name: shown[i].profile.name,
-                avatarUrl: shown[i].profile.avatarUrl,
-                imageBytes: shown[i].avatarBytes,
-                size: _size,
-                ringColor: ring,
-                ringWidth: 2,
-                dimmed: shown[i].isStale,
+              child: GestureDetector(
+                onTap: onSelect == null
+                    ? null
+                    : () => onSelect!(shown[i].profile),
+                child: UserAvatar(
+                  userId: shown[i].profile.id,
+                  name: shown[i].profile.name,
+                  avatarUrl: shown[i].profile.avatarUrl,
+                  imageBytes: shown[i].avatarBytes,
+                  size: _size,
+                  ringColor: ring,
+                  ringWidth: 2,
+                  dimmed: shown[i].isStale,
+                ),
               ),
             ),
         ],
@@ -847,15 +930,19 @@ class _UserDetailPane extends StatefulWidget {
 class _UserDetailPaneState extends State<_UserDetailPane>
     with SingleTickerProviderStateMixin {
   late final Future<List<LocationSession>> _todaySessions;
-  late final AnimationController _spin = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 900),
-  );
+  late final AnimationController _spin;
   bool _refreshing = false;
 
   @override
   void initState() {
     super.initState();
+    // Created here, not lazily: a detail pane for someone who does not share
+    // with you never references it in build(), and disposing an uncreated
+    // `late final` controller used to build it too late (in dispose()).
+    _spin = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    );
     _todaySessions = _loadTodaySessions();
   }
 

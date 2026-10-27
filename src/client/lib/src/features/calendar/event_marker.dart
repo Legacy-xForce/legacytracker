@@ -13,49 +13,6 @@ import '../tracking/widgets/user_avatar.dart';
 /// Fallback when the calendar gives an event no color.
 const eventFallbackColor = Color(0xFF7C4DFF);
 
-/// A rounded-square calendar pin in the event's color — deliberately unlike
-/// the round avatars of people.
-class EventMarker extends StatelessWidget {
-  const EventMarker({super.key, required this.event, required this.onTap});
-
-  static const double size = 44;
-
-  final CalendarEvent event;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final color = event.color ?? eventFallbackColor;
-    final onColor =
-        ThemeData.estimateBrightnessForColor(color) == Brightness.dark
-        ? Colors.white
-        : Colors.black87;
-    return Tooltip(
-      message: event.title,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Center(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: color,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white, width: 2.5),
-              boxShadow: const [
-                BoxShadow(color: Color(0x66000000), blurRadius: 6),
-              ],
-            ),
-            child: SizedBox.square(
-              dimension: 36,
-              child: Icon(Icons.event_rounded, size: 22, color: onColor),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 Future<void> showEventDetails(BuildContext context, CalendarEvent event) {
   return showModalBottomSheet<void>(
     context: context,

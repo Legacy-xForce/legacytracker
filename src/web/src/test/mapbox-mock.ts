@@ -21,10 +21,6 @@ function unmercator(y: number): number {
     return (Math.atan(Math.sinh(y)) * 180) / Math.PI;
 }
 
-export function setWorkerUrl(): void {
-    // The real library starts Web Workers; jsdom doesn't need them.
-}
-
 export class Map {
     readonly container: HTMLElement;
     private handlers = new globalThis.Map<string, Set<Handler>>();

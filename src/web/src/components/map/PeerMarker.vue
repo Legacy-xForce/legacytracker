@@ -67,8 +67,12 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 <style>
 .peer-marker {
     --beam: var(--color-beam);
-    --ring: #fff;
-    --badge: #212121;
+    /* The ring is the colour of the badge pill under the avatar (see
+       --badge), both from the theme: the secondary raised surface for
+       others, the primary container for you - like the app's MarkerColors. */
+    --ring: var(--color-surface-container-highest);
+    --badge: var(--color-surface-container-highest);
+    --badge-text: var(--color-on-surface);
     position: relative;
     width: 152px;
     height: 168px;
@@ -76,14 +80,16 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 }
 
 .peer-marker--self {
-    --ring: var(--color-beam);
-    --badge: #00695c;
+    --ring: var(--color-primary-container);
+    --badge: var(--color-primary-container);
+    --badge-text: var(--color-on-primary-container);
 }
 
 .peer-marker--stale {
     --beam: #9e9e9e;
     --ring: #9e9e9e;
     --badge: #616161;
+    --badge-text: #fff;
 }
 
 /* A 56° cone fading out from the person, with a soft glow. */
@@ -135,13 +141,15 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     }
 }
 
+/* The 57px ring leaves a 2px band around the 53px avatar, matching the phone
+   app. Offsets keep it centred on the marker at (76px, 84px). */
 .peer-marker__ring {
     position: absolute;
-    left: 46px;
-    top: 54px;
-    width: 60px;
-    height: 60px;
-    padding: 3.5px;
+    left: 47.5px;
+    top: 55.5px;
+    width: 57px;
+    height: 57px;
+    padding: 2px;
     border-radius: 9999px;
     background: var(--ring);
     box-shadow: 0 4px 10px rgb(0 0 0 / 0.28);
@@ -160,7 +168,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     padding: 4px 8px;
     border-radius: 9999px;
     background: var(--badge);
-    color: #fff;
+    color: var(--badge-text);
     font-size: 10px;
     line-height: 12px;
     font-weight: 600;

@@ -10,7 +10,6 @@ import { boundsOf, centroid as meanLatLng, type LatLng } from '../lib/geo';
 import { insetsKey, mapKey } from '../lib/mapContext';
 import { Motion } from '../lib/motion';
 import { hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
-import { isStyleNotLoaded } from '../lib/mapbox';
 import { applyStandardTheme, styleFor, type MapLightPreset, type MapStyle } from '../lib/styles';
 import { VueMarker } from '../lib/vueMarker';
 
@@ -62,14 +61,13 @@ function applyStyle() {
     map?.setStyle(styleFor(props.mapStyle));
 }
 
-/** Standard's light/dark look is a config property, reset by every style switch. */
+/** Standard's light/dark look is a config property, reset by every style
+    switch. Deliberately not gated on `isStyleLoaded()`: during a diffed
+    `setStyle` the new sources are still loading when `style.load` fires, and
+    skipping there left the map stuck on the style's default day preset. */
 function applyTheme() {
-    if (!map || !map.isStyleLoaded()) return;
-    try {
-        applyStandardTheme(map, props.lightPreset);
-    } catch (error) {
-        if (!isStyleNotLoaded(error)) throw error;
-    }
+    if (!map) return;
+    applyStandardTheme(map, props.lightPreset);
 }
 
 function markerProps(peer: Peer) {
@@ -315,6 +313,10 @@ onMounted(() => {
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
     // Mapbox's pinch gesture includes rotation; keep zoom and pan only.
     map.touchZoomRotate.disableRotation();
+    // Published before anything else can fail: the replay, checkpoint and
+    // event layers draw into this ref, and a throw below used to leave them
+    // - and the replay screen - with no map at all.
+    mapRef.value = map;
     fitWorldHeight();
     map.on('resize', fitWorldHeight);
     // A style switch resets config properties, so re-apply the theme on every load.
@@ -328,7 +330,6 @@ onMounted(() => {
         regroup();
         keepFollowing();
     });
-    mapRef.value = map;
     sync();
 });
 

@@ -42,7 +42,8 @@ flutter analyze                  # flutter_lints
 flutter test                     # Dart tests in test/
 flutter test test/sharing_test.dart
 flutter run --dart-define=BACKEND_URL=http://10.0.2.2:3000   # debug/profile only
-flutter run -t lib/main_mapcheck.dart -d <device>            # standalone map harness, no login/backend
+flutter run -t lib/main_mapcheck.dart -d <device> \
+  --dart-define=MAPBOX_TOKEN=pk.…                            # standalone map spike, no login/backend
 cd android && ./gradlew testDebugUnitTest                    # Kotlin engine tests (PathSampler, StopDetector, DriveSimulation)
 ```
 `test-location.mjs` (repo root) simulates a GPS drive against a server (`--server http://localhost:3000`).
@@ -60,7 +61,7 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 - Android self-update: the server polls GitHub releases tagged `android-v<name>+<code>` every 5 min, serves `/api/v1/app/android/latest`, and pushes `lt_cmd: update`; the app installs via `PackageInstaller` (`android/.../updates/`).
 
 ### Client structure (`src/client/lib`)
-`provider`-based. `data/network/` has one service per API area plus the `Backend` interface (realtime peers/viewers) with `RemoteBackend` (used by `app.dart`) and `MockBackend`; `data/models/` are plain models; `features/<area>/` hold screens, providers and widgets. Native code is in `android/app/src/main/kotlin/com/legacy/legacytracker/` (`tracking/`, `updates/`).
+`provider`-based. `data/network/` has one service per API area plus the `Backend` interface (realtime peers/viewers) with `RemoteBackend` (used by `app.dart`) and `MockBackend`; `data/models/` are plain models; `features/<area>/` hold screens, providers and widgets. Native code is in `android/app/src/main/kotlin/com/legacy/legacytracker/` (`tracking/`, `updates/`). The map surface is `features/tracking/widgets/mapbox_map.dart`: native Mapbox annotations, with marker bitmaps from `marker_icons.dart`; annotations go through a caller-owned mutable `MapScene` (never widget arguments) because the map is a platform view and a rebuild per animation frame is what made tracking lag. `data/network/mapbox_token_gate.dart` mints the short-lived app token and refreshes it in place. No Flutter view annotations are used.
 ### Web structure (`src/web/src`)
 `api/` (REST + WebSocket clients), `stores/` (Pinia: session, peers, history, checkpoints, events, sharing, appearance), `lib/` (pure logic: clustering, replay, geocoding throttle, presence, `openapi.ts`), `components/`, `views/` (map, login, public `DocsView`, which renders the OpenAPI document with Scalar). Themes are `data-theme` blocks in `style.css` (listed in `theme/themes.ts`): use the colour tokens (`bg-surface-container`, `hover:bg-on-surface/6`, …), never hard-coded colours or `white/…`, so light themes work. Markers are Vue components mounted into Mapbox markers and patched in place; pan followed points with `panBy`, not a view reset (resetting the view drops all tiles).
 
@@ -75,6 +76,7 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 - Pushing to `main` makes CI publish the server image as ghcr `:latest`, so server changes (especially auth) can go live on push.
 - The Android emulator reaches the host at `10.0.2.2`; debug builds allow cleartext HTTP, release builds do not.
 - Fastify answers 400 to a body-less request that sends `Content-Type: application/json`; only set that header when there is a body (the Flutter services build headers per request for this reason).
+- Do not chain a command after `gh run watch --exit-status` (e.g. with `;`): the shell reports the **last** command's status, so a red run looks green. Read the verdict back with `gh run view <id> --json conclusion`. A `cancelled` job with no steps means no runner picked it up, and a corrupt NDK download fails `Build Android` on the runner — neither is a code failure; re-check the job log before reporting CI status.
 
 ## Database (production)
 
