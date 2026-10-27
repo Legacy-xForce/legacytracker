@@ -10,7 +10,9 @@
 # higher one.
 #
 #   --notes TEXT    release notes, shown in the app's update card
-#   --ipa PATH      unsigned iOS IPA to attach to the same release
+#   --ipa PATH      unsigned iOS IPA to attach to the same release. Also
+#                   publishes an AltStore/SideStore source feed next to it,
+#                   both under fixed asset names so their URLs never move.
 #   --prerelease    upload without rolling out (the server ignores
 #                   prereleases); roll out later with
 #                   gh release edit <tag> --prerelease=false
@@ -36,7 +38,7 @@ while (($#)); do
     --prerelease) prerelease=(--prerelease); shift ;;
     --allow-dirty) allow_dirty=true; shift ;;
     --yes) assume_yes=true; shift ;;
-    -h | --help) sed -n '2,17p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '2,20p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) echo "unknown option: $1" >&2; exit 2 ;;
   esac
 done
@@ -99,11 +101,85 @@ sha="$(sha256sum "$asset" | cut -d' ' -f1)"
 
 ipa_asset=""
 ipa_sha=""
+feed_asset=""
 if [[ -n "$ipa" ]]; then
   [[ -f "$ipa" ]] || die "IPA not found: $ipa"
-  ipa_asset="$client/build/legacytracker-$name-$code.ipa"
+  command -v jq >/dev/null || die "jq is required to generate the iOS source feed"
+  # Fixed asset names: `releases/latest/download/<name>` is the URL the iOS
+  # feed hands out, and it only stays stable if the name never changes.
+  ipa_asset="$client/build/LegacyTracker.ipa"
+  feed_asset="$client/build/altstore-source.json"
   cp "$ipa" "$ipa_asset"
   ipa_sha="$(sha256sum "$ipa_asset" | cut -d' ' -f1)"
+  ipa_size="$(wc -c <"$ipa_asset" | tr -d '[:space:]')"
+
+  # Read the identity out of the Xcode project so the feed can never claim a
+  # bundle id or minimum iOS the built IPA does not have.
+  ios_project="$client/ios/Runner.xcodeproj/project.pbxproj"
+  bundle_id="$(sed -n -E 's/^[[:space:]]*PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);.*/\1/p' "$ios_project" |
+    grep -v '\.RunnerTests$' | sort -u | head -1)"
+  [[ -n "$bundle_id" ]] || die "could not read the iOS bundle id from ${ios_project#"$root"/}"
+  min_ios="$(sed -n -E 's/^[[:space:]]*IPHONEOS_DEPLOYMENT_TARGET = ([0-9.]+);.*/\1/p' "$ios_project" |
+    sort -V | head -1)"
+
+  # `latest` skips prereleases, so a prerelease feed names its own tag.
+  if ((${#prerelease[@]})); then
+    asset_base="https://github.com/$repo/releases/download/${tag//+/%2B}"
+  else
+    asset_base="https://github.com/$repo/releases/latest/download"
+  fi
+  icon_url="https://raw.githubusercontent.com/$repo/HEAD/src/client/ios/Runner/Assets.xcassets/AppIcon.appiconset/Icon-App-1024x1024@1x.png"
+  about="Real-time location sharing for the Legacy group: a live map, history and replay, checkpoints and calendar events."
+
+  # AltStore/SideStore source feed. SideStore decodes app-level
+  # localizedDescription as a plain string and verifies sha256 when present,
+  # and it picks versions[0] as the current release — order matters, not dates.
+  jq -n \
+    --arg bundleId "$bundle_id" \
+    --arg version "$name" \
+    --arg build "$code" \
+    --arg date "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+    --arg downloadURL "$asset_base/LegacyTracker.ipa" \
+    --arg sourceURL "$asset_base/altstore-source.json" \
+    --argjson size "$ipa_size" \
+    --arg sha256 "$ipa_sha" \
+    --arg minOSVersion "$min_ios" \
+    --arg iconURL "$icon_url" \
+    --arg website "https://github.com/$repo" \
+    --arg about "$about" \
+    --arg notes "${notes:-Legacy Tracker for iOS. The build is unsigned; SideStore signs it with your own Apple ID.}" \
+    '{
+      name: "Legacy Tracker",
+      identifier: ($bundleId + ".source"),
+      website: $website,
+      sourceURL: $sourceURL,
+      iconURL: $iconURL,
+      subtitle: $about,
+      description: ("Apps in this source are built from " + $website + " and re-signed by your own Apple ID, so Apple push notifications are not available. Your phone still streams live positions while it is awake and tracking."),
+      apps: [
+        {
+          name: "Legacy Tracker",
+          bundleIdentifier: $bundleId,
+          developerName: "Legacy xForce",
+          subtitle: $about,
+          localizedDescription: $about,
+          iconURL: $iconURL,
+          category: "social",
+          versions: [
+            {
+              version: $version,
+              buildVersion: $build,
+              date: $date,
+              localizedDescription: $notes,
+              downloadURL: $downloadURL,
+              size: $size,
+              sha256: $sha256
+            }
+            + (if $minOSVersion == "" then {} else {minOSVersion: $minOSVersion} end)
+          ]
+        }
+      ]
+    }' >"$feed_asset"
 fi
 
 echo
@@ -112,6 +188,7 @@ echo "Commit     ${commit:0:12}$($allow_dirty && echo ' + uncommitted changes' |
 echo "APK        ${asset#"$root"/} ($(du -h "$asset" | cut -f1)), sha256 $sha"
 if [[ -n "$ipa_asset" ]]; then
   echo "IPA        ${ipa_asset#"$root"/} ($(du -h "$ipa_asset" | cut -f1)), sha256 $ipa_sha"
+  echo "Feed       ${feed_asset#"$root"/}"
 fi
 echo "Signed by  $subject"
 echo "           $fingerprint"
@@ -130,7 +207,7 @@ fi
 assets=("$asset")
 title="Android $name ($code)"
 if [[ -n "$ipa_asset" ]]; then
-  assets+=("$ipa_asset")
+  assets+=("$ipa_asset" "$feed_asset")
   title="Android + iOS $name ($code)"
 fi
 gh release create "$tag" "${assets[@]}" -R "$repo" --target "$commit" \
@@ -143,6 +220,8 @@ if [[ -n "$ipa_asset" ]]; then
   ipa_digest="$(gh api "repos/$repo/releases/tags/${tag//+/%2B}" \
     --jq '.assets[] | select(.name | endswith(".ipa")) | .digest')"
   [[ "$ipa_digest" == "sha256:$ipa_sha" ]] || die "GitHub reports '$ipa_digest' for the uploaded IPA, expected sha256:$ipa_sha"
+  echo "iOS feed   $asset_base/altstore-source.json"
+  echo "           one-tap: https://altdirect.app/?url=$asset_base/altstore-source.json&r=sidestore"
 fi
 
 if [[ ! -f "$cert_file" ]]; then

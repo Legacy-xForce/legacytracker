@@ -197,8 +197,8 @@ shapes until Phase 4), so reverting is a rebuild of the web app.
 
 3.1 **Packages:** add `flutter_appauth` (AppAuth: Custom Tabs / `ASWebAuthenticationSession`, never a WebView)
 and `flutter_secure_storage`; remove `passkeys`. Android: `manifestPlaceholders["appAuthRedirectScheme"] = "com.legacy.legacytracker"`.
-iOS: URL type for the same scheme. (Note: the iOS bundle id is still `com.example.legacytracker`; the
-custom scheme does not depend on it, but fix it before any App Store work.)
+iOS: URL type for the same scheme. (The iOS bundle id is now `com.legacy.legacytracker`, matching the
+scheme, `firebase_options.dart` and `GoogleService-Info.plist`.)
 Fallback if AppAuth gets in the way: `flutter_web_auth_2` + PKCE and the token call in Dart.
 
 3.2 **`AuthService` / `AuthProvider` rewrite**
