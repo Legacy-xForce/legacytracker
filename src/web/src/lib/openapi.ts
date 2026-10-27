@@ -173,7 +173,7 @@ export const openApiDocument = {
         {
             name: 'Managing API tokens',
             description:
-                'Create and manage tokens from your profile in the phone app or the account menu on the web, or call these with a signed-in session. API tokens cannot manage tokens, so a leaked token cannot mint replacements. Only the web can change a token’s allowed addresses.'
+                'Create and manage tokens from your profile in the phone app or the account menu on the web, or call these with a signed-in session. API tokens cannot manage tokens, so a leaked token cannot mint replacements. A token’s allowed addresses are edited from the web map or the phone app.'
         }
     ],
     paths: {
