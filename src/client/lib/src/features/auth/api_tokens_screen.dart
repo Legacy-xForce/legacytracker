@@ -557,86 +557,92 @@ class _TokenTile extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 4, 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              token.name,
-                              overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.titleSmall?.copyWith(
-                                fontWeight: FontWeight.w600,
+          InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 4, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Flexible(
+                              child: Text(
+                                token.name,
+                                overflow: TextOverflow.ellipsis,
+                                style: theme.textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 1,
-                            ),
-                            decoration: BoxDecoration(
-                              color: write
-                                  ? scheme.errorContainer
-                                  : scheme.secondaryContainer,
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              write ? 'WRITE' : 'READ',
-                              style: theme.textTheme.labelSmall?.copyWith(
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 6,
+                                vertical: 1,
+                              ),
+                              decoration: BoxDecoration(
                                 color: write
-                                    ? scheme.onErrorContainer
-                                    : scheme.onSecondaryContainer,
+                                    ? scheme.errorContainer
+                                    : scheme.secondaryContainer,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                write ? 'WRITE' : 'READ',
+                                style: theme.textTheme.labelSmall?.copyWith(
+                                  color: write
+                                      ? scheme.onErrorContainer
+                                      : scheme.onSecondaryContainer,
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        token.hint,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          fontFamily: 'monospace',
-                          color: scheme.onSurfaceVariant,
+                          ],
                         ),
-                      ),
-                      Text(
-                        'Created ${formatShortDate(token.createdAt)} · $usage',
-                        style: theme.textTheme.bodySmall?.copyWith(
-                          color: scheme.onSurfaceVariant,
-                        ),
-                      ),
-                      if (token.allowedIps.isNotEmpty)
+                        const SizedBox(height: 2),
                         Text(
-                          'From ${token.allowedIps.join(', ')}',
-                          maxLines: 2,
+                          token.hint,
                           overflow: TextOverflow.ellipsis,
                           style: theme.textTheme.bodySmall?.copyWith(
                             fontFamily: 'monospace',
                             color: scheme.onSurfaceVariant,
                           ),
                         ),
-                    ],
+                        Text(
+                          'Created ${formatShortDate(token.createdAt)} · $usage',
+                          style: theme.textTheme.bodySmall?.copyWith(
+                            color: scheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (token.allowedIps.isNotEmpty)
+                          Text(
+                            'From ${token.allowedIps.join(', ')}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              fontFamily: 'monospace',
+                              color: scheme.onSurfaceVariant,
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                ),
-                IconButton(
-                  tooltip: expanded
-                      ? 'Close ${token.name} settings'
-                      : 'Edit ${token.name}',
-                  icon: Icon(
-                    expanded ? Icons.close_rounded : Icons.tune_rounded,
+                  // A labelled control, like the web's Edit button: the
+                  // settings behind it hold save, rotate and delete, and an
+                  // icon alone left them looking absent on a phone.
+                  Tooltip(
+                    message: expanded
+                        ? 'Close ${token.name} settings'
+                        : 'Edit ${token.name}',
+                    child: TextButton(
+                      onPressed: onToggle,
+                      child: Text(expanded ? 'Done' : 'Edit'),
+                    ),
                   ),
-                  onPressed: onToggle,
-                ),
-              ],
+                ],
+              ),
             ),
           ),
           if (expanded)

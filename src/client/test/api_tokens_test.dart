@@ -317,13 +317,31 @@ void main() {
       tester,
     ) async {
       await pumpScreen(tester, tokens: [_summary()]);
+      expect(find.text('Edit'), findsOneWidget);
       expect(find.byTooltip('Rotate Home Assistant'), findsNothing);
       expect(find.text('ALLOWED ADDRESSES'), findsNothing);
 
       await openSettings(tester);
+      expect(find.text('Done'), findsOneWidget);
       expect(find.text('ALLOWED ADDRESSES'), findsOneWidget);
+      expect(find.text('Save'), findsOneWidget);
       expect(find.byTooltip('Rotate Home Assistant'), findsOneWidget);
       expect(find.byTooltip('Delete Home Assistant'), findsOneWidget);
+    });
+
+    testWidgets('opens a token settings by tapping its row', (tester) async {
+      await pumpScreen(tester, tokens: [_summary()]);
+      await tester.tap(find.text('Home Assistant'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ALLOWED ADDRESSES'), findsOneWidget);
+      expect(find.text('Save'), findsOneWidget);
+      expect(find.byTooltip('Rotate Home Assistant'), findsOneWidget);
+      expect(find.byTooltip('Delete Home Assistant'), findsOneWidget);
+
+      await tester.tap(find.text('Home Assistant'));
+      await tester.pumpAndSettle();
+      expect(find.text('ALLOWED ADDRESSES'), findsNothing);
     });
 
     testWidgets('saves an address list and shows it on the token', (
