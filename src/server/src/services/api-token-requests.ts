@@ -81,10 +81,11 @@ export function userAgentOf(
 }
 
 /**
- * Persistent trail of requests made with personal API tokens, so an owner can
- * see what an integration did and security can investigate a leaked token.
- * Rows include requests the token's scope or address allowlist turned away.
- * A deleted token leaves its history behind (`token_id` becomes null).
+ * Persistent trail of requests made with personal API tokens, so anyone
+ * signed in can audit what integrations do and security can investigate a
+ * leaked token. Rows include requests the token's scope or address allowlist
+ * turned away. A deleted token's history stays in the database, though the
+ * API no longer exposes it.
  */
 export class ApiTokenRequests {
   constructor(private readonly pool: Pool) {}
@@ -109,16 +110,17 @@ export class ApiTokenRequests {
   }
 
   /**
-   * Newest first, one page at a time. Any signed-in user may read any token's
-   * trail, which is what makes it an audit log; deleted tokens keep theirs.
-   * Returns null when no token has that id, which the route turns into a 404.
+   * Newest first, one page at a time. Any signed-in user may read any live
+   * token's trail, which is what makes it an audit log. Deleted tokens are
+   * left to the database. Returns null when no live token has that id, which
+   * the route turns into a 404.
    */
   async listForToken(
     tokenId: string,
     options: { limit: number; before: string | null },
   ): Promise<ApiTokenRequestPage | null> {
     const exists = await this.pool.query(
-      "SELECT 1 FROM api_tokens WHERE id = $1",
+      "SELECT 1 FROM api_tokens WHERE id = $1 AND NOT deleted",
       [tokenId],
     );
     if (exists.rowCount === 0) {

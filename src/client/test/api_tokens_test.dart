@@ -219,22 +219,13 @@ void main() {
       expect((await service.list('jwt')).yourIp, _yourIp);
     });
 
-    test("lists every token on the tracker with its owner", () async {
+    test("lists every live token on the tracker with its owner", () async {
       final tracker = _FakeTracker()
-        ..everyone.addAll([
-          {
-            ..._summary(id: 'tok-2', name: 'Bob phone', scope: 'write'),
-            'user_id': 'user-2',
-            'user_name': 'Bob',
-            'deleted': false,
-          },
-          {
-            ..._summary(id: 'tok-3', name: 'Old key'),
-            'user_id': 'user-2',
-            'user_name': 'Bob',
-            'deleted': true,
-          },
-        ]);
+        ..everyone.add({
+          ..._summary(id: 'tok-2', name: 'Bob phone', scope: 'write'),
+          'user_id': 'user-2',
+          'user_name': 'Bob',
+        });
       final service = ApiTokenService(
         baseUrl: 'https://tracker.example',
         httpClient: tracker.client,
@@ -242,10 +233,9 @@ void main() {
 
       final tokens = await service.listAll('jwt');
       expect(tracker.requests.single.url.path, '/api/v1/api-tokens/all');
-      expect(tokens.map((t) => t.id), ['tok-2', 'tok-3']);
-      expect(tokens.map((t) => t.userName), ['Bob', 'Bob']);
-      expect(tokens.map((t) => t.deleted), [false, true]);
-      expect(tokens.first.scope, ApiTokenScope.write);
+      expect(tokens.map((t) => t.id), ['tok-2']);
+      expect(tokens.single.userName, 'Bob');
+      expect(tokens.single.scope, ApiTokenScope.write);
     });
 
     test('reads a page of request history with its cursor', () async {
@@ -552,20 +542,11 @@ void main() {
       tester,
     ) async {
       final tracker = await pumpScreen(tester, tokens: [_summary()]);
-      tracker.everyone.addAll([
-        {
-          ..._summary(id: 'tok-2', name: 'Bob phone', scope: 'write'),
-          'user_id': 'user-2',
-          'user_name': 'Bob',
-          'deleted': false,
-        },
-        {
-          ..._summary(id: 'tok-3', name: 'Old key'),
-          'user_id': 'user-2',
-          'user_name': 'Bob',
-          'deleted': true,
-        },
-      ]);
+      tracker.everyone.add({
+        ..._summary(id: 'tok-2', name: 'Bob phone', scope: 'write'),
+        'user_id': 'user-2',
+        'user_name': 'Bob',
+      });
       tracker.requestLog['tok-2'] = [_request(id: '1')];
 
       await tester.tap(find.byTooltip("Everyone's tokens"));
@@ -575,7 +556,6 @@ void main() {
       expect(find.text('BOB'), findsOneWidget);
       expect(find.text('Bob phone'), findsOneWidget);
       expect(find.text('WRITE'), findsOneWidget);
-      expect(find.text('DELETED'), findsOneWidget);
 
       await tester.tap(find.byTooltip('Request history for Bob phone'));
       await tester.pumpAndSettle();

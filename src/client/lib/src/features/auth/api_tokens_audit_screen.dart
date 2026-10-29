@@ -8,7 +8,7 @@ import '../../data/network/api_token_service.dart';
 import 'api_token_requests_screen.dart';
 import 'auth_provider.dart';
 
-/// Every token on the tracker, grouped by owner, with each one's request
+/// Every live token on the tracker, grouped by owner, with each one's request
 /// history a tap away. Any signed-in user can open it: auditing what
 /// integrations can read or write is the point.
 class ApiTokensAuditScreen extends StatefulWidget {
@@ -125,10 +125,9 @@ class _ApiTokensAuditScreenState extends State<ApiTokensAuditScreen> {
                           ),
                           const SizedBox(height: 4),
                           Text(
-                            'Every API token on the tracker, so anyone can '
+                            'Every live API token on the tracker, so anyone can '
                             'check what integrations can read or write. '
-                            'Secrets are never shown, and deleted tokens keep '
-                            'their activity visible.',
+                            'Secrets are never shown.',
                             style: theme.textTheme.bodySmall?.copyWith(
                               color: scheme.onSurfaceVariant,
                             ),
@@ -248,14 +247,6 @@ class _AuditTokenTile extends StatelessWidget {
                               ? scheme.onErrorContainer
                               : scheme.onSecondaryContainer,
                         ),
-                        if (token.deleted) ...[
-                          const SizedBox(width: 6),
-                          _Badge(
-                            text: 'DELETED',
-                            background: scheme.surfaceContainerHighest,
-                            foreground: scheme.onSurfaceVariant,
-                          ),
-                        ],
                       ],
                     ),
                     const SizedBox(height: 2),

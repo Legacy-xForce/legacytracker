@@ -108,8 +108,8 @@ anywhere — together with rotate and delete. **Activity** opens the requests ma
 with that token in a popup (the phone app shows the same as a page of its own).
 The list also shows the address the API is answering from, so restricting a
 token to where you are now is one click. The **Everyone** tab lists every
-user's tokens, deleted ones included, with the same Activity popup: anyone
-signed in can audit what integrations can read or write.
+live user's tokens with the same Activity popup: anyone signed in can audit
+what integrations can read or write.
 The phone app has the same, address list included, under Profile → Integrations,
 plus the everyone list behind the people icon on the API tokens screen)
 and **API documentation**, which opens `/docs`. That

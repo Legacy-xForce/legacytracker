@@ -128,10 +128,11 @@ test("the trail is readable by anyone, so the query does not name its owner", as
 
   assert.ok(page);
   assert.doesNotMatch(calls[0].text, /user_id/);
+  assert.match(calls[0].text, /NOT deleted/);
   assert.deepEqual(calls[0].values, [entry.tokenId]);
 });
 
-test("a token that does not exist has no trail", async () => {
+test("a token that does not exist or is deleted has no trail", async () => {
   const pool = {
     query: async () => ({ rows: [], rowCount: 0 }),
   } as unknown as Pool;

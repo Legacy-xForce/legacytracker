@@ -102,15 +102,13 @@ describe('API token client', () => {
         expect((init as RequestInit).headers).toMatchObject({ authorization: expect.stringMatching(/^Bearer /) });
     });
 
-    it("parses everyone's tokens, naming the owner and keeping deleted ones", async () => {
-        const audited = { ...summary, user_id: 'user-2', user_name: 'Bob', deleted: true };
+    it("parses everyone's tokens, naming the owner", async () => {
+        const audited = { ...summary, user_id: 'user-2', user_name: 'Bob' };
         expect(parseAuditedApiToken(audited)).toMatchObject({
             id: summary.id,
             userId: 'user-2',
-            userName: 'Bob',
-            deleted: true
+            userName: 'Bob'
         });
-        expect(parseAuditedApiToken({ ...audited, deleted: undefined })).toMatchObject({ deleted: false });
         expect(parseAuditedApiToken({ ...audited, user_name: 42 })).toBeNull();
 
         fetchMock.mockResolvedValueOnce(jsonResponse({ tokens: [audited, { id: 1 }] }));
@@ -257,19 +255,11 @@ describe('API tokens dialog', () => {
         expect(document.body.querySelector('[data-request-row]')).toBeNull();
     });
 
-    it('lists every user’s tokens and opens their request history', async () => {
-        const mine = { ...summary, user_id: 'user-2', user_name: 'Bob', deleted: false };
-        const old = {
-            ...summary,
-            id: 'deleted-1',
-            name: 'Old key',
-            user_id: 'user-2',
-            user_name: 'Bob',
-            deleted: true
-        };
+    it('lists every user’s live tokens and opens their request history', async () => {
+        const mine = { ...summary, user_id: 'user-2', user_name: 'Bob' };
         fetchMock.mockImplementation(async (url: string) =>
             String(url).endsWith('/api/v1/api-tokens/all')
-                ? jsonResponse({ tokens: [mine, old] })
+                ? jsonResponse({ tokens: [mine] })
                 : String(url).includes('/requests')
                   ? jsonResponse({ requests: [requestEntry], has_more: false, next_before: null })
                   : jsonResponse({ tokens: [summary] })
@@ -279,8 +269,7 @@ describe('API tokens dialog', () => {
         await flushPromises();
 
         expect(document.body.textContent).toContain('Bob');
-        expect(document.body.querySelectorAll('[data-audit-token-row]')).toHaveLength(2);
-        expect(document.body.querySelector('[data-deleted]')?.textContent).toBe('Deleted');
+        expect(document.body.querySelectorAll('[data-audit-token-row]')).toHaveLength(1);
 
         click('[data-audit-token-requests]');
         await flushPromises();

@@ -138,15 +138,16 @@ precedence over `Authorization`.
 - Only `sha256(token)` is stored: the value is shown once, at creation or
   rotation. Up to 25 tokens per user. Deleting one marks it
   `deleted = true` (soft delete) instead of removing the row, so its request
-  history stays auditable; deleted tokens no longer authenticate or count
-  against the limit.
+  history stays in the database for inspection; deleted tokens no longer
+  authenticate, count against the limit or appear in the API.
 - Every request made with a token is written to `api_token_requests` (method,
   path without the query string, status, client address, user agent and
   duration), including requests the scope or address allowlist refused.
-- For security, token metadata and these trails are visible to every signed-in
-  user: `GET /api/v1/api-tokens/all` lists everyone's tokens (owner included,
-  deleted ones too) and any token's trail can be read by id. Secrets are never
-  part of either, and only the owner can create, rotate, edit or delete.
+- For security, live token metadata and these trails are visible to every
+  signed-in user: `GET /api/v1/api-tokens/all` lists everyone's live tokens
+  (owner included) and any live token's trail can be read by id. Secrets are
+  never part of either, and only the owner can create, rotate, edit or delete.
+  Deleted tokens are not exposed by the API; inspect them in the database.
 - Removing someone's tracker access also ends their integrations: a
   back-channel logout reporting lost access (see [Sign-out](#sign-out-back-channel-logout))
   marks that user's tokens deleted, as does a legacy JWT that lacks
@@ -155,12 +156,12 @@ precedence over `Authorization`.
 | Method   | Path                              | Auth | Description |
 |----------|-----------------------------------|------|-------------|
 | `GET`    | `/api/v1/api-tokens`              | JWT  | `{ "tokens": [{ "id", "name", "scope", "token_hint", "allowed_ips", "created_at", "last_used_at", "rotated_at" }], "your_ip": "203.0.113.7" }`, newest first. |
-| `GET`    | `/api/v1/api-tokens/all`          | JWT  | `{ "tokens": [...] }` with every user's tokens, deleted ones included, ordered by owner then newest first. Each entry adds `user_id`, `user_name` and `deleted` to the summary. Any signed-in user may call it. |
+| `GET`    | `/api/v1/api-tokens/all`          | JWT  | `{ "tokens": [...] }` with every user's live tokens, ordered by owner then newest first. Each entry adds `user_id` and `user_name` to the summary. Any signed-in user may call it. Deleted tokens are not listed. |
 | `POST`   | `/api/v1/api-tokens`              | JWT  | Body `{ "name"?: "Home Assistant", "scope": "read" \| "write" }`. `201` with the summary plus `token`. `400` on a bad scope or at the limit. |
 | `POST`   | `/api/v1/api-tokens/:id/rotate`   | JWT  | Replaces the value (the old one stops working at once); returns the summary plus the new `token`. `404` if not yours. |
 | `PATCH`  | `/api/v1/api-tokens/:id`          | JWT  | Body `{ "allowed_ips": ["203.0.113.7", "198.51.100.0/24"] }` replaces the list (empty lifts the restriction). Returns the summary; applies to the next request at once. `400` on an entry that is not an address or prefix, `404` if not yours. |
 | `DELETE` | `/api/v1/api-tokens/:id`          | JWT  | `{ "deleted": true }`, or `404`. The row is kept with `deleted = true` to preserve its request history. |
-| `GET`    | `/api/v1/api-tokens/:id/requests` | JWT  | `{ "requests": [{ "id", "method", "path", "status_code", "client_ip", "user_agent", "duration_ms", "created_at" }], "has_more": false, "next_before": null }`, newest first. Any signed-in user may read any token's trail, deleted tokens included. `limit` is 1–200 (default 50); pass `next_before` back as `before` for older entries. `404` if no token has that id. |
+| `GET`    | `/api/v1/api-tokens/:id/requests` | JWT  | `{ "requests": [{ "id", "method", "path", "status_code", "client_ip", "user_agent", "duration_ms", "created_at" }], "has_more": false, "next_before": null }`, newest first. Any signed-in user may read any live token's trail. `limit` is 1–200 (default 50); pass `next_before` back as `before` for older entries. `404` if no live token has that id. |
 
 ### Profile
 

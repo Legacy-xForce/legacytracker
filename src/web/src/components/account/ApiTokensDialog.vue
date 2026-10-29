@@ -565,8 +565,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 
                     <template v-else>
                         <p class="type-body-md text-on-surface-variant">
-                            Every token on the tracker, so anyone can check what integrations can read or write. Secrets
-                            are never shown, and deleted tokens keep their activity visible.
+                            Every live token on the tracker, so anyone can check what integrations can read or write.
+                            Secrets are never shown.
                         </p>
                         <div v-if="allLoading && allTokens === null" class="flex justify-center py-6">
                             <Spinner />
@@ -621,12 +621,6 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                                                 : 'bg-secondary-container text-on-secondary-container'
                                                         "
                                                         >{{ token.scope }}</span
-                                                    >
-                                                    <span
-                                                        v-if="token.deleted"
-                                                        class="type-label-sm bg-surface-container-lowest text-on-surface-variant shrink-0 rounded-md px-1.5 py-0.5 uppercase"
-                                                        data-deleted
-                                                        >Deleted</span
                                                     >
                                                 </p>
                                                 <p

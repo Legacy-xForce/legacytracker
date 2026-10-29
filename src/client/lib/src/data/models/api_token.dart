@@ -24,7 +24,6 @@ class ApiToken {
     this.allowedIps = const [],
     this.userId,
     this.userName,
-    this.deleted = false,
   });
 
   factory ApiToken.fromJson(Map<String, dynamic> json) {
@@ -41,7 +40,6 @@ class ApiToken {
       allowedIps: _addresses(json['allowed_ips']),
       userId: json['user_id'] as String?,
       userName: json['user_name'] as String?,
-      deleted: json['deleted'] == true,
     );
   }
 
@@ -68,9 +66,6 @@ class ApiToken {
   /// The owner's id and display name; set only by the everyone list.
   final String? userId;
   final String? userName;
-
-  /// A deleted token no longer authenticates, but its activity stays readable.
-  final bool deleted;
 }
 
 /// A token as created or rotated: the only time its value is known.

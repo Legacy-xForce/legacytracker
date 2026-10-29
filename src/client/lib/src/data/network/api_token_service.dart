@@ -58,8 +58,8 @@ class ApiTokenService {
     );
   }
 
-  /// Every token on the tracker, whoever owns it, for the shared audit view.
-  /// Deleted tokens are included so their trail stays reachable.
+  /// Every live token on the tracker, whoever owns it, for the shared audit
+  /// view. Deleted tokens are not listed.
   Future<List<ApiToken>> listAll(String accessToken) async {
     final response = await _send(
       () => _httpClient.get(

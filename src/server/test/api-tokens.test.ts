@@ -217,7 +217,7 @@ test("deleting a token marks it deleted and keeps its history", async () => {
   assert.doesNotMatch(calls[0], /DELETE FROM api_tokens/);
 });
 
-test("the tracker-wide list names owners and keeps deleted tokens", async () => {
+test("the tracker-wide list names owners and leaves deleted tokens out", async () => {
   const calls: string[] = [];
   const pool = {
     query: async (text: string) => {
@@ -235,7 +235,6 @@ test("the tracker-wide list names owners and keeps deleted tokens", async () => 
             rotated_at: null,
             user_id: "user-2",
             user_name: "Bob",
-            deleted: true,
           },
         ],
         rowCount: 1,
@@ -246,8 +245,7 @@ test("the tracker-wide list names owners and keeps deleted tokens", async () => 
   const tokens = await new ApiTokens(pool).listAll();
 
   assert.match(calls[0], /JOIN users/);
-  assert.match(calls[0], /t\.deleted/);
-  assert.doesNotMatch(calls[0], /NOT deleted/);
+  assert.match(calls[0], /WHERE NOT t\.deleted/);
   assert.deepEqual(tokens, [
     {
       id: "0e7a3c3e-2f7b-4f63-9c55-0bb0a4f3c1d2",
@@ -260,7 +258,6 @@ test("the tracker-wide list names owners and keeps deleted tokens", async () => 
       rotated_at: null,
       user_id: "user-2",
       user_name: "Bob",
-      deleted: true,
     },
   ]);
 });

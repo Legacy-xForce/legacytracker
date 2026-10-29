@@ -45,7 +45,7 @@ const tokenSummary = {
     rotated_at: null
 };
 
-const auditedToken = { ...tokenSummary, user_id: userId, user_name: 'alice', deleted: false };
+const auditedToken = { ...tokenSummary, user_id: userId, user_name: 'alice' };
 
 const errorSchema = {
     type: 'object',
@@ -1010,7 +1010,7 @@ export const openApiDocument = {
                 operationId: 'list-all-tokens',
                 summary: 'List everyone’s tokens',
                 description:
-                    'For security, any signed-in user can see every token on the tracker: owner, scope, hint and usage. Secrets are never included. Deleted tokens stay visible so their request history remains auditable.',
+                    'For security, any signed-in user can see every live token on the tracker: owner, scope, hint and usage. Secrets are never included. Deleted tokens are not listed and remain inspectable only in the database.',
                 security: sessionOnly,
                 responses: {
                     '200': {
@@ -1075,7 +1075,7 @@ export const openApiDocument = {
                 operationId: 'list-token-requests',
                 summary: 'List requests made with a token',
                 description:
-                    'Newest first, one page at a time. Any signed-in user may read any token’s trail, deleted tokens included; this is the audit log that keeps integrations accountable. Includes requests the token’s scope or allowed addresses refused. Query strings are never stored. Pass `next_before` back as `before` to read older entries.',
+                    'Newest first, one page at a time. Any signed-in user may read any live token’s trail; this is the audit log that keeps integrations accountable. Includes requests the token’s scope or allowed addresses refused. Query strings are never stored. Pass `next_before` back as `before` to read older entries.',
                 security: sessionOnly,
                 parameters: [
                     {
@@ -1125,7 +1125,7 @@ export const openApiDocument = {
                             }
                         }
                     },
-                    '404': errorResponse('No token has that id.'),
+                    '404': errorResponse('No live token has that id.'),
                     ...commonErrors
                 }
             }
@@ -1515,15 +1515,10 @@ export const openApiDocument = {
                     { $ref: '#/components/schemas/ApiTokenSummary' },
                     {
                         type: 'object',
-                        required: ['user_id', 'user_name', 'deleted'],
+                        required: ['user_id', 'user_name'],
                         properties: {
                             user_id: { type: 'string' },
-                            user_name: { type: 'string', description: 'The owner’s display name.' },
-                            deleted: {
-                                type: 'boolean',
-                                description:
-                                    'A deleted token no longer authenticates, but its request history stays readable.'
-                            }
+                            user_name: { type: 'string', description: 'The owner’s display name.' }
                         }
                     }
                 ]
