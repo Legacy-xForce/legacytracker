@@ -803,6 +803,9 @@ class _AllowedAddressesState extends State<_AllowedAddresses> {
           Row(
             children: [
               FilledButton.icon(
+                // The theme makes FilledButtons full-width, which a Row
+                // cannot give them: stay content-sized here.
+                style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
                 icon: widget.busy
                     ? const SizedBox(
                         width: 16,

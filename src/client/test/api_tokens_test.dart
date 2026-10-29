@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'package:legacytracker/src/core/theme.dart';
 import 'package:legacytracker/src/data/models/api_token.dart';
 import 'package:legacytracker/src/data/network/api_token_service.dart';
 import 'package:legacytracker/src/features/auth/api_tokens_screen.dart';
@@ -235,6 +236,9 @@ void main() {
       final tracker = _FakeTracker()..tokens.addAll(tokens);
       await tester.pumpWidget(
         MaterialApp(
+          // The real theme makes FilledButtons full-width, which is what a
+          // Row cannot give them: plain MaterialApp hid that regression.
+          theme: buildThemeFor(AppThemeId.teal),
           home: ApiTokensScreen(
             service: ApiTokenService(
               baseUrl: 'https://tracker.example',
