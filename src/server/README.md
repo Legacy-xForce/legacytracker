@@ -137,6 +137,11 @@ precedence over `Authorization`.
   for its own sake (firewall 443 to their ranges, or a tunnel).
 - Only `sha256(token)` is stored: the value is shown once, at creation or
   rotation. Up to 25 tokens per user.
+- Every request made with a token is written to `api_token_requests` (method,
+  path without the query string, status, client address, user agent and
+  duration), including requests the scope or address allowlist refused. The
+  trail survives token deletion (`token_id` becomes null), so an integration
+  can be audited after its credential is gone.
 - Removing someone's tracker access also ends their integrations: a
   back-channel logout reporting lost access (see [Sign-out](#sign-out-back-channel-logout))
   deletes that user's tokens, as does a legacy JWT that lacks `scopes.tracker`.
@@ -328,6 +333,7 @@ src/
   db/schema.sql           # Database schema (apply once)
   services/
     api-tokens.ts         # personal API tokens (X-API-Token) and their scopes
+    api-token-requests.ts # persistent request trail for API tokens
     connection-manager.ts # WebSocket client registry & broadcast
     device-auth.ts        # device tokens for background uploads
     dwell-tracker.ts      # "here since" for each user's current stay

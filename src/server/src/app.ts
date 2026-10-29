@@ -14,6 +14,11 @@ import {
   parseAllowedIps,
   validateApiTokenInput,
 } from "./services/api-tokens";
+import {
+  ApiTokenRequests,
+  requestPath,
+  userAgentOf,
+} from "./services/api-token-requests";
 import { AndroidReleaseSource } from "./services/app-releases";
 import {
   canModifyCheckpoint,
@@ -145,6 +150,7 @@ const app = Fastify({
 const connectionManager = new ConnectionManager();
 const deviceAuth = new DeviceAuth(pool);
 const apiTokens = new ApiTokens(pool);
+const apiTokenRequests = new ApiTokenRequests(pool);
 // The phone app has no Mapbox token of its own: it asks this server for a
 // short-lived one. The secret below can mint tokens and must stay server-side.
 const mapboxTokens = new MapboxTokenService({
@@ -259,6 +265,46 @@ if (CORS_ALLOWED_ORIGINS.length === 0) {
   app.log.warn("[cors] CORS_ALLOWED_ORIGINS not set — any web origin may call this API");
 }
 app.register(websocket);
+
+interface ApiTokenRequestContext {
+  tokenId: string;
+  userId: string;
+  clientIp: string;
+}
+
+// The request itself is the key, so no Fastify decoration (and no leaking of
+// one request's token into another) is involved.
+const apiTokenRequestContexts = new WeakMap<
+  FastifyRequest,
+  ApiTokenRequestContext
+>();
+
+// `onResponse` is the first point at which the final status is known, and it
+// runs after the reply has been sent: a slow insert can't delay the caller.
+app.addHook("onResponse", async (request, reply) => {
+  const context = apiTokenRequestContexts.get(request);
+  if (!context) {
+    return;
+  }
+  try {
+    await apiTokenRequests.record({
+      tokenId: context.tokenId,
+      userId: context.userId,
+      method: request.method,
+      path: requestPath(request.url),
+      statusCode: reply.statusCode,
+      clientIp: context.clientIp,
+      userAgent: userAgentOf(request.headers["user-agent"]),
+      durationMs: Math.max(0, Math.round(reply.elapsedTime)),
+    });
+  } catch (error) {
+    // Logging a request must never break the request itself.
+    app.log.warn(
+      { error, tokenId: context.tokenId },
+      "[api-tokens] unable to record request",
+    );
+  }
+});
 
 /** Sends one push to every registered device, pruning dead tokens. */
 async function pushToAllDevices(
@@ -517,6 +563,16 @@ async function getApiTokenIdentity(
   token: string,
   options: IdentityOptions,
 ): Promise<IdentityResult> {
+  const identity = await apiTokens.authenticate(token);
+  const clientAddress = apiClientAddress(request);
+  if (identity) {
+    // Whatever the outcome, the request is part of this token's history.
+    apiTokenRequestContexts.set(request, {
+      tokenId: identity.tokenId,
+      userId: identity.userId,
+      clientIp: clientAddress,
+    });
+  }
   if (options.sessionOnly) {
     return {
       ok: false,
@@ -525,11 +581,9 @@ async function getApiTokenIdentity(
       error: "API tokens can't be used here; sign in instead",
     };
   }
-  const identity = await apiTokens.authenticate(token);
   if (!identity) {
     return { ok: false, reason: "unknown or revoked API token" };
   }
-  const clientAddress = apiClientAddress(request);
   if (!ipMatchesAllowlist(clientAddress, identity.allowedIps)) {
     // The rejected address travels in the log line, because it is the one the
     // owner has to add to lift the block.
@@ -756,6 +810,28 @@ async function ensureBackendSchema(): Promise<void> {
     );
     await pool.query(
       "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS allowed_ips text[] NOT NULL DEFAULT '{}'",
+    );
+    await pool.query(
+      `CREATE TABLE IF NOT EXISTS api_token_requests (
+         id bigserial PRIMARY KEY,
+         token_id uuid REFERENCES api_tokens(id) ON DELETE SET NULL,
+         user_id text NOT NULL,
+         method text NOT NULL,
+         path text NOT NULL,
+         status_code integer NOT NULL,
+         client_ip text,
+         user_agent text,
+         duration_ms integer,
+         created_at timestamptz NOT NULL DEFAULT now()
+       )`,
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS api_token_requests_token_created_idx
+       ON api_token_requests (token_id, created_at DESC)`,
+    );
+    await pool.query(
+      `CREATE INDEX IF NOT EXISTS api_token_requests_user_created_idx
+       ON api_token_requests (user_id, created_at DESC)`,
     );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert

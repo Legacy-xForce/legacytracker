@@ -60,6 +60,29 @@ CREATE TABLE IF NOT EXISTS api_tokens (
 
 CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens (user_id);
 
+-- Every request made with an API token, including ones its scope or address
+-- allowlist refused, so an owner can audit an integration and a leaked token
+-- leaves a trail. `token_id` becomes null when the token is deleted, because
+-- the history outlives the credential. Query strings are never stored.
+CREATE TABLE IF NOT EXISTS api_token_requests (
+  id bigserial PRIMARY KEY,
+  token_id uuid REFERENCES api_tokens(id) ON DELETE SET NULL,
+  user_id text NOT NULL,
+  method text NOT NULL,
+  path text NOT NULL,
+  status_code integer NOT NULL,
+  client_ip text,
+  user_agent text,
+  duration_ms integer,
+  created_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS api_token_requests_token_created_idx
+  ON api_token_requests (token_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS api_token_requests_user_created_idx
+  ON api_token_requests (user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS viewer_state (
   id text PRIMARY KEY,
   active_viewers integer NOT NULL DEFAULT 0,
