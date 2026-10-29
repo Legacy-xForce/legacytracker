@@ -816,11 +816,6 @@ class _AllowedAddressesState extends State<_AllowedAddresses> {
                 label: const Text('Save'),
                 onPressed: widget.busy ? null : () => widget.onSave(_draft),
               ),
-              if (_draft.isNotEmpty)
-                TextButton(
-                  onPressed: () => setState(() => _draft = const []),
-                  child: const Text('Allow from any address'),
-                ),
               const Spacer(),
               IconButton(
                 tooltip: 'Rotate ${widget.tokenName}',
