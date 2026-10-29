@@ -368,7 +368,7 @@ export class ApiTokens {
   async list(userId: string): Promise<ApiTokenSummary[]> {
     const { rows } = await this.pool.query<ApiTokenRow>(
       `SELECT ${SUMMARY_COLUMNS} FROM api_tokens
-       WHERE user_id = $1 ORDER BY created_at DESC`,
+       WHERE user_id = $1 AND NOT deleted ORDER BY created_at DESC`,
       [userId],
     );
     return rows.map(toSummary);
@@ -385,7 +385,8 @@ export class ApiTokens {
     const { rows } = await this.pool.query<ApiTokenRow>(
       `INSERT INTO api_tokens (user_id, name, scope, token_hash, token_hint)
        SELECT $1, $2, $3, $4, $5
-       WHERE (SELECT count(*) FROM api_tokens WHERE user_id = $1) < $6
+       WHERE (SELECT count(*) FROM api_tokens
+              WHERE user_id = $1 AND NOT deleted) < $6
        RETURNING ${SUMMARY_COLUMNS}`,
       [
         userId,
@@ -410,7 +411,7 @@ export class ApiTokens {
     const { rows } = await this.pool.query<ApiTokenRow & { old_hash: string }>(
       `WITH old AS (
          SELECT id, token_hash FROM api_tokens
-         WHERE id = $1 AND user_id = $2 FOR UPDATE
+         WHERE id = $1 AND user_id = $2 AND NOT deleted FOR UPDATE
        )
        UPDATE api_tokens t
        SET token_hash = $3, token_hint = $4, rotated_at = now(), last_used_at = NULL
@@ -440,7 +441,7 @@ export class ApiTokens {
   ): Promise<ApiTokenSummary | null> {
     const { rows } = await this.pool.query<ApiTokenRow>(
       `UPDATE api_tokens SET allowed_ips = $3
-       WHERE id = $1 AND user_id = $2
+       WHERE id = $1 AND user_id = $2 AND NOT deleted
        RETURNING ${SUMMARY_COLUMNS}`,
       [id, userId, allowedIps],
     );
@@ -452,9 +453,15 @@ export class ApiTokens {
     return toSummary(row);
   }
 
+  /**
+   * Marks a token deleted instead of removing the row, so its request trail
+   * keeps a token to point at. `authenticate` ignores deleted rows, so this
+   * takes effect on the next request just like a hard delete.
+   */
   async remove(userId: string, id: string): Promise<boolean> {
     const { rows } = await this.pool.query<{ id: string; token_hash: string }>(
-      `DELETE FROM api_tokens WHERE id = $1 AND user_id = $2
+      `UPDATE api_tokens SET deleted = true
+       WHERE id = $1 AND user_id = $2 AND NOT deleted
        RETURNING id, token_hash`,
       [id, userId],
     );
@@ -471,7 +478,9 @@ export class ApiTokens {
    */
   async removeAllForUser(userId: string): Promise<number> {
     const { rows } = await this.pool.query<{ id: string; token_hash: string }>(
-      "DELETE FROM api_tokens WHERE user_id = $1 RETURNING id, token_hash",
+      `UPDATE api_tokens SET deleted = true
+       WHERE user_id = $1 AND NOT deleted
+       RETURNING id, token_hash`,
       [userId],
     );
     for (const row of rows) {
@@ -503,7 +512,7 @@ export class ApiTokens {
       `SELECT t.id, t.user_id, t.scope, t.allowed_ips, u.name
        FROM api_tokens t
        JOIN users u ON u.id = t.user_id
-       WHERE t.token_hash = $1`,
+       WHERE t.token_hash = $1 AND NOT t.deleted`,
       [hash],
     );
     const row = rows[0];

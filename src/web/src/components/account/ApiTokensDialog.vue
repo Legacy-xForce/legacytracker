@@ -12,6 +12,7 @@ import {
 } from '../../api/apiTokens';
 import { formatShortDate, formatUpdatedAgo } from '../../lib/format';
 import { showToast } from '../../lib/toast';
+import ApiTokenRequestsDialog from './ApiTokenRequestsDialog.vue';
 import ConfirmDialog from '../ui/ConfirmDialog.vue';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
@@ -36,6 +37,8 @@ const pending = ref<{ action: 'rotate' | 'delete'; token: ApiToken } | null>(nul
 const busy = ref(false);
 /** The token whose settings panel is open, and the allowlist being edited there. */
 const editingId = ref<string | null>(null);
+/** The token whose request history popup is open. */
+const requestsFor = ref<ApiToken | null>(null);
 const draft = ref<string[]>([]);
 const draftEntry = ref('');
 const saving = ref(false);
@@ -100,6 +103,7 @@ async function confirmPending() {
             tokens.value = (tokens.value ?? []).filter((t) => t.id !== action.token.id);
             if (issued.value?.id === action.token.id) issued.value = null;
             if (editingId.value === action.token.id) editingId.value = null;
+            if (requestsFor.value?.id === action.token.id) requestsFor.value = null;
             showToast(`Deleted “${action.token.name}”.`);
         }
         pending.value = null;
@@ -167,8 +171,9 @@ function usage(token: ApiToken): string {
 
 function onKey(event: KeyboardEvent) {
     if (event.key !== 'Escape' || pending.value) return;
-    // Escape backs out one level at a time: the open panel, then the dialog.
-    if (editingId.value) editingId.value = null;
+    // Escape backs out one level at a time: the activity popup, the open panel, then the dialog.
+    if (requestsFor.value) requestsFor.value = null;
+    else if (editingId.value) editingId.value = null;
     else emit('close');
 }
 
@@ -342,6 +347,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                         </p>
                                     </div>
                                     <button
+                                        class="text-primary type-label-lg hover:bg-on-surface/5 shrink-0 rounded-full px-3 py-2"
+                                        :aria-label="`Request history for ${token.name}`"
+                                        :title="`Request history for ${token.name}`"
+                                        data-token-requests
+                                        @click="requestsFor = token"
+                                    >
+                                        Activity
+                                    </button>
+                                    <button
                                         class="text-primary type-label-lg hover:bg-on-surface/5 rounded-full px-3 py-2"
                                         :aria-label="
                                             editingId === token.id
@@ -455,6 +469,8 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 </div>
             </section>
         </div>
+
+        <ApiTokenRequestsDialog v-if="requestsFor" :token="requestsFor" @close="requestsFor = null" />
 
         <ConfirmDialog
             v-if="pending"

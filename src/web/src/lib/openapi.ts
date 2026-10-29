@@ -1036,6 +1036,67 @@ export const openApiDocument = {
                 }
             }
         },
+        '/api/v1/api-tokens/{id}/requests': {
+            get: {
+                tags: ['Managing API tokens'],
+                operationId: 'list-token-requests',
+                summary: 'List requests made with a token',
+                description:
+                    'Newest first, one page at a time. Includes requests the token’s scope or allowed addresses refused. Query strings are never stored. Pass `next_before` back as `before` to read older entries.',
+                security: sessionOnly,
+                parameters: [
+                    {
+                        name: 'id',
+                        in: 'path',
+                        required: true,
+                        description: 'Token id.',
+                        schema: { type: 'string', format: 'uuid' }
+                    },
+                    {
+                        name: 'limit',
+                        in: 'query',
+                        required: false,
+                        description: 'How many entries to return (1–200, default 50).',
+                        schema: { type: 'integer', minimum: 1, maximum: 200, default: 50 }
+                    },
+                    {
+                        name: 'before',
+                        in: 'query',
+                        required: false,
+                        description: 'Return entries older than this request id, from `next_before`.',
+                        schema: { type: 'string', pattern: '^\\d+$' }
+                    }
+                ],
+                responses: {
+                    '200': {
+                        description: 'One page of the token’s requests.',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/ApiTokenRequestPage' },
+                                example: {
+                                    requests: [
+                                        {
+                                            id: '42',
+                                            method: 'GET',
+                                            path: '/api/v1/history',
+                                            status_code: 200,
+                                            client_ip: '203.0.113.7',
+                                            user_agent: 'Home Assistant/2026.10',
+                                            duration_ms: 12,
+                                            created_at: iso
+                                        }
+                                    ],
+                                    has_more: false,
+                                    next_before: null
+                                }
+                            }
+                        }
+                    },
+                    '404': errorResponse('No token with that id belongs to you.'),
+                    ...commonErrors
+                }
+            }
+        },
         '/api/v1/api-tokens/{id}': {
             patch: {
                 tags: ['Managing API tokens'],
@@ -1430,6 +1491,38 @@ export const openApiDocument = {
                         }
                     }
                 ]
+            },
+            ApiTokenRequest: {
+                type: 'object',
+                required: ['id', 'method', 'path', 'status_code', 'created_at'],
+                properties: {
+                    id: { type: 'string', description: 'Cursor for paging.' },
+                    method: { type: 'string' },
+                    path: { type: 'string', description: 'Path only; the query string is never stored.' },
+                    status_code: { type: 'integer' },
+                    client_ip: {
+                        type: ['string', 'null'],
+                        description: 'The address the token was used from.'
+                    },
+                    user_agent: { type: ['string', 'null'] },
+                    duration_ms: { type: ['integer', 'null'] },
+                    created_at: { type: 'string', format: 'date-time' }
+                }
+            },
+            ApiTokenRequestPage: {
+                type: 'object',
+                required: ['requests', 'has_more'],
+                properties: {
+                    requests: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/ApiTokenRequest' }
+                    },
+                    has_more: { type: 'boolean' },
+                    next_before: {
+                        type: ['string', 'null'],
+                        description: 'Pass back as `before` for the next page; null on the last one.'
+                    }
+                }
             },
             CreateApiToken: {
                 type: 'object',

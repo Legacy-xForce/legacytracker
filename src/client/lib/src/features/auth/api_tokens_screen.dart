@@ -6,6 +6,7 @@ import '../../core/constants.dart';
 import '../../core/formatters.dart';
 import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
+import 'api_token_requests_screen.dart';
 import 'auth_provider.dart';
 
 /// Lists the account's personal API tokens and creates, rotates or deletes
@@ -92,6 +93,18 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
   }
 
   void _expand(String? id) => setState(() => _expandedId = id);
+
+  void _openRequests(ApiToken token) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ApiTokenRequestsScreen(
+          token: token,
+          service: _service,
+          accessToken: _accessToken,
+        ),
+      ),
+    );
+  }
 
   /// Saves a token's address list. The panel stays open when the server
   /// refuses an entry, so what it named can be fixed in place.
@@ -270,6 +283,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                   saving: _saving,
                   onToggle: () =>
                       _expand(_expandedId == token.id ? null : token.id),
+                  onRequests: () => _openRequests(token),
                   onSave: (ips) => _saveAddresses(token, ips),
                   onRotate: () => _rotate(token),
                   onDelete: () => _delete(token),
@@ -529,6 +543,7 @@ class _TokenTile extends StatelessWidget {
     required this.yourIp,
     required this.saving,
     required this.onToggle,
+    required this.onRequests,
     required this.onSave,
     required this.onRotate,
     required this.onDelete,
@@ -539,6 +554,7 @@ class _TokenTile extends StatelessWidget {
   final String? yourIp;
   final bool saving;
   final VoidCallback onToggle;
+  final VoidCallback onRequests;
   final void Function(List<String> allowedIps) onSave;
   final VoidCallback onRotate;
   final VoidCallback onDelete;
@@ -628,6 +644,11 @@ class _TokenTile extends StatelessWidget {
                           ),
                       ],
                     ),
+                  ),
+                  IconButton(
+                    tooltip: 'Request history for ${token.name}',
+                    icon: const Icon(Icons.history_rounded),
+                    onPressed: onRequests,
                   ),
                   // A labelled control, like the web's Edit button: the
                   // settings behind it hold save, rotate and delete, and an
