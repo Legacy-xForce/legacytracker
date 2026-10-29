@@ -3,10 +3,12 @@ import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
     createApiToken,
+    listAllApiTokens,
     listApiTokenRequests,
     listApiTokens,
     parseApiToken,
     parseApiTokenRequest,
+    parseAuditedApiToken,
     updateApiTokenAllowedIps
 } from '../api/apiTokens';
 import ApiTokensDialog from '../components/account/ApiTokensDialog.vue';
@@ -98,6 +100,21 @@ describe('API token client', () => {
         expect(yourIp).toBe(seenFrom);
         const [, init] = fetchMock.mock.calls.at(-1)!;
         expect((init as RequestInit).headers).toMatchObject({ authorization: expect.stringMatching(/^Bearer /) });
+    });
+
+    it("parses everyone's tokens, naming the owner", async () => {
+        const audited = { ...summary, user_id: 'user-2', user_name: 'Bob' };
+        expect(parseAuditedApiToken(audited)).toMatchObject({
+            id: summary.id,
+            userId: 'user-2',
+            userName: 'Bob'
+        });
+        expect(parseAuditedApiToken({ ...audited, user_name: 42 })).toBeNull();
+
+        fetchMock.mockResolvedValueOnce(jsonResponse({ tokens: [audited, { id: 1 }] }));
+        const tokens = await listAllApiTokens();
+        expect(tokens.map((t) => t.userName)).toEqual(['Bob']);
+        expect(fetchMock.mock.calls.at(-1)![0]).toContain('/api/v1/api-tokens/all');
     });
 
     it('parses request history entries and drops malformed ones', () => {
@@ -238,6 +255,28 @@ describe('API tokens dialog', () => {
         expect(document.body.querySelector('[data-request-row]')).toBeNull();
     });
 
+    it('lists every user’s live tokens and opens their request history', async () => {
+        const mine = { ...summary, user_id: 'user-2', user_name: 'Bob' };
+        fetchMock.mockImplementation(async (url: string) =>
+            String(url).endsWith('/api/v1/api-tokens/all')
+                ? jsonResponse({ tokens: [mine] })
+                : String(url).includes('/requests')
+                  ? jsonResponse({ requests: [requestEntry], has_more: false, next_before: null })
+                  : jsonResponse({ tokens: [summary] })
+        );
+        await open();
+        click('[data-everyone-tab]');
+        await flushPromises();
+
+        expect(document.body.textContent).toContain('Bob');
+        expect(document.body.querySelectorAll('[data-audit-token-row]')).toHaveLength(1);
+
+        click('[data-audit-token-requests]');
+        await flushPromises();
+        expect(document.body.textContent).toContain('Owner: Bob');
+        expect(calls('GET').at(-1)?.url.pathname).toBe(`/api/v1/api-tokens/${summary.id}/requests`);
+    });
+
     it('shows an empty request history', async () => {
         fetchMock.mockImplementation(async (url: string) =>
             String(url).includes('/requests')
@@ -366,6 +405,7 @@ describe('API docs', () => {
         expect(openApiDocument.paths['/api/v1/location'].post.operationId).toBe('post-location');
         expect(openApiDocument.paths['/api/v1/history'].get.operationId).toBe('get-history');
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}/rotate'].post.operationId).toBe('rotate-token');
+        expect(openApiDocument.paths['/api/v1/api-tokens/all'].get.operationId).toBe('list-all-tokens');
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}/requests'].get.operationId).toBe('list-token-requests');
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}'].patch.operationId).toBe('update-token');
         expect(openApiDocument.paths['/api/v1/stream'].get.operationId).toBe('stream');
@@ -374,6 +414,7 @@ describe('API docs', () => {
     it('separates token endpoints from session-only ones', () => {
         expect(openApiDocument.paths['/api/v1/profile'].get.security).toEqual([{ apiToken: [] }, { bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/api-tokens'].get.security).toEqual([{ bearerAuth: [] }]);
+        expect(openApiDocument.paths['/api/v1/api-tokens/all'].get.security).toEqual([{ bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}'].patch.security).toEqual([{ bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}/requests'].get.security).toEqual([{ bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/app/android/latest'].get.security).toEqual([]);

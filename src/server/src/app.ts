@@ -1701,6 +1701,18 @@ app.get("/api/v1/api-tokens", async (request, reply) => {
   });
 });
 
+// Everyone can see every token on the tracker: the metadata is non-secret and
+// reviewing what can read or write is the point. Managing them stays with the
+// owner, and the trail each one leaves is readable through the requests route.
+app.get("/api/v1/api-tokens/all", async (request, reply) => {
+  const route = "/api/v1/api-tokens/all";
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  return reply.send({ tokens: await apiTokens.listAll() });
+});
+
 app.post("/api/v1/api-tokens", async (request, reply) => {
   const route = "/api/v1/api-tokens";
   const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
@@ -1798,8 +1810,9 @@ app.delete("/api/v1/api-tokens/:id", async (request, reply) => {
   return reply.send({ deleted: true });
 });
 
-// The token's own audit trail. Session-only like the rest of token management:
-// an integration must not be able to read what other integrations did with it.
+// The token's audit trail, readable by any signed-in session: transparency
+// about what integrations do is the point. Still session-only, so a leaked
+// token can't read or scrub what other tokens did.
 app.get("/api/v1/api-tokens/:id/requests", async (request, reply) => {
   const route = "/api/v1/api-tokens/:id/requests";
   const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
@@ -1823,7 +1836,7 @@ app.get("/api/v1/api-tokens/:id/requests", async (request, reply) => {
   if (rawBefore !== null && !/^\d+$/.test(rawBefore)) {
     return reply.code(400).send({ error: "`before` must be a request id" });
   }
-  const page = await apiTokenRequests.listForToken(identity.userId, id, {
+  const page = await apiTokenRequests.listForToken(id, {
     limit,
     before: rawBefore,
   });

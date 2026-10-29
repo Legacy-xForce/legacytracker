@@ -15,6 +15,12 @@ export interface ApiToken {
     rotatedAt: number | null;
 }
 
+/** A token as the tracker-wide list shows it: the owner is named. */
+export interface AuditedApiToken extends ApiToken {
+    userId: string;
+    userName: string;
+}
+
 /** A token as created or rotated: the only time its full value is known. */
 export interface IssuedApiToken extends ApiToken {
     token: string;
@@ -68,6 +74,19 @@ export function parseApiToken(raw: unknown): ApiToken | null {
     };
 }
 
+/** Parses an entry of the everyone's-tokens list; owner fields are required. */
+export function parseAuditedApiToken(raw: unknown): AuditedApiToken | null {
+    const token = parseApiToken(raw);
+    const body = raw as Record<string, unknown> | null;
+    if (!token || !body) return null;
+    if (typeof body.user_id !== 'string' || typeof body.user_name !== 'string') return null;
+    return {
+        ...token,
+        userId: body.user_id,
+        userName: body.user_name
+    };
+}
+
 function integer(value: unknown): number | null {
     return typeof value === 'number' && Number.isInteger(value) ? value : null;
 }
@@ -114,6 +133,16 @@ export async function listApiTokens(): Promise<ApiTokenList> {
         ? body.tokens.map(parseApiToken).filter((token): token is ApiToken => token !== null)
         : [];
     return { tokens, yourIp: typeof body.your_ip === 'string' ? body.your_ip : null };
+}
+
+/** Every live token on the tracker, ordered by owner. */
+export async function listAllApiTokens(): Promise<AuditedApiToken[]> {
+    const response = await trackerFetch('/api/v1/api-tokens/all');
+    await ensureOk(response);
+    const body = (await response.json()) as { tokens?: unknown };
+    return Array.isArray(body.tokens)
+        ? body.tokens.map(parseAuditedApiToken).filter((token): token is AuditedApiToken => token !== null)
+        : [];
 }
 
 export async function createApiToken(name: string, scope: ApiTokenScope): Promise<IssuedApiToken> {

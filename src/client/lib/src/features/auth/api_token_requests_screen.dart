@@ -151,6 +151,16 @@ class _ApiTokenRequestsScreenState extends State<ApiTokenRequestsScreen> {
                               color: scheme.onSurfaceVariant,
                             ),
                           ),
+                          if (widget.token.userName != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              'Owner: ${widget.token.userName}',
+                              overflow: TextOverflow.ellipsis,
+                              style: theme.textTheme.bodySmall?.copyWith(
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ],
                           const SizedBox(height: 6),
                           Text(
                             'Every request made with this token, including '

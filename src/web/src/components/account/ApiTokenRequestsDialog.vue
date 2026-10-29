@@ -5,7 +5,7 @@ import { formatClock, formatShortDate } from '../../lib/format';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
 
-const props = defineProps<{ token: ApiToken }>();
+const props = defineProps<{ token: ApiToken; owner?: string | null }>();
 const emit = defineEmits<{ close: [] }>();
 
 const requests = ref<ApiTokenRequest[] | null>(null);
@@ -83,6 +83,7 @@ onMounted(() => void load());
                     <div class="min-w-0 flex-1">
                         <h2 id="token-requests-title" class="type-title-lg truncate font-bold">Request history</h2>
                         <p class="type-body-sm text-on-surface-variant truncate">{{ token.name }}</p>
+                        <p v-if="owner" class="type-body-sm text-on-surface-variant truncate">Owner: {{ owner }}</p>
                     </div>
                     <button
                         class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full disabled:opacity-50"

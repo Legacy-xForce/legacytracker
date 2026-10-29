@@ -59,6 +59,7 @@ http.Response _reply(Object body, int status) => http.Response.bytes(
 /// A fake tracker that keeps the tokens in memory, like the real one.
 class _FakeTracker {
   final tokens = <Map<String, dynamic>>[];
+  final everyone = <Map<String, dynamic>>[];
   final requests = <http.Request>[];
   final requestLog = <String, List<Map<String, dynamic>>>{};
   int _next = 1;
@@ -67,6 +68,9 @@ class _FakeTracker {
     requests.add(request);
     expect(request.headers['authorization'], 'Bearer jwt');
     final path = request.url.path;
+    if (request.method == 'GET' && path == '/api/v1/api-tokens/all') {
+      return _reply({'tokens': everyone}, 200);
+    }
     if (request.method == 'GET' && path == '/api/v1/api-tokens') {
       return _reply({'tokens': tokens, 'your_ip': _yourIp}, 200);
     }
@@ -213,6 +217,25 @@ void main() {
         httpClient: tracker.client,
       );
       expect((await service.list('jwt')).yourIp, _yourIp);
+    });
+
+    test("lists every live token on the tracker with its owner", () async {
+      final tracker = _FakeTracker()
+        ..everyone.add({
+          ..._summary(id: 'tok-2', name: 'Bob phone', scope: 'write'),
+          'user_id': 'user-2',
+          'user_name': 'Bob',
+        });
+      final service = ApiTokenService(
+        baseUrl: 'https://tracker.example',
+        httpClient: tracker.client,
+      );
+
+      final tokens = await service.listAll('jwt');
+      expect(tracker.requests.single.url.path, '/api/v1/api-tokens/all');
+      expect(tokens.map((t) => t.id), ['tok-2']);
+      expect(tokens.single.userName, 'Bob');
+      expect(tokens.single.scope, ApiTokenScope.write);
     });
 
     test('reads a page of request history with its cursor', () async {
@@ -513,6 +536,49 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(find.textContaining('No requests yet'), findsOneWidget);
+    });
+
+    testWidgets("opens everyone's tokens and a token's history", (
+      tester,
+    ) async {
+      final tracker = await pumpScreen(tester, tokens: [_summary()]);
+      tracker.everyone.add({
+        ..._summary(id: 'tok-2', name: 'Bob phone', scope: 'write'),
+        'user_id': 'user-2',
+        'user_name': 'Bob',
+      });
+      tracker.requestLog['tok-2'] = [_request(id: '1')];
+
+      await tester.tap(find.byTooltip("Everyone's tokens"));
+      await tester.pumpAndSettle();
+
+      expect(find.text("Everyone's tokens"), findsOneWidget);
+      expect(find.text('BOB'), findsOneWidget);
+      expect(find.text('Bob phone'), findsOneWidget);
+      expect(find.text('WRITE'), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Request history for Bob phone'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Request history'), findsOneWidget);
+      expect(find.text('Owner: Bob'), findsOneWidget);
+      expect(find.text('/api/v1/history'), findsOneWidget);
+      expect(
+        tracker.requests.last.url.path,
+        '/api/v1/api-tokens/tok-2/requests',
+      );
+    });
+
+    testWidgets('shows an empty everyone list', (tester) async {
+      await pumpScreen(tester, tokens: [_summary()]);
+
+      await tester.tap(find.byTooltip("Everyone's tokens"));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.textContaining('No tokens on the tracker yet'),
+        findsOneWidget,
+      );
     });
   });
 }

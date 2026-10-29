@@ -58,6 +58,28 @@ class ApiTokenService {
     );
   }
 
+  /// Every live token on the tracker, whoever owns it, for the shared audit
+  /// view. Deleted tokens are not listed.
+  Future<List<ApiToken>> listAll(String accessToken) async {
+    final response = await _send(
+      () => _httpClient.get(
+        _uri('/api/v1/api-tokens/all'),
+        headers: _headers(accessToken),
+      ),
+    );
+    _check(response, expected: 200, fallback: 'The tokens could not be read.');
+    final body = _json(response);
+    final tokens = <ApiToken>[];
+    for (final json in body['tokens'] as List<dynamic>? ?? const []) {
+      try {
+        tokens.add(ApiToken.fromJson(json as Map<String, dynamic>));
+      } on Object {
+        // A malformed entry only drops that row.
+      }
+    }
+    return tokens;
+  }
+
   Future<IssuedApiToken> create(
     String accessToken, {
     required String name,

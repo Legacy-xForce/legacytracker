@@ -45,6 +45,8 @@ const tokenSummary = {
     rotated_at: null
 };
 
+const auditedToken = { ...tokenSummary, user_id: userId, user_name: 'alice' };
+
 const errorSchema = {
     type: 'object',
     required: ['error'],
@@ -1002,6 +1004,37 @@ export const openApiDocument = {
                 }
             }
         },
+        '/api/v1/api-tokens/all': {
+            get: {
+                tags: ['Managing API tokens'],
+                operationId: 'list-all-tokens',
+                summary: 'List everyone’s tokens',
+                description:
+                    'For security, any signed-in user can see every live token on the tracker: owner, scope, hint and usage. Secrets are never included. Deleted tokens are not listed and remain inspectable only in the database.',
+                security: sessionOnly,
+                responses: {
+                    '200': {
+                        description: 'Every token, ordered by owner then newest first.',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['tokens'],
+                                    properties: {
+                                        tokens: {
+                                            type: 'array',
+                                            items: { $ref: '#/components/schemas/AuditedApiToken' }
+                                        }
+                                    }
+                                },
+                                example: { tokens: [auditedToken] }
+                            }
+                        }
+                    },
+                    ...commonErrors
+                }
+            }
+        },
         '/api/v1/api-tokens/{id}/rotate': {
             post: {
                 tags: ['Managing API tokens'],
@@ -1042,7 +1075,7 @@ export const openApiDocument = {
                 operationId: 'list-token-requests',
                 summary: 'List requests made with a token',
                 description:
-                    'Newest first, one page at a time. Includes requests the token’s scope or allowed addresses refused. Query strings are never stored. Pass `next_before` back as `before` to read older entries.',
+                    'Newest first, one page at a time. Any signed-in user may read any live token’s trail; this is the audit log that keeps integrations accountable. Includes requests the token’s scope or allowed addresses refused. Query strings are never stored. Pass `next_before` back as `before` to read older entries.',
                 security: sessionOnly,
                 parameters: [
                     {
@@ -1092,7 +1125,7 @@ export const openApiDocument = {
                             }
                         }
                     },
-                    '404': errorResponse('No token with that id belongs to you.'),
+                    '404': errorResponse('No live token has that id.'),
                     ...commonErrors
                 }
             }
@@ -1476,6 +1509,19 @@ export const openApiDocument = {
                     last_used_at: { type: ['string', 'null'], format: 'date-time' },
                     rotated_at: { type: ['string', 'null'], format: 'date-time' }
                 }
+            },
+            AuditedApiToken: {
+                allOf: [
+                    { $ref: '#/components/schemas/ApiTokenSummary' },
+                    {
+                        type: 'object',
+                        required: ['user_id', 'user_name'],
+                        properties: {
+                            user_id: { type: 'string' },
+                            user_name: { type: 'string', description: 'The owner’s display name.' }
+                        }
+                    }
+                ]
             },
             CreatedApiToken: {
                 allOf: [
