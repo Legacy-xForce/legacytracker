@@ -136,15 +136,17 @@ precedence over `Authorization`.
   is reachable directly as well as through Cloudflare, which is worth closing
   for its own sake (firewall 443 to their ranges, or a tunnel).
 - Only `sha256(token)` is stored: the value is shown once, at creation or
-  rotation. Up to 25 tokens per user.
+  rotation. Up to 25 tokens per user. Deleting one marks it
+  `deleted = true` (soft delete) instead of removing the row, so its request
+  history stays auditable; deleted tokens no longer authenticate or count
+  against the limit.
 - Every request made with a token is written to `api_token_requests` (method,
   path without the query string, status, client address, user agent and
-  duration), including requests the scope or address allowlist refused. The
-  trail survives token deletion (`token_id` becomes null), so an integration
-  can be audited after its credential is gone.
+  duration), including requests the scope or address allowlist refused.
 - Removing someone's tracker access also ends their integrations: a
   back-channel logout reporting lost access (see [Sign-out](#sign-out-back-channel-logout))
-  deletes that user's tokens, as does a legacy JWT that lacks `scopes.tracker`.
+  marks that user's tokens deleted, as does a legacy JWT that lacks
+  `scopes.tracker`.
 
 | Method   | Path                              | Auth | Description |
 |----------|-----------------------------------|------|-------------|
@@ -152,7 +154,8 @@ precedence over `Authorization`.
 | `POST`   | `/api/v1/api-tokens`              | JWT  | Body `{ "name"?: "Home Assistant", "scope": "read" \| "write" }`. `201` with the summary plus `token`. `400` on a bad scope or at the limit. |
 | `POST`   | `/api/v1/api-tokens/:id/rotate`   | JWT  | Replaces the value (the old one stops working at once); returns the summary plus the new `token`. `404` if not yours. |
 | `PATCH`  | `/api/v1/api-tokens/:id`          | JWT  | Body `{ "allowed_ips": ["203.0.113.7", "198.51.100.0/24"] }` replaces the list (empty lifts the restriction). Returns the summary; applies to the next request at once. `400` on an entry that is not an address or prefix, `404` if not yours. |
-| `DELETE` | `/api/v1/api-tokens/:id`          | JWT  | `{ "deleted": true }`, or `404`. |
+| `DELETE` | `/api/v1/api-tokens/:id`          | JWT  | `{ "deleted": true }`, or `404`. The row is kept with `deleted = true` to preserve its request history. |
+| `GET`    | `/api/v1/api-tokens/:id/requests` | JWT  | `{ "requests": [{ "id", "method", "path", "status_code", "client_ip", "user_agent", "duration_ms", "created_at" }], "has_more": false, "next_before": null }`, newest first. `limit` is 1–200 (default 50); pass `next_before` back as `before` for older entries. `404` if the token is not yours. |
 
 ### Profile
 

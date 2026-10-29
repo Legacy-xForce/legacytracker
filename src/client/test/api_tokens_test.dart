@@ -30,6 +30,26 @@ Map<String, dynamic> _summary({
   'rotated_at': null,
 };
 
+Map<String, dynamic> _request({
+  required String id,
+  String method = 'GET',
+  String path = '/api/v1/history',
+  int status = 200,
+  String ip = _yourIp,
+  String? userAgent = 'Home Assistant/2026.10',
+  int durationMs = 12,
+  String createdAt = '2026-10-20T08:15:00.000Z',
+}) => {
+  'id': id,
+  'method': method,
+  'path': path,
+  'status_code': status,
+  'client_ip': ip,
+  'user_agent': userAgent,
+  'duration_ms': durationMs,
+  'created_at': createdAt,
+};
+
 http.Response _reply(Object body, int status) => http.Response.bytes(
   utf8.encode(jsonEncode(body)),
   status,
@@ -40,6 +60,7 @@ http.Response _reply(Object body, int status) => http.Response.bytes(
 class _FakeTracker {
   final tokens = <Map<String, dynamic>>[];
   final requests = <http.Request>[];
+  final requestLog = <String, List<Map<String, dynamic>>>{};
   int _next = 1;
 
   http.Client get client => MockClient((request) async {
@@ -48,6 +69,24 @@ class _FakeTracker {
     final path = request.url.path;
     if (request.method == 'GET' && path == '/api/v1/api-tokens') {
       return _reply({'tokens': tokens, 'your_ip': _yourIp}, 200);
+    }
+    final log = RegExp(
+      r'^/api/v1/api-tokens/([^/]+)/requests$',
+    ).firstMatch(path);
+    if (request.method == 'GET' && log != null) {
+      final all = requestLog[log.group(1)] ?? const <Map<String, dynamic>>[];
+      final limit =
+          int.tryParse(request.url.queryParameters['limit'] ?? '') ?? 50;
+      final before = int.tryParse(request.url.queryParameters['before'] ?? '');
+      final filtered = all
+          .where((r) => before == null || int.parse(r['id'] as String) < before)
+          .toList();
+      final page = filtered.take(limit).toList();
+      return _reply({
+        'requests': page,
+        'has_more': filtered.length > limit,
+        'next_before': filtered.length > limit ? page.last['id'] : null,
+      }, 200);
     }
     final update = RegExp(r'^/api/v1/api-tokens/([^/]+)$').firstMatch(path);
     if (request.method == 'PATCH' && update != null) {
@@ -174,6 +213,40 @@ void main() {
         httpClient: tracker.client,
       );
       expect((await service.list('jwt')).yourIp, _yourIp);
+    });
+
+    test('reads a page of request history with its cursor', () async {
+      final tracker = _FakeTracker()..tokens.add(_summary());
+      tracker.requestLog['tok-1'] = [
+        _request(id: '3', status: 403),
+        _request(id: '2', method: 'POST', path: '/api/v1/location'),
+        _request(id: '1'),
+      ];
+      final service = ApiTokenService(
+        baseUrl: 'https://tracker.example',
+        httpClient: tracker.client,
+      );
+
+      final first = await service.requests('jwt', 'tok-1', limit: 2);
+      expect(first.requests.map((r) => r.id), ['3', '2']);
+      expect(first.requests.first.statusCode, 403);
+      expect(first.hasMore, true);
+      expect(first.nextBefore, '2');
+      expect(tracker.requests.single.url.queryParameters, {'limit': '2'});
+
+      final second = await service.requests(
+        'jwt',
+        'tok-1',
+        before: first.nextBefore,
+        limit: 2,
+      );
+      expect(second.requests.map((r) => r.id), ['1']);
+      expect(second.hasMore, false);
+      expect(second.nextBefore, isNull);
+      expect(tracker.requests.last.url.queryParameters, {
+        'limit': '2',
+        'before': '2',
+      });
     });
 
     test('shows the server message when an address is refused', () {
@@ -404,6 +477,42 @@ void main() {
       expect(find.text('ALLOWED ADDRESSES'), findsOneWidget);
       expect(find.text('not-an-ip'), findsOneWidget);
       expect(tracker.tokens.single['allowed_ips'], isEmpty);
+    });
+
+    testWidgets('opens a token request history on a page of its own', (
+      tester,
+    ) async {
+      final tracker = await pumpScreen(tester, tokens: [_summary()]);
+      tracker.requestLog['tok-1'] = [
+        _request(
+          id: '2',
+          method: 'POST',
+          path: '/api/v1/location',
+          status: 403,
+        ),
+        _request(id: '1'),
+      ];
+
+      await tester.tap(find.byTooltip('Request history for Home Assistant'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Request history'), findsOneWidget);
+      expect(find.text('/api/v1/location'), findsOneWidget);
+      expect(find.text('403'), findsOneWidget);
+      expect(find.text('/api/v1/history'), findsOneWidget);
+      expect(find.textContaining('Home Assistant/2026.10'), findsWidgets);
+      expect(find.textContaining('$_yourIp · 12 ms'), findsWidgets);
+      // It is a page, not a sheet: the token list is no longer underneath.
+      expect(find.text('Create a token'), findsNothing);
+    });
+
+    testWidgets('shows an empty request history', (tester) async {
+      await pumpScreen(tester, tokens: [_summary()]);
+
+      await tester.tap(find.byTooltip('Request history for Home Assistant'));
+      await tester.pumpAndSettle();
+
+      expect(find.textContaining('No requests yet'), findsOneWidget);
     });
   });
 }

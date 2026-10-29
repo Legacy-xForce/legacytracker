@@ -1,7 +1,14 @@
 import { flushPromises, mount } from '@vue/test-utils';
 import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createApiToken, listApiTokens, parseApiToken, updateApiTokenAllowedIps } from '../api/apiTokens';
+import {
+    createApiToken,
+    listApiTokenRequests,
+    listApiTokens,
+    parseApiToken,
+    parseApiTokenRequest,
+    updateApiTokenAllowedIps
+} from '../api/apiTokens';
 import ApiTokensDialog from '../components/account/ApiTokensDialog.vue';
 import { toasts } from '../lib/toast';
 import { openApiDocument } from '../lib/openapi';
@@ -21,6 +28,17 @@ const summary = {
 const secret = 'legacy-tracker-01a15968-64aa-707d-8904-a6a408611289';
 /** The address the token endpoints answer from, so the dialog can offer it. */
 const seenFrom = '198.51.100.7';
+
+const requestEntry = {
+    id: '42',
+    method: 'GET',
+    path: '/api/v1/history',
+    status_code: 200,
+    client_ip: '203.0.113.7',
+    user_agent: 'Home Assistant/2026.10',
+    duration_ms: 12,
+    created_at: '2026-10-20T08:15:00.000Z'
+};
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
@@ -80,6 +98,37 @@ describe('API token client', () => {
         expect(yourIp).toBe(seenFrom);
         const [, init] = fetchMock.mock.calls.at(-1)!;
         expect((init as RequestInit).headers).toMatchObject({ authorization: expect.stringMatching(/^Bearer /) });
+    });
+
+    it('parses request history entries and drops malformed ones', () => {
+        expect(parseApiTokenRequest(requestEntry)).toEqual({
+            id: '42',
+            method: 'GET',
+            path: '/api/v1/history',
+            statusCode: 200,
+            clientIp: '203.0.113.7',
+            userAgent: 'Home Assistant/2026.10',
+            durationMs: 12,
+            createdAt: Date.parse(requestEntry.created_at)
+        });
+        expect(parseApiTokenRequest({ ...requestEntry, id: 42 })?.id).toBe('42');
+        expect(parseApiTokenRequest({ ...requestEntry, status_code: '200' })).toBeNull();
+        expect(parseApiTokenRequest(null)).toBeNull();
+    });
+
+    it('lists a page of request history with its cursor', async () => {
+        fetchMock.mockResolvedValueOnce(
+            jsonResponse({ requests: [requestEntry, { id: 1 }], has_more: true, next_before: '42' })
+        );
+        const page = await listApiTokenRequests(summary.id, { before: '90', limit: 25 });
+        expect(page.requests.map((r) => r.id)).toEqual(['42']);
+        expect(page.hasMore).toBe(true);
+        expect(page.nextBefore).toBe('42');
+        const [url] = fetchMock.mock.calls.at(-1)!;
+        const parsed = new URL(String(url));
+        expect(parsed.pathname).toBe(`/api/v1/api-tokens/${summary.id}/requests`);
+        expect(parsed.searchParams.get('before')).toBe('90');
+        expect(parsed.searchParams.get('limit')).toBe('25');
     });
 
     it('replaces the allowed addresses with a patch', async () => {
@@ -166,6 +215,39 @@ describe('API tokens dialog', () => {
         await flushPromises();
         expect(calls('POST')[0].url.pathname).toBe(`/api/v1/api-tokens/${summary.id}/rotate`);
         expect(document.body.querySelector('[data-token]')?.textContent).toBe(rotated);
+    });
+
+    it('opens a token request history in a popup', async () => {
+        fetchMock.mockImplementation(async (url: string) =>
+            String(url).includes('/requests')
+                ? jsonResponse({ requests: [requestEntry], has_more: false, next_before: null })
+                : jsonResponse({ tokens: [summary] })
+        );
+        await open();
+        click('[data-token-requests]');
+        await flushPromises();
+
+        expect(document.body.textContent).toContain('Request history');
+        expect(document.body.querySelector('[data-request-row]')?.textContent).toContain('/api/v1/history');
+        expect(document.body.querySelector('[data-request-status]')?.textContent).toBe('200');
+        expect(document.body.textContent).toContain('Home Assistant/2026.10');
+        expect(calls('GET').at(-1)?.url.pathname).toBe(`/api/v1/api-tokens/${summary.id}/requests`);
+
+        click('[aria-label="Close request history"]');
+        await flushPromises();
+        expect(document.body.querySelector('[data-request-row]')).toBeNull();
+    });
+
+    it('shows an empty request history', async () => {
+        fetchMock.mockImplementation(async (url: string) =>
+            String(url).includes('/requests')
+                ? jsonResponse({ requests: [], has_more: false, next_before: null })
+                : jsonResponse({ tokens: [summary] })
+        );
+        await open();
+        click('[data-token-requests]');
+        await flushPromises();
+        expect(document.body.querySelector('[data-empty-requests]')?.textContent).toContain('No requests yet');
     });
 
     it('deletes after confirming', async () => {
@@ -284,6 +366,7 @@ describe('API docs', () => {
         expect(openApiDocument.paths['/api/v1/location'].post.operationId).toBe('post-location');
         expect(openApiDocument.paths['/api/v1/history'].get.operationId).toBe('get-history');
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}/rotate'].post.operationId).toBe('rotate-token');
+        expect(openApiDocument.paths['/api/v1/api-tokens/{id}/requests'].get.operationId).toBe('list-token-requests');
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}'].patch.operationId).toBe('update-token');
         expect(openApiDocument.paths['/api/v1/stream'].get.operationId).toBe('stream');
     });
@@ -292,6 +375,7 @@ describe('API docs', () => {
         expect(openApiDocument.paths['/api/v1/profile'].get.security).toEqual([{ apiToken: [] }, { bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/api-tokens'].get.security).toEqual([{ bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/api-tokens/{id}'].patch.security).toEqual([{ bearerAuth: [] }]);
+        expect(openApiDocument.paths['/api/v1/api-tokens/{id}/requests'].get.security).toEqual([{ bearerAuth: [] }]);
         expect(openApiDocument.paths['/api/v1/app/android/latest'].get.security).toEqual([]);
     });
 

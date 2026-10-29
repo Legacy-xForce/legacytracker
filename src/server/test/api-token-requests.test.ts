@@ -4,6 +4,7 @@ import type { Pool } from "pg";
 
 import {
   ApiTokenRequests,
+  DEFAULT_API_TOKEN_REQUEST_LIMIT,
   MAX_USER_AGENT_LENGTH,
   requestPath,
   userAgentOf,
@@ -72,4 +73,53 @@ test("a failed write reaches the caller so it can be logged", async () => {
     new ApiTokenRequests(pool).record(entry),
     /database unavailable/,
   );
+});
+
+test("a page of requests is newest first and points at the next one", async () => {
+  const calls: Array<{ text: string; values: unknown[] }> = [];
+  const rows = [1, 2, 3].map((id) => ({
+    id: String(id),
+    method: "GET",
+    path: "/api/v1/profile",
+    status_code: 200,
+    client_ip: "203.0.113.7",
+    user_agent: "curl/8.0",
+    duration_ms: 4,
+    created_at: new Date("2026-10-20T08:00:00.000Z"),
+  }));
+  const pool = {
+    query: async (text: string, values: unknown[]) => {
+      calls.push({ text, values });
+      return text.includes("SELECT 1 FROM api_tokens")
+        ? { rows: [{ "?column?": 1 }], rowCount: 1 }
+        : { rows, rowCount: rows.length };
+    },
+  } as unknown as Pool;
+
+  const page = await new ApiTokenRequests(pool).listForToken(
+    "user-1",
+    entry.tokenId,
+    { limit: 2, before: null },
+  );
+
+  assert.ok(page);
+  assert.equal(page.requests.length, 2);
+  assert.equal(page.has_more, true);
+  assert.equal(page.next_before, "2");
+  assert.deepEqual(calls[1].values, [entry.tokenId, 3, null]);
+  assert.equal(page.requests[0].created_at, "2026-10-20T08:00:00.000Z");
+});
+
+test("another user's token has no readable trail", async () => {
+  const pool = {
+    query: async () => ({ rows: [], rowCount: 0 }),
+  } as unknown as Pool;
+
+  const page = await new ApiTokenRequests(pool).listForToken(
+    "user-1",
+    entry.tokenId,
+    { limit: DEFAULT_API_TOKEN_REQUEST_LIMIT, before: null },
+  );
+
+  assert.equal(page, null);
 });

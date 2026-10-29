@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import type { Pool } from "pg";
 
 import {
+  ApiTokens,
   apiTokenHint,
   generateApiToken,
   hashApiToken,
@@ -196,4 +198,21 @@ test("one token can list both families", () => {
   // Families never cross, so listing IPv4 alone does not admit IPv6 callers.
   assert.equal(ipMatchesAllowlist("2001:db8::1", ["0.0.0.0/0"]), false);
   assert.equal(ipMatchesAllowlist("203.0.113.7", ["::/0"]), false);
+});
+
+test("deleting a token marks it deleted and keeps its history", async () => {
+  const calls: string[] = [];
+  const pool = {
+    query: async (text: string) => {
+      calls.push(text);
+      return {
+        rows: [{ id: "id", token_hash: "hash" }],
+        rowCount: 1,
+      };
+    },
+  } as unknown as Pool;
+
+  assert.equal(await new ApiTokens(pool).remove("user-1", "id"), true);
+  assert.match(calls[0], /UPDATE api_tokens SET deleted = true/);
+  assert.doesNotMatch(calls[0], /DELETE FROM api_tokens/);
 });

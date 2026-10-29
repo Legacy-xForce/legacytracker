@@ -76,3 +76,70 @@ class IssuedApiToken {
   /// The full `legacy-tracker-…` secret.
   final String value;
 }
+
+/// One request made with a token, as its activity page shows it.
+class ApiTokenRequest {
+  const ApiTokenRequest({
+    required this.id,
+    required this.method,
+    required this.path,
+    required this.statusCode,
+    required this.createdAt,
+    this.clientIp,
+    this.userAgent,
+    this.durationMs,
+  });
+
+  factory ApiTokenRequest.fromJson(Map<String, dynamic> json) {
+    final id = json['id'];
+    final status = json['status_code'];
+    final createdAt = DateTime.tryParse(json['created_at'] as String? ?? '');
+    if (id == null ||
+        json['method'] is! String ||
+        json['path'] is! String ||
+        status is! int ||
+        createdAt == null) {
+      throw const FormatException('Invalid request entry');
+    }
+    return ApiTokenRequest(
+      id: id.toString(),
+      method: json['method'] as String,
+      path: json['path'] as String,
+      statusCode: status,
+      createdAt: createdAt,
+      clientIp: json['client_ip'] is String
+          ? json['client_ip'] as String
+          : null,
+      userAgent: json['user_agent'] is String
+          ? json['user_agent'] as String
+          : null,
+      durationMs: json['duration_ms'] is int
+          ? json['duration_ms'] as int
+          : null,
+    );
+  }
+
+  final String id;
+  final String method;
+  final String path;
+  final int statusCode;
+  final DateTime createdAt;
+  final String? clientIp;
+  final String? userAgent;
+  final int? durationMs;
+}
+
+/// A page of a token's request trail, newest first.
+class ApiTokenRequestPage {
+  const ApiTokenRequestPage({
+    required this.requests,
+    required this.hasMore,
+    this.nextBefore,
+  });
+
+  final List<ApiTokenRequest> requests;
+  final bool hasMore;
+
+  /// Pass back as `before` to fetch the next page; null on the last one.
+  final String? nextBefore;
+}

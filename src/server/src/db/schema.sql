@@ -44,7 +44,9 @@ CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id);
 -- `write` tokens may do anything the owner's session can except manage
 -- tokens and devices. `allowed_ips` holds addresses or CIDR prefixes the token
 -- may be used from; empty means no restriction. Only sha256(token) is stored;
--- `token_hint` is a short, non-secret label for lists.
+-- `token_hint` is a short, non-secret label for lists. Deleting a token sets
+-- `deleted`, keeping the row (and its request trail) for auditing while
+-- `authenticate` ignores it.
 CREATE TABLE IF NOT EXISTS api_tokens (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id text NOT NULL REFERENCES users(id),
@@ -55,18 +57,20 @@ CREATE TABLE IF NOT EXISTS api_tokens (
   allowed_ips text[] NOT NULL DEFAULT '{}',
   created_at timestamptz NOT NULL DEFAULT now(),
   last_used_at timestamptz,
-  rotated_at timestamptz
+  rotated_at timestamptz,
+  deleted boolean NOT NULL DEFAULT false
 );
 
 CREATE INDEX IF NOT EXISTS api_tokens_user_idx ON api_tokens (user_id);
 
 -- Every request made with an API token, including ones its scope or address
 -- allowlist refused, so an owner can audit an integration and a leaked token
--- leaves a trail. `token_id` becomes null when the token is deleted, because
--- the history outlives the credential. Query strings are never stored.
+-- leaves a trail. Tokens are soft-deleted, so deleting one keeps this history;
+-- a hard delete would remove it with the token. Query strings are never
+-- stored.
 CREATE TABLE IF NOT EXISTS api_token_requests (
   id bigserial PRIMARY KEY,
-  token_id uuid REFERENCES api_tokens(id) ON DELETE SET NULL,
+  token_id uuid NOT NULL REFERENCES api_tokens(id) ON DELETE CASCADE,
   user_id text NOT NULL,
   method text NOT NULL,
   path text NOT NULL,
@@ -77,8 +81,10 @@ CREATE TABLE IF NOT EXISTS api_token_requests (
   created_at timestamptz NOT NULL DEFAULT now()
 );
 
-CREATE INDEX IF NOT EXISTS api_token_requests_token_created_idx
-  ON api_token_requests (token_id, created_at DESC);
+-- The activity view pages by `id DESC` within one token, so this index both
+-- filters and orders without a sort.
+CREATE INDEX IF NOT EXISTS api_token_requests_token_id_idx
+  ON api_token_requests (token_id, id DESC);
 
 CREATE INDEX IF NOT EXISTS api_token_requests_user_created_idx
   ON api_token_requests (user_id, created_at DESC);

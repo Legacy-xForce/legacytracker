@@ -16,6 +16,8 @@ import {
 } from "./services/api-tokens";
 import {
   ApiTokenRequests,
+  DEFAULT_API_TOKEN_REQUEST_LIMIT,
+  MAX_API_TOKEN_REQUEST_LIMIT,
   requestPath,
   userAgentOf,
 } from "./services/api-token-requests";
@@ -812,9 +814,12 @@ async function ensureBackendSchema(): Promise<void> {
       "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS allowed_ips text[] NOT NULL DEFAULT '{}'",
     );
     await pool.query(
+      "ALTER TABLE api_tokens ADD COLUMN IF NOT EXISTS deleted boolean NOT NULL DEFAULT false",
+    );
+    await pool.query(
       `CREATE TABLE IF NOT EXISTS api_token_requests (
          id bigserial PRIMARY KEY,
-         token_id uuid REFERENCES api_tokens(id) ON DELETE SET NULL,
+         token_id uuid NOT NULL REFERENCES api_tokens(id) ON DELETE CASCADE,
          user_id text NOT NULL,
          method text NOT NULL,
          path text NOT NULL,
@@ -826,12 +831,32 @@ async function ensureBackendSchema(): Promise<void> {
        )`,
     );
     await pool.query(
-      `CREATE INDEX IF NOT EXISTS api_token_requests_token_created_idx
-       ON api_token_requests (token_id, created_at DESC)`,
+      `CREATE INDEX IF NOT EXISTS api_token_requests_token_id_idx
+       ON api_token_requests (token_id, id DESC)`,
     );
     await pool.query(
       `CREATE INDEX IF NOT EXISTS api_token_requests_user_created_idx
        ON api_token_requests (user_id, created_at DESC)`,
+    );
+    // Earlier builds created this reference as ON DELETE SET NULL. Existing
+    // databases are not rebuilt by CREATE TABLE IF NOT EXISTS, so move them to
+    // the cascade the soft-delete model expects (only when it still differs).
+    await pool.query(
+      `DO $$
+       BEGIN
+         IF EXISTS (
+           SELECT 1 FROM pg_constraint
+           WHERE conrelid = 'api_token_requests'::regclass
+             AND conname = 'api_token_requests_token_id_fkey'
+             AND confdeltype <> 'c'
+         ) THEN
+           ALTER TABLE api_token_requests
+             DROP CONSTRAINT api_token_requests_token_id_fkey;
+           ALTER TABLE api_token_requests
+             ADD CONSTRAINT api_token_requests_token_id_fkey
+             FOREIGN KEY (token_id) REFERENCES api_tokens(id) ON DELETE CASCADE;
+         END IF;
+       END $$`,
     );
     // Collapse any pre-existing duplicate (user_id, recorded_at) rows first —
     // otherwise the unique index can't be built and every ON CONFLICT insert
@@ -1765,6 +1790,41 @@ app.delete("/api/v1/api-tokens/:id", async (request, reply) => {
     "[api-tokens] deleted token",
   );
   return reply.send({ deleted: true });
+});
+
+// The token's own audit trail. Session-only like the rest of token management:
+// an integration must not be able to read what other integrations did with it.
+app.get("/api/v1/api-tokens/:id/requests", async (request, reply) => {
+  const route = "/api/v1/api-tokens/:id/requests";
+  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
+  if (!identity.ok) {
+    return rejectRequest(request, reply, route, identity);
+  }
+  const { id } = request.params as { id: string };
+  if (!isApiTokenId(id)) {
+    return reply.code(404).send({ error: "API token not found" });
+  }
+  const query = request.query as Record<string, unknown>;
+  const rawLimit = typeof query.limit === "string" ? query.limit : "";
+  const requested = /^\d+$/.test(rawLimit)
+    ? Number(rawLimit)
+    : DEFAULT_API_TOKEN_REQUEST_LIMIT;
+  const limit = Math.min(
+    Math.max(requested, 1),
+    MAX_API_TOKEN_REQUEST_LIMIT,
+  );
+  const rawBefore = typeof query.before === "string" ? query.before : null;
+  if (rawBefore !== null && !/^\d+$/.test(rawBefore)) {
+    return reply.code(400).send({ error: "`before` must be a request id" });
+  }
+  const page = await apiTokenRequests.listForToken(identity.userId, id, {
+    limit,
+    before: rawBefore,
+  });
+  if (!page) {
+    return reply.code(404).send({ error: "API token not found" });
+  }
+  return reply.send(page);
 });
 
 // Public, like the GitHub releases behind it: the app also checks for

@@ -26,6 +26,25 @@ export interface ApiTokenList {
     yourIp: string | null;
 }
 
+/** One request made with a token, as its activity view shows it. */
+export interface ApiTokenRequest {
+    id: string;
+    method: string;
+    path: string;
+    statusCode: number;
+    clientIp: string | null;
+    userAgent: string | null;
+    durationMs: number | null;
+    createdAt: number;
+}
+
+export interface ApiTokenRequestPage {
+    requests: ApiTokenRequest[];
+    hasMore: boolean;
+    /** Pass back as `before` to fetch the next page; null on the last one. */
+    nextBefore: string | null;
+}
+
 function time(value: unknown): number | null {
     if (typeof value !== 'string') return null;
     const parsed = Date.parse(value);
@@ -46,6 +65,29 @@ export function parseApiToken(raw: unknown): ApiToken | null {
         createdAt: time(body.created_at) ?? 0,
         lastUsedAt: time(body.last_used_at),
         rotatedAt: time(body.rotated_at)
+    };
+}
+
+function integer(value: unknown): number | null {
+    return typeof value === 'number' && Number.isInteger(value) ? value : null;
+}
+
+export function parseApiTokenRequest(raw: unknown): ApiTokenRequest | null {
+    const body = raw as Record<string, unknown> | null;
+    if (!body || (typeof body.id !== 'string' && typeof body.id !== 'number')) return null;
+    if (typeof body.method !== 'string' || typeof body.path !== 'string') return null;
+    const statusCode = integer(body.status_code);
+    const createdAt = time(body.created_at);
+    if (statusCode === null || createdAt === null) return null;
+    return {
+        id: String(body.id),
+        method: body.method,
+        path: body.path,
+        statusCode,
+        clientIp: typeof body.client_ip === 'string' ? body.client_ip : null,
+        userAgent: typeof body.user_agent === 'string' ? body.user_agent : null,
+        durationMs: integer(body.duration_ms),
+        createdAt
     };
 }
 
@@ -106,4 +148,28 @@ export async function updateApiTokenAllowedIps(id: string, allowedIps: string[])
 export async function deleteApiToken(id: string): Promise<void> {
     const response = await trackerFetch(`/api/v1/api-tokens/${encodeURIComponent(id)}`, { method: 'DELETE' });
     await ensureOk(response);
+}
+
+/** One page of a token's request trail, newest first. */
+export async function listApiTokenRequests(
+    id: string,
+    options: { before?: string | null; limit?: number } = {}
+): Promise<ApiTokenRequestPage> {
+    const params = new URLSearchParams();
+    if (options.before) params.set('before', options.before);
+    if (options.limit) params.set('limit', String(options.limit));
+    const query = params.toString();
+    const response = await trackerFetch(
+        `/api/v1/api-tokens/${encodeURIComponent(id)}/requests${query ? `?${query}` : ''}`
+    );
+    await ensureOk(response);
+    const body = (await response.json()) as { requests?: unknown; has_more?: unknown; next_before?: unknown };
+    const requests = Array.isArray(body.requests)
+        ? body.requests.map(parseApiTokenRequest).filter((request): request is ApiTokenRequest => request !== null)
+        : [];
+    return {
+        requests,
+        hasMore: body.has_more === true,
+        nextBefore: typeof body.next_before === 'string' ? body.next_before : null
+    };
 }

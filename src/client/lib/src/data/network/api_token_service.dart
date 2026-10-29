@@ -135,6 +135,46 @@ class ApiTokenService {
     );
   }
 
+  /// One page of what was requested with [id], newest first. [before] is the
+  /// `nextBefore` of the previous page.
+  Future<ApiTokenRequestPage> requests(
+    String accessToken,
+    String id, {
+    String? before,
+    int limit = 50,
+  }) async {
+    final response = await _send(
+      () => _httpClient.get(
+        _uri(
+          '/api/v1/api-tokens/${Uri.encodeComponent(id)}/requests',
+          queryParameters: {'limit': '$limit', 'before': ?before},
+        ),
+        headers: _headers(accessToken),
+      ),
+    );
+    _check(
+      response,
+      expected: 200,
+      fallback: 'The request history could not be read.',
+    );
+    final body = _json(response);
+    final requests = <ApiTokenRequest>[];
+    for (final json in body['requests'] as List<dynamic>? ?? const []) {
+      try {
+        requests.add(ApiTokenRequest.fromJson(json as Map<String, dynamic>));
+      } on Object {
+        // A malformed entry only drops that row.
+      }
+    }
+    return ApiTokenRequestPage(
+      requests: requests,
+      hasMore: body['has_more'] == true,
+      nextBefore: body['next_before'] is String
+          ? body['next_before'] as String
+          : null,
+    );
+  }
+
   IssuedApiToken _issued(http.Response response) {
     try {
       return IssuedApiToken.fromJson(_json(response));
@@ -149,7 +189,8 @@ class ApiTokenService {
   static Map<String, dynamic> _json(http.Response response) =>
       jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
 
-  Uri _uri(String path) => _baseUri.replace(path: path);
+  Uri _uri(String path, {Map<String, String>? queryParameters}) =>
+      _baseUri.replace(path: path, queryParameters: queryParameters);
 
   // Only requests with a body name a JSON type: the server answers 400 to an
   // empty body that claims to be JSON.

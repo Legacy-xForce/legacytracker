@@ -3,6 +3,9 @@ import type { Pool } from "pg";
 /** Trailers are informational, so keep a bound on what the table stores. */
 export const MAX_USER_AGENT_LENGTH = 512;
 
+export const DEFAULT_API_TOKEN_REQUEST_LIMIT = 50;
+export const MAX_API_TOKEN_REQUEST_LIMIT = 200;
+
 export interface ApiTokenRequestEntry {
   tokenId: string;
   userId: string;
@@ -13,6 +16,49 @@ export interface ApiTokenRequestEntry {
   clientIp: string;
   userAgent: string | null;
   durationMs: number;
+}
+
+/** One row as the token's own activity view shows it. */
+export interface ApiTokenRequestSummary {
+  id: string;
+  method: string;
+  path: string;
+  status_code: number;
+  client_ip: string | null;
+  user_agent: string | null;
+  duration_ms: number | null;
+  created_at: string;
+}
+
+export interface ApiTokenRequestPage {
+  requests: ApiTokenRequestSummary[];
+  has_more: boolean;
+  /** Pass back as `before` to fetch the next page; null on the last one. */
+  next_before: string | null;
+}
+
+interface ApiTokenRequestRow {
+  id: string;
+  method: string;
+  path: string;
+  status_code: number;
+  client_ip: string | null;
+  user_agent: string | null;
+  duration_ms: number | null;
+  created_at: Date;
+}
+
+function toSummary(row: ApiTokenRequestRow): ApiTokenRequestSummary {
+  return {
+    id: row.id,
+    method: row.method,
+    path: row.path,
+    status_code: row.status_code,
+    client_ip: row.client_ip,
+    user_agent: row.user_agent,
+    duration_ms: row.duration_ms,
+    created_at: row.created_at.toISOString(),
+  };
 }
 
 /** Names the request without leaking the query string into the audit trail. */
@@ -60,5 +106,41 @@ export class ApiTokenRequests {
         entry.durationMs,
       ],
     );
+  }
+
+  /**
+   * Newest first, one page at a time. Returns null when the token is not the
+   * caller's (or no longer exists), which the route turns into a 404.
+   */
+  async listForToken(
+    userId: string,
+    tokenId: string,
+    options: { limit: number; before: string | null },
+  ): Promise<ApiTokenRequestPage | null> {
+    const owned = await this.pool.query(
+      `SELECT 1 FROM api_tokens
+       WHERE id = $1 AND user_id = $2 AND NOT deleted`,
+      [tokenId, userId],
+    );
+    if (owned.rowCount === 0) {
+      return null;
+    }
+    const { rows } = await this.pool.query<ApiTokenRequestRow>(
+      `SELECT id, method, path, status_code, client_ip, user_agent,
+              duration_ms, created_at
+       FROM api_token_requests
+       WHERE token_id = $1
+         AND ($3::bigint IS NULL OR id < $3::bigint)
+       ORDER BY id DESC
+       LIMIT $2`,
+      [tokenId, options.limit + 1, options.before],
+    );
+    const hasMore = rows.length > options.limit;
+    const page = hasMore ? rows.slice(0, options.limit) : rows;
+    return {
+      requests: page.map(toSummary),
+      has_more: hasMore,
+      next_before: hasMore ? page[page.length - 1].id : null,
+    };
   }
 }

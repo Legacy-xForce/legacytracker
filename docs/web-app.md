@@ -104,8 +104,10 @@ The account menu has **Manage profile** (opens Legacy Auth's account page for
 name, picture, password and passkeys), **API tokens** (create a read or write
 token and copy it once; **Edit** on a token expands a panel holding the
 addresses it may be used from — plain addresses or CIDR prefixes, empty meaning
-anywhere — together with rotate and delete. The list also shows the address the
-API is answering from, so restricting a token to where you are now is one click.
+anywhere — together with rotate and delete. **Activity** opens the requests made
+with that token in a popup (the phone app shows the same as a page of its own).
+The list also shows the address the API is answering from, so restricting a
+token to where you are now is one click.
 The phone app has the same, address list included, under Profile → Integrations)
 and **API documentation**, which opens `/docs`. That
 page is public, so integrators can read it before signing in. It renders the
