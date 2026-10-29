@@ -97,7 +97,6 @@ test("a page of requests is newest first and points at the next one", async () =
   } as unknown as Pool;
 
   const page = await new ApiTokenRequests(pool).listForToken(
-    "user-1",
     entry.tokenId,
     { limit: 2, before: null },
   );
@@ -106,17 +105,38 @@ test("a page of requests is newest first and points at the next one", async () =
   assert.equal(page.requests.length, 2);
   assert.equal(page.has_more, true);
   assert.equal(page.next_before, "2");
+  assert.deepEqual(calls[0].values, [entry.tokenId]);
   assert.deepEqual(calls[1].values, [entry.tokenId, 3, null]);
   assert.equal(page.requests[0].created_at, "2026-10-20T08:00:00.000Z");
 });
 
-test("another user's token has no readable trail", async () => {
+test("the trail is readable by anyone, so the query does not name its owner", async () => {
+  const calls: Array<{ text: string; values: unknown[] }> = [];
+  const pool = {
+    query: async (text: string, values: unknown[]) => {
+      calls.push({ text, values });
+      return text.includes("FROM api_tokens")
+        ? { rows: [{ "?column?": 1 }], rowCount: 1 }
+        : { rows: [], rowCount: 0 };
+    },
+  } as unknown as Pool;
+
+  const page = await new ApiTokenRequests(pool).listForToken(entry.tokenId, {
+    limit: DEFAULT_API_TOKEN_REQUEST_LIMIT,
+    before: null,
+  });
+
+  assert.ok(page);
+  assert.doesNotMatch(calls[0].text, /user_id/);
+  assert.deepEqual(calls[0].values, [entry.tokenId]);
+});
+
+test("a token that does not exist has no trail", async () => {
   const pool = {
     query: async () => ({ rows: [], rowCount: 0 }),
   } as unknown as Pool;
 
   const page = await new ApiTokenRequests(pool).listForToken(
-    "user-1",
     entry.tokenId,
     { limit: DEFAULT_API_TOKEN_REQUEST_LIMIT, before: null },
   );

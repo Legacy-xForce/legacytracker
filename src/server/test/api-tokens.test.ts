@@ -216,3 +216,51 @@ test("deleting a token marks it deleted and keeps its history", async () => {
   assert.match(calls[0], /UPDATE api_tokens SET deleted = true/);
   assert.doesNotMatch(calls[0], /DELETE FROM api_tokens/);
 });
+
+test("the tracker-wide list names owners and keeps deleted tokens", async () => {
+  const calls: string[] = [];
+  const pool = {
+    query: async (text: string) => {
+      calls.push(text);
+      return {
+        rows: [
+          {
+            id: "0e7a3c3e-2f7b-4f63-9c55-0bb0a4f3c1d2",
+            name: "Home Assistant",
+            scope: "read",
+            token_hint: "legacy-tracker-01a1…1289",
+            allowed_ips: ["203.0.113.7"],
+            created_at: new Date("2026-10-20T08:00:00.000Z"),
+            last_used_at: null,
+            rotated_at: null,
+            user_id: "user-2",
+            user_name: "Bob",
+            deleted: true,
+          },
+        ],
+        rowCount: 1,
+      };
+    },
+  } as unknown as Pool;
+
+  const tokens = await new ApiTokens(pool).listAll();
+
+  assert.match(calls[0], /JOIN users/);
+  assert.match(calls[0], /t\.deleted/);
+  assert.doesNotMatch(calls[0], /NOT deleted/);
+  assert.deepEqual(tokens, [
+    {
+      id: "0e7a3c3e-2f7b-4f63-9c55-0bb0a4f3c1d2",
+      name: "Home Assistant",
+      scope: "read",
+      token_hint: "legacy-tracker-01a1…1289",
+      allowed_ips: ["203.0.113.7"],
+      created_at: "2026-10-20T08:00:00.000Z",
+      last_used_at: null,
+      rotated_at: null,
+      user_id: "user-2",
+      user_name: "Bob",
+      deleted: true,
+    },
+  ]);
+});

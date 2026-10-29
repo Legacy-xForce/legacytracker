@@ -109,20 +109,19 @@ export class ApiTokenRequests {
   }
 
   /**
-   * Newest first, one page at a time. Returns null when the token is not the
-   * caller's (or no longer exists), which the route turns into a 404.
+   * Newest first, one page at a time. Any signed-in user may read any token's
+   * trail, which is what makes it an audit log; deleted tokens keep theirs.
+   * Returns null when no token has that id, which the route turns into a 404.
    */
   async listForToken(
-    userId: string,
     tokenId: string,
     options: { limit: number; before: string | null },
   ): Promise<ApiTokenRequestPage | null> {
-    const owned = await this.pool.query(
-      `SELECT 1 FROM api_tokens
-       WHERE id = $1 AND user_id = $2 AND NOT deleted`,
-      [tokenId, userId],
+    const exists = await this.pool.query(
+      "SELECT 1 FROM api_tokens WHERE id = $1",
+      [tokenId],
     );
-    if (owned.rowCount === 0) {
+    if (exists.rowCount === 0) {
       return null;
     }
     const { rows } = await this.pool.query<ApiTokenRequestRow>(

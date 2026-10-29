@@ -7,6 +7,7 @@ import '../../core/formatters.dart';
 import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
 import 'api_token_requests_screen.dart';
+import 'api_tokens_audit_screen.dart';
 import 'auth_provider.dart';
 
 /// Lists the account's personal API tokens and creates, rotates or deletes
@@ -102,6 +103,15 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
           service: _service,
           accessToken: _accessToken,
         ),
+      ),
+    );
+  }
+
+  void _openEveryone() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            ApiTokensAuditScreen(service: _service, accessToken: _accessToken),
       ),
     );
   }
@@ -228,7 +238,16 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
     final issued = _issued;
 
     return Scaffold(
-      appBar: AppBar(title: const Text('API tokens')),
+      appBar: AppBar(
+        title: const Text('API tokens'),
+        actions: [
+          IconButton(
+            tooltip: "Everyone's tokens",
+            icon: const Icon(Icons.groups_rounded),
+            onPressed: _openEveryone,
+          ),
+        ],
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         child: ListView(

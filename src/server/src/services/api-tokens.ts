@@ -42,6 +42,16 @@ export interface ApiTokenSummary {
   rotated_at: string | null;
 }
 
+/**
+ * A token as the tracker-wide list shows it: the owner is named, and deleted
+ * tokens stay listed because their request trail is still worth auditing.
+ */
+export interface ApiTokenAuditSummary extends ApiTokenSummary {
+  user_id: string;
+  user_name: string;
+  deleted: boolean;
+}
+
 /** Returned once, at creation or rotation: the only time the token is visible. */
 export interface IssuedApiToken extends ApiTokenSummary {
   token: string;
@@ -64,6 +74,12 @@ interface ApiTokenRow {
   created_at: Date;
   last_used_at: Date | null;
   rotated_at: Date | null;
+}
+
+interface ApiTokenAuditRow extends ApiTokenRow {
+  user_id: string;
+  user_name: string;
+  deleted: boolean;
 }
 
 interface CacheEntry {
@@ -350,6 +366,15 @@ function toSummary(row: ApiTokenRow): ApiTokenSummary {
   };
 }
 
+function toAuditSummary(row: ApiTokenAuditRow): ApiTokenAuditSummary {
+  return {
+    ...toSummary(row),
+    user_id: row.user_id,
+    user_name: row.user_name,
+    deleted: row.deleted,
+  };
+}
+
 export class ApiTokenLimitError extends Error {}
 
 /**
@@ -372,6 +397,23 @@ export class ApiTokens {
       [userId],
     );
     return rows.map(toSummary);
+  }
+
+  /**
+   * Every token on the tracker, whoever owns it, for the shared audit view.
+   * Deleted tokens stay listed so their trail remains reachable. Ordered by
+   * owner, newest first within each.
+   */
+  async listAll(): Promise<ApiTokenAuditSummary[]> {
+    const { rows } = await this.pool.query<ApiTokenAuditRow>(
+      `SELECT t.id, t.name, t.scope, t.token_hint, t.allowed_ips,
+              t.created_at, t.last_used_at, t.rotated_at,
+              t.user_id, u.name AS user_name, t.deleted
+       FROM api_tokens t
+       JOIN users u ON u.id = t.user_id
+       ORDER BY lower(u.name), t.created_at DESC`,
+    );
+    return rows.map(toAuditSummary);
   }
 
   async create(
