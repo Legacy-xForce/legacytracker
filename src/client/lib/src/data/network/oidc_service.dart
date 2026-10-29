@@ -24,6 +24,18 @@ const sessionEndedMessage = 'Your session ended. Sign in again to continue.';
 const _baseScopes = 'openid profile offline_access tracker.read tracker.write';
 const _calendarScope = 'calendar.read';
 
+/// Token-endpoint errors that mean the grant itself must not be used again.
+/// Any other 4xx (a throttled 429, a proxy's HTML page) is transient: treating
+/// it as a refusal would sign the user out over something that passes.
+const _grantEndingErrors = {
+  'invalid_grant',
+  'invalid_client',
+  'unauthorized_client',
+  'invalid_target',
+  'invalid_scope',
+  'access_denied',
+};
+
 /// The OP refused the sign-in (`error=access_denied`).
 class SignInDeniedException extends AuthException {
   SignInDeniedException({required this.calendarRequested})
@@ -220,9 +232,15 @@ class OidcService {
     );
     if (response.statusCode >= 400 && response.statusCode < 500) {
       final body = _json(response.body);
-      final error = body?['error'] ?? response.statusCode;
-      throw AuthRejectedException(
-        body?['error_description'] as String? ?? 'Session rejected ($error)',
+      final error = body?['error'];
+      if (error is String && _grantEndingErrors.contains(error)) {
+        throw AuthRejectedException(
+          body?['error_description'] as String? ?? 'Session rejected ($error)',
+        );
+      }
+      throw AuthException(
+        'The sign-in server had a problem (error ${response.statusCode}).',
+        statusCode: response.statusCode,
       );
     }
     if (response.statusCode != 200) {

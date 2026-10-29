@@ -22,7 +22,7 @@ class AccessGrant {
 ///
 /// The OP rotates the refresh token on every use and revokes the whole grant
 /// when an old one is presented again, so every refresh runs through one
-/// queue, and the new refresh token is stored before its access token is used.
+/// queue, and the new refresh token is adopted before its access token is used.
 class TokenManager {
   TokenManager({
     required this.oidc,
@@ -159,8 +159,16 @@ class TokenManager {
   }
 
   Future<void> _store(StoredGrant grant) async {
-    await storage.saveGrant(grant);
+    // The OP already spent the token this grant replaces, so keep the new one
+    // even if it can't be persisted right now (the keychain is unavailable
+    // while the phone is locked): retrying with the old one would look like
+    // reuse and revoke the whole grant. The next refresh stores it again.
     _grant = grant;
+    try {
+      await storage.saveGrant(grant);
+    } catch (_) {
+      // In memory only until a later save succeeds.
+    }
   }
 
   Future<void> _refreshLegacy(StoredAuthData legacy) async {

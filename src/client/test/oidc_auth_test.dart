@@ -119,6 +119,23 @@ String _callbackFor(Uri url, {String? error, String? state, String? iss}) {
 Future<TokenStorage> _storage() async =>
     TokenStorage(await SharedPreferences.getInstance());
 
+/// A keychain that can be told to fail a write, like an iOS keychain while the
+/// phone is locked.
+class _SaveFailingStorage extends TokenStorage {
+  _SaveFailingStorage(super.prefs);
+
+  bool failNextSave = false;
+
+  @override
+  Future<void> saveGrant(StoredGrant grant) {
+    if (failNextSave) {
+      failNextSave = false;
+      throw Exception('Keychain unavailable');
+    }
+    return super.saveGrant(grant);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -226,6 +243,27 @@ void main() {
       await expectLater(
         oidc.refresh('stale', trackerResource),
         throwsA(isA<AuthRejectedException>()),
+      );
+    });
+
+    test('throttling is transient, not a rejection', () async {
+      final op = _FakeOp();
+      op.override = (_) async =>
+          _json({'error': 'temporarily_unavailable'}, 429);
+
+      await expectLater(
+        op.service().refresh('rt-0', trackerResource),
+        throwsA(allOf(isA<AuthException>(), isNot(isA<AuthRejectedException>()))),
+      );
+    });
+
+    test('a proxy error page is transient, not a rejection', () async {
+      final op = _FakeOp();
+      op.override = (_) async => http.Response('<html>blocked</html>', 403);
+
+      await expectLater(
+        op.service().refresh('rt-0', trackerResource),
+        throwsA(allOf(isA<AuthException>(), isNot(isA<AuthRejectedException>()))),
       );
     });
 
@@ -347,6 +385,35 @@ void main() {
         throwsA(isA<AuthException>()),
       );
       expect((await (await _storage()).loadGrant())?.refreshToken, 'rt-0');
+    });
+
+    test('a rotated token is kept even when it cannot be stored', () async {
+      final op = _FakeOp();
+      final storage = _SaveFailingStorage(
+        await SharedPreferences.getInstance(),
+      );
+      final tokens = TokenManager(
+        oidc: op.service(),
+        legacyAuth: AuthService(baseUrl: _issuer, httpClient: op.client),
+        storage: storage,
+      );
+      await tokens.load();
+      await tokens.adoptSignIn(
+        OidcTokens(
+          accessToken: _access(),
+          refreshToken: 'rt-0',
+          expiresAt: DateTime.now().add(const Duration(minutes: 15)),
+          idToken: 'id-token',
+        ),
+        calendar: true,
+      );
+
+      storage.failNextSave = true;
+      await tokens.refreshTracker(force: true); // rt-0 -> rt-1, not persisted
+      await tokens.refreshTracker(force: true); // must present rt-1, not rt-0
+
+      expect(op.tokenRequests.map((r) => r['refresh_token']), ['rt-0', 'rt-1']);
+      expect(tokens.hasSession, isTrue);
     });
 
     test('a legacy session keeps refreshing through /auth/refresh', () async {

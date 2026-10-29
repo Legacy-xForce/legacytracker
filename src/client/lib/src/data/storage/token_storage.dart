@@ -86,8 +86,20 @@ class StoredGrant {
 /// (Keychain, Android Keystore-backed encrypted preferences), a legacy
 /// password-login session where it always was, in SharedPreferences.
 class TokenStorage {
-  TokenStorage(this._prefs, {FlutterSecureStorage? secure})
-    : _secure = secure ?? const FlutterSecureStorage();
+  TokenStorage(SharedPreferences prefs, {FlutterSecureStorage? secure})
+    : _prefs = prefs,
+      _secure = secure ?? const FlutterSecureStorage(iOptions: _iosOptions);
+
+  /// The plugin's iOS default (`whenUnlocked`) makes the grant unreadable and
+  /// unwritable the moment the screen locks, and a refresh already in flight
+  /// when the app is backgrounded can still finish after that: the OP rotates
+  /// the token, the write fails, and the next refresh replays the spent token,
+  /// which the OP revokes the grant for. `first_unlock_this_device` stays
+  /// available after the first unlock following a reboot (a background-capable
+  /// app needs that), without letting the token leave this phone.
+  static const _iosOptions = IOSOptions(
+    accessibility: KeychainAccessibility.first_unlock_this_device,
+  );
 
   static const _grantKey = 'oidc_grant';
 
