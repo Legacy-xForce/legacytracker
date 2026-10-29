@@ -726,6 +726,11 @@ async function getIngestIdentity(
   return identity.ok ? { ...identity, deviceId: null } : identity;
 }
 
+/**
+ * Brings the schema up to date before the server listens. A failure is
+ * rethrown so `start()` can exit: the container must never become healthy
+ * with a half-migrated database and turn every request into a 500.
+ */
 async function ensureBackendSchema(): Promise<void> {
   try {
     await pool.query(
@@ -873,7 +878,8 @@ async function ensureBackendSchema(): Promise<void> {
        ON location_history (user_id, recorded_at)`,
     );
   } catch (error) {
-    app.log.warn({ error }, "Unable to ensure backend schema is present");
+    app.log.error({ error }, "Unable to ensure backend schema is present");
+    throw error;
   }
 }
 
