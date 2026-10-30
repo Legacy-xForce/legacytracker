@@ -5,11 +5,10 @@ import EventDetails from './map/EventDetails.vue';
 import { EVENT_FALLBACK_COLOR, type CalendarEvent } from '../lib/events';
 import { escapeHtml } from '../lib/format';
 import { icons } from '../lib/icons';
-import { useInsets, useMap } from '../lib/mapContext';
+import { useMap } from '../lib/mapContext';
 
 const props = defineProps<{ events: CalendarEvent[] }>();
 const map = useMap();
-const insets = useInsets();
 // Below the people, so an event never hides someone's marker.
 const Z_INDEX = 1;
 const markers = new Map<string, { marker: Marker; event: CalendarEvent }>();
@@ -52,7 +51,6 @@ function closeDetails() {
     openEventId = null;
     current?.remove();
     if (details) render(null, details);
-    map.value?.setPadding({ top: 0, right: 0, bottom: 0, left: 0 });
 }
 
 function openDetailsFor(event: CalendarEvent) {
@@ -63,9 +61,6 @@ function openDetailsFor(event: CalendarEvent) {
     openDetails = document.createElement('div');
     // Popups read the clock when opened.
     render(h(EventDetails, { event, now: Date.now() }), openDetails);
-    // Keep the popup clear of the panels, like the rest of the map framing.
-    const { top, right, bottom, left } = insets.value;
-    target.setPadding({ top: top + 16, right: right + 16, bottom: bottom + 16, left: left + 16 });
     // Clear the pin (36px tall, centred on the point) rather than clipping its tip.
     popup = new Popup({ maxWidth: '320px', offset: 24, closeButton: true, className: 'lt-popup' })
         .setLngLat([event.point[1], event.point[0]])
