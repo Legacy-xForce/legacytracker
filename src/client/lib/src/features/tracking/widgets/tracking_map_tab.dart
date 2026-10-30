@@ -23,6 +23,7 @@ import '../../checkpoints/checkpoints_provider.dart';
 import '../local_avatar_store.dart';
 import '../map_variant.dart';
 import 'map_geometry.dart';
+import '../map_settings.dart';
 import 'map_layers.dart';
 import 'map_viewers_row.dart';
 import 'mapbox_map.dart';
@@ -55,13 +56,11 @@ class TrackingMapTab extends StatefulWidget {
     required this.selfTrackingPaused,
     required this.selfMissingPermissions,
     required this.selfBatterySavingEnabled,
-    required this.selfLive,
     required this.viewers,
     required this.selectedUserId,
     required this.onLayerSelected,
     required this.onUserSelected,
     required this.onSelectionCleared,
-    required this.onStatusTap,
     this.mapboxTokenService,
   });
 
@@ -82,9 +81,6 @@ class TrackingMapTab extends StatefulWidget {
   final bool selfMissingPermissions;
   final bool selfBatterySavingEnabled;
 
-  /// Someone is watching the map, so devices are streaming in realtime.
-  final bool selfLive;
-
   /// Who has the live map open right now, us included.
   final List<MapViewer> viewers;
   final String? selectedUserId;
@@ -95,8 +91,6 @@ class TrackingMapTab extends StatefulWidget {
   /// that was following them.
   final VoidCallback onSelectionCleared;
 
-  /// The sharing-status pill was tapped (opens the sharing settings).
-  final VoidCallback onStatusTap;
   final MapboxTokenService? mapboxTokenService;
 
   @override
@@ -144,6 +138,13 @@ class TrackingMapTabState extends State<TrackingMapTab>
   /// Fraction of the map's height the people sheet covers right now.
   double _sheetFraction = 0;
 
+  /// The same fraction as a notifier, so the my-location button can ride on
+  /// the sheet without rebuilding the map while it is dragged.
+  final ValueNotifier<double> _sheetExtent = ValueNotifier(0);
+
+  /// Whether the map is turned away from north, for the reset-north button.
+  bool _turned = false;
+
   final Map<String, _MarkerMotion> _motions = {};
 
   bool _didJumpToInitialFix = false;
@@ -174,6 +175,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
       ..removeListener(_handleIconsChanged)
       ..dispose();
     _scene.dispose();
+    _sheetExtent.dispose();
     for (final motion in _motions.values) {
       motion.dispose();
     }
@@ -476,6 +478,8 @@ class TrackingMapTabState extends State<TrackingMapTab>
   }
 
   void _onCameraChanged(CameraState state) {
+    final turned = state.bearing.abs() > 0.5;
+    if (turned != _turned) setState(() => _turned = turned);
     final zoom = state.zoom;
     final delta = (zoom - _cameraZoom).abs();
     final labelsBefore = _cameraZoom >= _checkpointLabelsFromZoom;
@@ -503,6 +507,35 @@ class TrackingMapTabState extends State<TrackingMapTab>
     _publishScene();
   }
 
+  /// Read in [build]; the map widget is built from callbacks that have no
+  /// context of their own.
+  MapSettings? _settings;
+
+  void _resetNorth() {
+    _map?.easeTo(CameraOptions(bearing: 0), MapAnimationOptions(duration: 400));
+  }
+
+  void _showLayers({
+    required CalendarEventsProvider? events,
+    required CheckpointsProvider? checkpoints,
+  }) {
+    final settings = _settings;
+    showMapLayersSheet(
+      context,
+      selectedLayer: widget.selectedLayer,
+      onLayerSelected: widget.onLayerSelected,
+      orientationLocked: settings?.orientationLocked ?? true,
+      onOrientationLockChanged: (locked) =>
+          settings?.setOrientationLocked(locked),
+      view3d: settings?.view3d ?? false,
+      onView3dChanged: (enabled) => settings?.setView3d(enabled),
+      showEvents: events != null && events.available ? events.enabled : null,
+      onShowEventsChanged: (_) => events?.toggle(),
+      showCheckpoints: checkpoints?.showOnMap,
+      onShowCheckpointsChanged: (_) => checkpoints?.toggleShowOnMap(),
+    );
+  }
+
   Widget _mapWidget(BuildContext context, MapboxTokenSession session) {
     return MapboxMapWidget(
       key: ValueKey('tracking-map-${session.generation}'),
@@ -511,6 +544,8 @@ class TrackingMapTabState extends State<TrackingMapTab>
       initialZoom: _cameraZoom,
       style: widget.selectedLayer,
       lightPreset: widget.lightPreset,
+      orientationLocked: _settings?.orientationLocked ?? true,
+      view3d: _settings?.view3d ?? false,
       scene: _scene,
       onMarkerTap: _onMarkerTap,
       onCheckpointTap: _openCheckpoint,
@@ -535,6 +570,8 @@ class TrackingMapTabState extends State<TrackingMapTab>
     final events = context.watch<CalendarEventsProvider?>();
     final checkpointsProvider = context.watch<CheckpointsProvider?>();
     final selfAvatarBytes = context.watch<LocalAvatarStore?>()?.bytes;
+    final settings = _settings = context.watch<MapSettings?>();
+    final orientationLocked = settings?.orientationLocked ?? true;
 
     // Provider changes flow through this build; marker motion publishes the
     // scene directly so it never rebuilds the drawer or the controls.
@@ -584,66 +621,69 @@ class TrackingMapTabState extends State<TrackingMapTab>
             Positioned(
               top: topInset + 12,
               left: 16,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _SharingStatusPill(
-                    paused: widget.selfTrackingPaused,
-                    missingPermissions: widget.selfMissingPermissions,
-                    live: widget.selfLive,
-                    onTap: widget.onStatusTap,
-                  ),
-                  MapViewersRow(
-                    viewers: widget.viewers,
-                    selfId: widget.selfProfile.id,
-                    selfAvatarBytes: selfAvatarBytes,
-                  ),
-                ],
+              child: MapViewersRow(
+                viewers: widget.viewers,
+                selfId: widget.selfProfile.id,
+                selfAvatarBytes: selfAvatarBytes,
               ),
             ),
             Positioned(
               top: topInset + 12,
               right: 16,
-              child: MapControlGroup(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
                 children: [
-                  MapLayerButton(
-                    selectedLayer: widget.selectedLayer,
-                    onLayerSelected: widget.onLayerSelected,
+                  MapControlGroup(
+                    children: [
+                      MapControlButton(
+                        icon: Icons.layers_outlined,
+                        tooltip: 'Layers',
+                        onPressed: () => _showLayers(
+                          events: events,
+                          checkpoints: checkpointsProvider,
+                        ),
+                      ),
+                    ],
                   ),
-                  MapControlButton(
-                    icon:
-                        _autoFollow && _followedUserId == widget.selfProfile.id
-                        ? Icons.my_location
-                        : Icons.location_searching,
-                    tooltip: 'My location',
-                    onPressed: _recenterOnSelf,
-                  ),
-                  if (events != null && events.available)
-                    MapControlButton(
-                      icon: events.enabled
-                          ? Icons.event_rounded
-                          : Icons.event_busy_outlined,
-                      tooltip: events.enabled ? 'Hide events' : 'Show events',
-                      color: events.enabled
-                          ? Theme.of(context).colorScheme.primary
-                          : null,
-                      onPressed: events.toggle,
+                  // Only when the map can be turned and no longer faces north.
+                  if (!orientationLocked && _turned) ...[
+                    const SizedBox(height: 12),
+                    MapControlGroup(
+                      children: [
+                        MapControlButton(
+                          icon: Icons.explore_outlined,
+                          tooltip: 'Reset north',
+                          onPressed: _resetNorth,
+                        ),
+                      ],
                     ),
-                  if (checkpointsProvider != null)
-                    MapControlButton(
-                      icon: checkpointsProvider.showOnMap
-                          ? Icons.place_rounded
-                          : Icons.location_off_outlined,
-                      tooltip: checkpointsProvider.showOnMap
-                          ? 'Hide checkpoints'
-                          : 'Show checkpoints',
-                      color: checkpointsProvider.showOnMap
-                          ? Theme.of(context).colorScheme.primary
-                          : null,
-                      onPressed: checkpointsProvider.toggleShowOnMap,
-                    ),
+                  ],
                 ],
               ),
+            ),
+            // Bottom left like Google Maps, riding on top of the people sheet
+            // and clear of the Mapbox logo that sits just above it.
+            ValueListenableBuilder<double>(
+              valueListenable: _sheetExtent,
+              builder: (context, _, _) {
+                return Positioned(
+                  left: 16,
+                  bottom: _coveredSheetHeight + 48,
+                  child: MapControlGroup(
+                    children: [
+                      MapControlButton(
+                        icon:
+                            _autoFollow &&
+                                _followedUserId == widget.selfProfile.id
+                            ? Icons.my_location
+                            : Icons.location_searching,
+                        tooltip: 'My location',
+                        onPressed: _recenterOnSelf,
+                      ),
+                    ],
+                  ),
+                );
+              },
             ),
             TrackingUsersDrawer(
               key: _drawerKey,
@@ -660,6 +700,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
                 final changed = fraction != _sheetFraction;
                 _sheetFraction = fraction;
                 if (!changed) return;
+                _sheetExtent.value = fraction;
                 _publishInset();
                 if (_autoFollow) _syncMapCameraToFollowedUser();
               },
@@ -885,7 +926,9 @@ class TrackingMapTabState extends State<TrackingMapTab>
           // lives on a tight avatar-sized hit area instead (below). The
           // cluster bitmap keeps its payload: the bubble body is the
           // zoom-to-separate target.
-          payload: single ? null : [for (final m in group.members) m.value.profile],
+          payload: single
+              ? null
+              : [for (final m in group.members) m.value.profile],
         ),
       );
       if (single) {
@@ -1220,70 +1263,4 @@ class _LatLngTween extends Tween<LatLng> {
     begin!.latitude + (end!.latitude - begin!.latitude) * t,
     begin!.longitude + (end!.longitude - begin!.longitude) * t,
   );
-}
-
-/// Whether we're sharing our location, at a glance; tapping it opens the
-/// sharing settings.
-class _SharingStatusPill extends StatelessWidget {
-  const _SharingStatusPill({
-    required this.paused,
-    required this.missingPermissions,
-    required this.live,
-    required this.onTap,
-  });
-
-  final bool paused;
-  final bool missingPermissions;
-  final bool live;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final (color, label) = missingPermissions
-        ? (theme.colorScheme.error, 'Location off')
-        : paused
-        ? (Colors.amber, 'Sharing paused')
-        : (const Color(0xFF34C759), live ? 'Sharing · live' : 'Sharing');
-
-    return Material(
-      color: theme.colorScheme.surfaceContainerHigh,
-      elevation: 4,
-      shadowColor: Colors.black54,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(12, 9, 14, 9),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                width: 9,
-                height: 9,
-                decoration: BoxDecoration(
-                  color: color,
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: color.withValues(alpha: 0.6),
-                      blurRadius: 6,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Text(
-                label,
-                style: theme.textTheme.labelLarge?.copyWith(
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
 }

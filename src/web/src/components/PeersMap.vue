@@ -27,8 +27,19 @@ const props = withDefaults(
         insets?: Insets;
         /** Takes everyone off the map, e.g. while a trip replays. */
         hidden?: boolean;
+        /** North stays up: no rotating, by hand or by pinch. */
+        orientationLocked?: boolean;
+        /** Tilts the map so Standard's buildings stand up. */
+        view3d?: boolean;
     }>(),
-    { mapStyle: 'standard', lightPreset: 'day', insets: () => NO_INSETS, hidden: false }
+    {
+        mapStyle: 'standard',
+        lightPreset: 'day',
+        insets: () => NO_INSETS,
+        hidden: false,
+        orientationLocked: true,
+        view3d: false
+    }
 );
 const emit = defineEmits<{ select: [id: string]; deselect: [] }>();
 
@@ -54,6 +65,9 @@ let framed = false;
 let frame = 0;
 // Whom the camera keeps in view as they move, until the user pans away.
 const following = ref<string | null>(null);
+/** Degrees the map is turned away from north (0 while locked). */
+const bearing = ref(0);
+const TILT = 60;
 let flying = false;
 let zooming = false;
 
@@ -280,6 +294,27 @@ function fitEveryone() {
     });
 }
 
+/** Rotation and tilt follow the layers menu; the gestures are only on while they are allowed. */
+function applyView() {
+    if (!map) return;
+    if (props.orientationLocked) {
+        map.dragRotate.disable();
+        map.touchZoomRotate.disableRotation();
+        if (map.getBearing() !== 0) map.easeTo({ bearing: 0 });
+    } else {
+        map.dragRotate.enable();
+        map.touchZoomRotate.enableRotation();
+    }
+    if (props.view3d) map.touchPitch.enable();
+    else map.touchPitch.disable();
+    const pitch = props.view3d ? TILT : 0;
+    if (map.getPitch() !== pitch) map.easeTo({ pitch });
+}
+
+function resetNorth() {
+    map?.easeTo({ bearing: 0 });
+}
+
 function zoomBy(delta: number) {
     if (!map) return;
     if (delta > 0) map.zoomIn();
@@ -304,15 +339,15 @@ onMounted(() => {
         maxZoom: 19,
         // Longitude wraps, so only the Mercator latitude limit constrains the camera, like the app.
         renderWorldCopies: true,
-        // The web map is a flat, north-up map: rotation and pitch would only disorient.
+        // North-up and flat until the layers menu says otherwise (applyView).
         dragRotate: false,
         pitchWithRotate: false,
         touchPitch: false,
         attributionControl: false
     });
     map.addControl(new mapboxgl.AttributionControl({ compact: true }));
-    // Mapbox's pinch gesture includes rotation; keep zoom and pan only.
-    map.touchZoomRotate.disableRotation();
+    applyView();
+    map.on('rotate', () => (bearing.value = map?.getBearing() ?? 0));
     // Published before anything else can fail: the replay, checkpoint and
     // event layers draw into this ref, and a throw below used to leave them
     // - and the replay screen - with no map at all.
@@ -357,6 +392,7 @@ watch(
     }
 );
 watch(() => props.mapStyle, applyStyle);
+watch(() => [props.orientationLocked, props.view3d], applyView);
 watch(() => props.lightPreset, applyTheme);
 watch(
     () => props.hidden,
@@ -367,7 +403,7 @@ watch(
     }
 );
 
-defineExpose({ focus, fitEveryone, zoomBy, following });
+defineExpose({ focus, fitEveryone, zoomBy, resetNorth, following, bearing });
 </script>
 
 <template>

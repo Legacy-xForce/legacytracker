@@ -33,8 +33,22 @@ export class Map {
     maxZoom = 22;
     padding = { top: 0, right: 0, bottom: 0, left: 0 };
     readonly config = new globalThis.Map<string, unknown>();
-    readonly touchZoomRotate = { disableRotation: () => {} };
-    readonly dragRotate = { disable: () => {} };
+    bearing = 0;
+    pitch = 0;
+    /** What the gesture handlers were last told, so a test can see the lock and the tilt apply. */
+    readonly gestures = { rotate: false, pitch: false };
+    readonly touchZoomRotate = {
+        disableRotation: () => (this.gestures.rotate = false),
+        enableRotation: () => (this.gestures.rotate = true)
+    };
+    readonly dragRotate = {
+        disable: () => (this.gestures.rotate = false),
+        enable: () => (this.gestures.rotate = true)
+    };
+    readonly touchPitch = {
+        disable: () => (this.gestures.pitch = false),
+        enable: () => (this.gestures.pitch = true)
+    };
 
     constructor(options: { container: HTMLElement; zoom?: number; center?: [number, number]; maxZoom?: number }) {
         this.container = options.container;
@@ -150,8 +164,21 @@ export class Map {
         return this.flyTo(options);
     }
 
-    easeTo(options: { center?: [number, number]; zoom?: number }): this {
+    easeTo(options: { center?: [number, number]; zoom?: number; bearing?: number; pitch?: number }): this {
+        if (options.pitch !== undefined) this.pitch = options.pitch;
+        if (options.bearing !== undefined) {
+            this.bearing = options.bearing;
+            this.fire('rotate');
+        }
         return this.flyTo(options);
+    }
+
+    getBearing(): number {
+        return this.bearing;
+    }
+
+    getPitch(): number {
+        return this.pitch;
     }
 
     panBy(): this {

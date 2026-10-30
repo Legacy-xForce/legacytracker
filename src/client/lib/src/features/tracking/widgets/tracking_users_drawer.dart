@@ -275,11 +275,22 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
 
     return LayoutBuilder(
       builder: (context, constraints) {
+        final previousCollapsed = _collapsedSize;
         _collapsedSize = (_headerHeight / constraints.maxHeight).clamp(
           0.05,
           0.3,
         );
         if (!_sheetController.isAttached) _sheetSize = _collapsedSize;
+        // The first layout can run with a stand-in height, and the sheet then
+        // settles to its real peek without a controller notification: say
+        // where it ended up, so anything riding on it lands on the sheet.
+        if (_collapsedSize != previousCollapsed) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted && _sheetController.isAttached) {
+              _handleSheetChanged();
+            }
+          });
+        }
 
         return Align(
           alignment: Alignment.bottomCenter,
@@ -422,12 +433,7 @@ class _SheetHeader extends StatelessWidget {
                             button: true,
                             label: 'All people',
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(
-                                2,
-                                8,
-                                14,
-                                8,
-                              ),
+                              padding: const EdgeInsets.fromLTRB(2, 8, 14, 8),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [

@@ -26,7 +26,6 @@ class TrackingScreen extends StatefulWidget {
 class _TrackingScreenState extends State<TrackingScreen> {
   static const _mapTab = 0;
   static const _travelTab = 1;
-  static const _profileTab = 2;
 
   late final LocalAvatarStore _avatarStore;
   late final MapSettings _mapSettings;
@@ -154,7 +153,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                       selfMissingPermissions: !controller.permissionGranted,
                       selfBatterySavingEnabled:
                           controller.selfProfile.batterySavingEnabled,
-                      selfLive: controller.status.live,
                       viewers: controller.viewers,
                       selectedUserId: _selectedUserId,
                       mapboxTokenService: _mapboxTokenService,
@@ -164,7 +162,6 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         setState(() => _selectedUserId = user.id);
                       },
                       onSelectionCleared: _clearSelection,
-                      onStatusTap: () => _selectTab(_profileTab),
                     ),
                     TravelTab(
                       isActive: _selectedIndex == _travelTab,

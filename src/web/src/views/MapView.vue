@@ -50,6 +50,8 @@ const leaderboard = useLeaderboardStore();
 const router = useRouter();
 
 const CHECKPOINTS_KEY = 'legacytracker.showCheckpoints';
+const ORIENTATION_LOCK_KEY = 'legacytracker.orientationLocked';
+const VIEW_3D_KEY = 'legacytracker.view3d';
 const STYLE_KEY = 'legacytracker.mapStyle';
 const EVENTS_REFRESH_MS = 5 * 60_000;
 const SHEET_HEADER = 68;
@@ -63,6 +65,8 @@ const mapNow = useNow();
 const now = useNow(1_000);
 
 const showCheckpoints = ref(storage.get(CHECKPOINTS_KEY) !== 'false');
+const orientationLocked = ref(storage.get(ORIENTATION_LOCK_KEY) !== 'false');
+const view3d = ref(storage.get(VIEW_3D_KEY) === 'true');
 const mapStyle = ref<MapStyle>(readStyle());
 // Re-evaluated as `now` ticks, so Auto crosses into dawn/day/dusk/night on its own.
 const lightPreset = computed(() => resolveMapPreset(appearance.mapVariant, now.value));
@@ -151,6 +155,16 @@ function recenterOnSelf() {
 function toggleCheckpoints() {
     showCheckpoints.value = !showCheckpoints.value;
     storage.set(CHECKPOINTS_KEY, String(showCheckpoints.value));
+}
+
+function toggleOrientationLock() {
+    orientationLocked.value = !orientationLocked.value;
+    storage.set(ORIENTATION_LOCK_KEY, String(orientationLocked.value));
+}
+
+function toggleView3d() {
+    view3d.value = !view3d.value;
+    storage.set(VIEW_3D_KEY, String(view3d.value));
 }
 
 function chooseStyle(style: MapStyle) {
@@ -257,6 +271,8 @@ watch(replaying, (isReplaying) => {
             :light-preset="lightPreset"
             :insets="insets"
             :hidden="replaying"
+            :orientation-locked="orientationLocked"
+            :view3d="view3d"
             @select="select"
             @deselect="deselect"
         >
@@ -309,7 +325,7 @@ watch(replaying, (isReplaying) => {
             <MapControlGroup>
                 <PopoverMenu v-model="styleMenu">
                     <template #trigger>
-                        <MapControlButton icon="layers" label="Map style" @click="styleMenu = !styleMenu" />
+                        <MapControlButton icon="layers" label="Layers" @click="styleMenu = !styleMenu" />
                     </template>
                     <MenuItem
                         v-for="option in MAP_STYLES"
@@ -326,26 +342,43 @@ watch(replaying, (isReplaying) => {
                     <div class="px-4 pb-4">
                         <MapVariantPicker />
                     </div>
+                    <div class="bg-outline-variant mx-3 mb-2 h-px" />
+                    <MenuItem
+                        icon="explore"
+                        label="Lock orientation"
+                        :checked="orientationLocked"
+                        @click="toggleOrientationLock"
+                    />
+                    <MenuItem icon="view3d" label="3D view" :checked="view3d" @click="toggleView3d" />
+                    <MenuItem
+                        v-if="events.available"
+                        icon="event"
+                        label="Events"
+                        :checked="events.enabled"
+                        @click="events.setEnabled(!events.enabled)"
+                    />
+                    <MenuItem icon="place" label="Saved places" :checked="showCheckpoints" @click="toggleCheckpoints" />
                 </PopoverMenu>
+                <MapControlButton icon="fitAll" label="Show everyone" @click="mapView?.fitEveryone()" />
+            </MapControlGroup>
+            <!-- Only when the map can be turned and no longer faces north. -->
+            <MapControlGroup v-if="!orientationLocked && Math.abs(mapView?.bearing ?? 0) > 0.5">
+                <MapControlButton icon="explore" label="Reset north" @click="mapView?.resetNorth()" />
+            </MapControlGroup>
+        </div>
+
+        <!-- Bottom left, as on Google Maps: beside the panel on wide screens, above the sheet on phones. -->
+        <div
+            v-if="self && hasPosition(self)"
+            class="absolute z-[1000] transition-[bottom] duration-200"
+            :class="wide ? 'bottom-8 left-[404px]' : 'left-3'"
+            :style="wide ? undefined : { bottom: `${(sheetExpanded ? expandedHeight : SHEET_HEADER) + 12}px` }"
+        >
+            <MapControlGroup>
                 <MapControlButton
-                    v-if="self && hasPosition(self)"
                     :icon="mapView?.following === selfId ? 'myLocation' : 'locationSearching'"
                     label="My location"
                     @click="recenterOnSelf"
-                />
-                <MapControlButton icon="fitAll" label="Show everyone" @click="mapView?.fitEveryone()" />
-                <MapControlButton
-                    v-if="events.available"
-                    :icon="events.enabled ? 'event' : 'eventBusy'"
-                    :label="events.enabled ? 'Hide events' : 'Show events'"
-                    :active="events.enabled"
-                    @click="events.setEnabled(!events.enabled)"
-                />
-                <MapControlButton
-                    :icon="showCheckpoints ? 'place' : 'locationOff'"
-                    :label="showCheckpoints ? 'Hide saved places' : 'Show saved places'"
-                    :active="showCheckpoints"
-                    @click="toggleCheckpoints"
                 />
             </MapControlGroup>
         </div>
