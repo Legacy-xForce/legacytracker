@@ -128,6 +128,15 @@ describe('Motion', () => {
         expect(motion.gliding).toBe(false);
     });
 
+    it('jumps instead of gliding when the last update is stale', () => {
+        const motion = new Motion(a);
+        motion.moveTo(b, 0);
+        motion.step(1000);
+        motion.moveTo(latLng(45.5, 9), 60_000);
+        expect(sameLatLng(motion.shown, latLng(45.5, 9))).toBe(true);
+        expect(motion.gliding).toBe(false);
+    });
+
     it('ignores an update to where it is already heading', () => {
         const motion = new Motion(a);
         expect(motion.moveTo(a, 0)).toBe(false);
