@@ -446,10 +446,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
     if (!mounted) return;
     final now = DateTime.now();
     final last = _lastMotionBuild;
-    // Native annotation updates cross a platform channel; ~10 fps keeps the
+    // Native annotation updates cross a platform channel; ~20 fps keeps the
     // glide smooth without flooding it.
     if (last != null &&
-        now.difference(last) < const Duration(milliseconds: 100)) {
+        now.difference(last) < const Duration(milliseconds: 50)) {
       return;
     }
     _lastMotionBuild = now;
@@ -1163,32 +1163,53 @@ class _MarkerMotion {
   static const Duration _maxGlide = Duration(seconds: 4);
   static const Duration _defaultGlide = Duration(milliseconds: 1000);
 
+  // Fixes rarely arrive on the beat, so a glide is timed from the average gap
+  // and runs well past it: the marker is still moving when the next fix lands
+  // instead of standing still waiting for it. The price is a marker that trails
+  // reality by about a gap; a backlog is absorbed by the next glide.
+  static const double _glideSlack = 1.5;
+
+  // How much of each new gap goes into the running average.
+  static const double _gapWeight = 0.3;
+
   final AnimationController _controller;
   final VoidCallback onTick;
 
-  Animation<LatLng>? _animation;
+  /// Route of the current glide: [_path] first is where it began, last is the
+  /// newest fix. [_cumulative] holds the distance along it at each waypoint.
+  List<LatLng> _path = const [];
+  List<double> _cumulative = const [0];
+  bool _gliding = false;
   LatLng? _displayed;
   LatLng? _lastTarget;
   DateTime? _lastUpdateAt;
+
+  /// Running average of the gap between fixes, so one short gap doesn't end
+  /// the next glide early.
+  Duration? _gap;
 
   /// The position the marker should currently be drawn at, or null until a
   /// valid location has been seen.
   LatLng? get value => _displayed;
 
-  /// Tweens towards [location], reusing the previous position as the start
-  /// point so the marker glides rather than teleports. Movement is keyed on
-  /// the coordinates rather than the timestamp: peer timestamps come from the
-  /// server's `recorded_at`, which can repeat across updates, whereas a
-  /// changed position is exactly what should trigger a glide.
+  /// Extends the route to [location] from wherever the marker is drawn now,
+  /// through the waypoints it has not reached yet, and re-times the whole
+  /// remainder to the average gap between updates: the marker never cuts a
+  /// corner or stops between fixes. Movement is keyed on the coordinates
+  /// rather than the timestamp: peer timestamps come from the server's
+  /// `recorded_at`, which can repeat across updates, whereas a changed
+  /// position is exactly what should trigger a glide.
   void update(LocationPoint? location) {
     if (location == null ||
         !location.latitude.isFinite ||
         !location.longitude.isFinite) {
       _controller.stop();
-      _animation = null;
+      _gliding = false;
+      _path = const [];
       _displayed = null;
       _lastTarget = null;
       _lastUpdateAt = null;
+      _gap = null;
       return;
     }
 
@@ -1203,21 +1224,34 @@ class _MarkerMotion {
         : now.difference(_lastUpdateAt!);
     _lastUpdateAt = now;
     _lastTarget = target;
+    if (interval != null) {
+      final gap = _gap;
+      _gap = gap == null ? interval : gap + (interval - gap) * _gapWeight;
+    }
 
     final start = _displayed ?? target;
     if (_sameLatLng(start, target)) {
       _displayed = target;
+      _gliding = false;
       return;
     }
 
+    // Waypoints still ahead of the marker, so it carries on through them.
+    final ahead = <LatLng>[];
+    if (_gliding && _path.length > 1) {
+      final along = _controller.value * _cumulative.last;
+      ahead.addAll(_path.skip(_segmentAt(along) + 1));
+      ahead.removeWhere((point) => _sameLatLng(point, start));
+    }
     _controller.stop();
-    _animation = _LatLngTween(begin: start, end: target).animate(
-      // Linear: constant-speed travel between fixes, so chained segments don't
-      // ease-in/out and stutter at every waypoint.
-      CurvedAnimation(parent: _controller, curve: Curves.linear),
-    );
+    _path = [start, ...ahead, target];
+    _cumulative = [0];
+    for (var i = 1; i < _path.length; i++) {
+      _cumulative.add(_cumulative[i - 1] + _distance(_path[i - 1], _path[i]));
+    }
+    _gliding = true;
     _controller
-      ..duration = _glideDuration(interval)
+      ..duration = _glideDuration(_gap)
       ..forward(from: 0);
   }
 
@@ -1225,22 +1259,51 @@ class _MarkerMotion {
   /// arrives roughly as the next fix lands, clamped to sane bounds.
   Duration _glideDuration(Duration? interval) {
     if (interval == null) return _defaultGlide;
-    if (interval < _minGlide) return _minGlide;
-    if (interval > _maxGlide) return _maxGlide;
-    return interval;
+    final slackened = interval * _glideSlack;
+    if (slackened < _minGlide) return _minGlide;
+    if (slackened > _maxGlide) return _maxGlide;
+    return slackened;
+  }
+
+  /// Index of the route segment containing distance [along].
+  int _segmentAt(double along) {
+    var i = 0;
+    while (i < _path.length - 2 && _cumulative[i + 1] <= along) {
+      i++;
+    }
+    return i;
+  }
+
+  /// Ground distance in degrees of latitude: longitude shrinks with the
+  /// cosine of latitude.
+  static double _distance(LatLng a, LatLng b) {
+    final scale = math.cos((a.latitude + b.latitude) / 2 * math.pi / 180);
+    return math.sqrt(
+      math.pow(b.latitude - a.latitude, 2) +
+          math.pow((b.longitude - a.longitude) * scale, 2),
+    );
   }
 
   void _handleTick() {
-    final animated = _animation?.value;
-    if (animated == null) return;
-    _displayed = animated;
+    if (!_gliding || _path.length < 2) return;
+    final total = _cumulative.last;
+    final along = _controller.value * total;
+    final i = _segmentAt(along);
+    final span = _cumulative[i + 1] - _cumulative[i];
+    final f = span > 0 ? (along - _cumulative[i]) / span : 1.0;
+    final from = _path[i];
+    final to = _path[i + 1];
+    _displayed = LatLng(
+      from.latitude + (to.latitude - from.latitude) * f,
+      from.longitude + (to.longitude - from.longitude) * f,
+    );
     onTick();
   }
 
   void _handleStatus(AnimationStatus status) {
     if (status != AnimationStatus.completed) return;
-    if (_animation != null) _displayed = _animation!.value;
-    _animation = null;
+    if (_path.isNotEmpty) _displayed = _path.last;
+    _gliding = false;
   }
 
   void dispose() {
@@ -1252,15 +1315,4 @@ class _MarkerMotion {
 
   static bool _sameLatLng(LatLng a, LatLng b) =>
       a.latitude == b.latitude && a.longitude == b.longitude;
-}
-
-class _LatLngTween extends Tween<LatLng> {
-  _LatLngTween({required LatLng begin, required LatLng end})
-    : super(begin: begin, end: end);
-
-  @override
-  LatLng lerp(double t) => LatLng(
-    begin!.latitude + (end!.latitude - begin!.latitude) * t,
-    begin!.longitude + (end!.longitude - begin!.longitude) * t,
-  );
 }

@@ -86,7 +86,7 @@ describe('Motion', () => {
     const a = latLng(45, 9);
     const b = latLng(45.01, 9);
 
-    it('glides linearly to a new position over the time since the previous update', () => {
+    it('glides linearly to a new position, longer than the gap since the previous update', () => {
         const motion = new Motion(a);
         motion.moveTo(b, 0); // first update: one-second glide
         motion.step(500);
@@ -95,28 +95,36 @@ describe('Motion', () => {
         expect(sameLatLng(motion.shown, b)).toBe(true);
         expect(motion.gliding).toBe(false);
 
-        // Two seconds later: the next glide lasts two seconds.
+        // Two seconds later: the next glide lasts 3 seconds (1.5 x the 2 s gap), so it is still moving
+        // when the following fix is due.
         motion.moveTo(a, 2000);
-        motion.step(3000);
+        motion.step(3500);
         expect(motion.shown.lat).toBeCloseTo(45.005, 6);
+        motion.step(4900);
+        expect(motion.gliding).toBe(true);
     });
 
-    it('starts each glide from where the marker is drawn, not from the old target', () => {
+    it('carries on through the waypoint it has not reached instead of cutting the corner', () => {
         const motion = new Motion(a);
         motion.moveTo(b, 0);
-        motion.step(500);
-        motion.moveTo(latLng(45.02, 9), 500);
-        motion.step(500);
-        expect(motion.shown.lat).toBeCloseTo(45.005, 6);
+        motion.step(500); // halfway to b
+        const c = latLng(45.01, 9.01);
+        motion.moveTo(c, 500);
+        // Remaining route: 0.005 north, then 0.01 east (scaled); its first third ends at b's latitude.
+        motion.step(500 + 750 * 0.2);
+        expect(motion.shown.lng).toBe(9);
+        motion.step(500 + 750 * 0.9);
+        expect(motion.shown.lng).toBeGreaterThan(9);
+        expect(motion.shown.lat).toBeCloseTo(45.01, 6);
     });
 
     it('keeps glides between 0.3 and 4 seconds', () => {
         const motion = new Motion(a);
         motion.moveTo(b, 0);
-        motion.moveTo(latLng(45.02, 9), 10); // 10 ms later: still 300 ms
+        motion.moveTo(latLng(45.02, 9), 10); // 10 ms later: floored at 300 ms
         motion.step(160);
         expect(motion.gliding).toBe(true);
-        motion.step(310);
+        motion.step(320);
         expect(motion.gliding).toBe(false);
     });
 
