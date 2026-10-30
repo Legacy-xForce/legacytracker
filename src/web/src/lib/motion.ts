@@ -11,6 +11,9 @@ const FIRST_GLIDE_MS = 1_000;
 const GLIDE_SLACK = 1.5;
 // How much of each new gap goes into the running average the glide is timed from.
 const GAP_WEIGHT = 0.3;
+// Past this long without a fix the marker is stale (the tab was in the background or the user sat
+// still): it jumps to the new position instead of crawling there.
+const STALE_MS = 15_000;
 
 /**
  * Where a marker is drawn while it glides along the route of the fixes it has been sent, at a steady
@@ -46,6 +49,11 @@ export class Motion {
     moveTo(target: LatLng, now: number): boolean {
         if (sameLatLng(target, this.target)) return false;
         const interval = this.lastUpdate === null ? null : now - this.lastUpdate;
+        if (interval !== null && interval > STALE_MS) {
+            this.jumpTo(target, now);
+            this.gap = null;
+            return true;
+        }
         this.lastUpdate = now;
         if (interval !== null) this.gap = this.gap === null ? interval : this.gap + (interval - this.gap) * GAP_WEIGHT;
         this.step(now);

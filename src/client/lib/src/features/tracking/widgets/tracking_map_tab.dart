@@ -145,7 +145,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
   /// Whether the map is turned away from north, for the reset-north button.
   bool _turned = false;
 
-  final Map<String, _MarkerMotion> _motions = {};
+  final Map<String, MarkerMotion> _motions = {};
 
   bool _didJumpToInitialFix = false;
   DateTime? _lastMotionBuild;
@@ -224,10 +224,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
     }
   }
 
-  _MarkerMotion _motionFor(String id) {
+  MarkerMotion _motionFor(String id) {
     return _motions.putIfAbsent(
       id,
-      () => _MarkerMotion(vsync: this, onTick: _handleMotionTick),
+      () => MarkerMotion(vsync: this, onTick: _handleMotionTick),
     );
   }
 
@@ -1149,8 +1149,9 @@ class _TrackedUser {
   final bool isSelf;
 }
 
-class _MarkerMotion {
-  _MarkerMotion({required TickerProvider vsync, required this.onTick})
+@visibleForTesting
+class MarkerMotion {
+  MarkerMotion({required TickerProvider vsync, required this.onTick})
     : _controller = AnimationController(vsync: vsync) {
     _controller
       ..addListener(_handleTick)
@@ -1171,6 +1172,15 @@ class _MarkerMotion {
 
   // How much of each new gap goes into the running average.
   static const double _gapWeight = 0.3;
+
+  // Past this long without a fix the marker is stale (the app was closed or
+  // the user sat still), and a glide would drag it slowly across the map
+  // instead of showing where they are now.
+  static const Duration _staleAfter = Duration(seconds: 15);
+
+  /// Overridable clock so tests can age the last update.
+  @visibleForTesting
+  static DateTime Function() clock = DateTime.now;
 
   final AnimationController _controller;
   final VoidCallback onTick;
@@ -1218,12 +1228,20 @@ class _MarkerMotion {
       return;
     }
 
-    final now = DateTime.now();
+    final now = clock();
     final interval = _lastUpdateAt == null
         ? null
         : now.difference(_lastUpdateAt!);
     _lastUpdateAt = now;
     _lastTarget = target;
+    if (interval != null && interval > _staleAfter) {
+      _controller.stop();
+      _gliding = false;
+      _path = const [];
+      _displayed = target;
+      _gap = null;
+      return;
+    }
     if (interval != null) {
       final gap = _gap;
       _gap = gap == null ? interval : gap + (interval - gap) * _gapWeight;
