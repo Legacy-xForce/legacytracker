@@ -42,4 +42,21 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(settings.mapVariant, MapVariant.auto);
   });
+
+  test(
+    'keeps north up and flat by default and remembers the choices',
+    () async {
+      SharedPreferences.setMockInitialValues({});
+      final settings = MapSettings();
+      expect(settings.orientationLocked, isTrue);
+      expect(settings.view3d, isFalse);
+      await settings.setOrientationLocked(false);
+      await settings.setView3d(true);
+
+      final reopened = MapSettings();
+      await Future<void>.delayed(Duration.zero);
+      expect(reopened.orientationLocked, isFalse);
+      expect(reopened.view3d, isTrue);
+    },
+  );
 }

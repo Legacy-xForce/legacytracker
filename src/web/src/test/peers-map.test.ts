@@ -123,4 +123,44 @@ describe('PeersMap', () => {
         expect(marker().style.transform).toBe('scale(1)');
         wrapper.unmount();
     });
+
+    it('keeps north up and flat until the layers menu allows turning and tilting', async () => {
+        const injected: ShallowRef<MapboxMap | null>[] = [];
+        const grabber = defineComponent({
+            setup() {
+                injected.push(useMap());
+                return () => null;
+            }
+        });
+        const wrapper = mount(PeersMap, {
+            attachTo: document.body,
+            props: { peers: [], selfId: '', selectedId: null, now: Date.now() },
+            slots: { default: () => h(grabber) }
+        });
+        const map = injected[0].value as unknown as {
+            gestures: { rotate: boolean; pitch: boolean };
+            bearing: number;
+            pitch: number;
+        };
+        expect(map.gestures).toEqual({ rotate: false, pitch: false });
+
+        await wrapper.setProps({ orientationLocked: false, view3d: true });
+        expect(map.gestures).toEqual({ rotate: true, pitch: true });
+        expect(map.pitch).toBe(60);
+
+        // A turned map reports its bearing, and resetting brings north back up.
+        map.bearing = 40;
+        fire(injected[0].value!, 'rotate');
+        expect(wrapper.vm.bearing).toBe(40);
+        wrapper.vm.resetNorth();
+        expect(wrapper.vm.bearing).toBe(0);
+
+        // Locking again turns a rotated map back to north; leaving 3D lays it flat.
+        map.bearing = 25;
+        await wrapper.setProps({ orientationLocked: true, view3d: false });
+        expect(map.bearing).toBe(0);
+        expect(map.pitch).toBe(0);
+        expect(map.gestures).toEqual({ rotate: false, pitch: false });
+        wrapper.unmount();
+    });
 });

@@ -23,7 +23,7 @@ enum MapMarkerLayer {
   person,
   cluster,
   clusterFace,
-  user
+  user,
 }
 
 /// A bitmap marker the map renders through a native point annotation.
@@ -163,6 +163,8 @@ class MapboxMapWidget extends StatefulWidget {
     required this.style,
     required this.scene,
     this.lightPreset = MapLightPreset.day,
+    this.orientationLocked = true,
+    this.view3d = false,
     this.onMarkerTap,
     this.onCheckpointTap,
     this.onMapCreated,
@@ -182,6 +184,12 @@ class MapboxMapWidget extends StatefulWidget {
   /// The basemap lighting: the app theme (or the picked map variant) resolved
   /// to one of Mapbox Standard's four presets.
   final MapLightPreset lightPreset;
+
+  /// North stays up: rotating gestures are off and a turned map swings back.
+  final bool orientationLocked;
+
+  /// The map is tilted so Standard's buildings stand up.
+  final bool view3d;
   final ValueChanged<MapMarker>? onMarkerTap;
 
   /// A checkpoint circle was tapped (the polygon itself, not its name pill).
@@ -274,6 +282,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     if (widget.lightPreset != oldWidget.lightPreset) {
       _applyLightPreset();
     }
+    if (widget.orientationLocked != oldWidget.orientationLocked ||
+        widget.view3d != oldWidget.view3d) {
+      unawaited(_applyView(animate: true));
+    }
     _syncAll();
   }
 
@@ -308,17 +320,39 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     } catch (_) {
       // Camera limits are a parity nicety; the map still works without them.
     }
-    try {
-      await map.gestures.updateSettings(
-        GesturesSettings(rotateEnabled: false, pitchEnabled: false),
-      );
-    } catch (_) {
-      // Older native SDKs may not expose gesture settings.
-    }
+    await _applyView(animate: false);
     if (!mounted) return;
     _appliedInset = -1;
     unawaited(_applyOrnaments());
     widget.onMapCreated?.call(map);
+  }
+
+  static const _tilt = 60.0;
+
+  /// Rotation and tilt follow the layers sheet: the gestures are only on while
+  /// they are allowed, and locking or flattening puts the camera back.
+  Future<void> _applyView({required bool animate}) async {
+    final map = _map;
+    if (map == null) return;
+    try {
+      await map.gestures.updateSettings(
+        GesturesSettings(
+          rotateEnabled: !widget.orientationLocked,
+          pitchEnabled: widget.view3d,
+        ),
+      );
+    } catch (_) {
+      // Older native SDKs may not expose gesture settings.
+    }
+    final camera = CameraOptions(
+      pitch: widget.view3d ? _tilt : 0,
+      bearing: widget.orientationLocked ? 0 : null,
+    );
+    if (animate) {
+      await map.easeTo(camera, MapAnimationOptions(duration: 400));
+    } else {
+      await map.setCamera(camera);
+    }
   }
 
   Future<void> _onStyleLoaded() async {
@@ -395,8 +429,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final beamManager = await map.annotations.createPointAnnotationManager();
     final baseManager = await map.annotations.createPointAnnotationManager();
     final eventManager = await map.annotations.createPointAnnotationManager();
-    final personManager = await map.annotations
-        .createPointAnnotationManager();
+    final personManager = await map.annotations.createPointAnnotationManager();
     final clusterManager = await map.annotations.createPointAnnotationManager();
     // Created after the bubbles so a face's hit area outranks the bubble it
     // sits on: taps go to the topmost annotation only.
@@ -743,10 +776,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       iconSize: marker.iconSize,
       iconRotate: marker.rotation,
       iconAnchor: anchored > 0 ? IconAnchor.BOTTOM : IconAnchor.CENTER,
-      iconOffset: [
-        marker.iconOffset.dx,
-        anchored + marker.iconOffset.dy,
-      ],
+      iconOffset: [marker.iconOffset.dx, anchored + marker.iconOffset.dy],
       customData: {'markerId': marker.id},
     );
   }

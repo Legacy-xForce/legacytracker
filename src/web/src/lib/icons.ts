@@ -28,7 +28,9 @@ import directionsCar from '@material-symbols/svg-400/rounded/directions_car-fill
 import error from '@material-symbols/svg-400/rounded/error.svg?raw';
 import event from '@material-symbols/svg-400/rounded/event-fill.svg?raw';
 import eventBusy from '@material-symbols/svg-400/rounded/event_busy.svg?raw';
+import explore from '@material-symbols/svg-400/rounded/explore.svg?raw';
 import fitAll from '@material-symbols/svg-400/rounded/zoom_out_map.svg?raw';
+import view3d from '@material-symbols/svg-400/rounded/view_in_ar.svg?raw';
 import group from '@material-symbols/svg-400/rounded/group-fill.svg?raw';
 import history from '@material-symbols/svg-400/rounded/history.svg?raw';
 import info from '@material-symbols/svg-400/rounded/info.svg?raw';
@@ -99,6 +101,8 @@ const raw = {
     error,
     event,
     eventBusy,
+    explore,
+    view3d,
     fitAll,
     group,
     history,
