@@ -418,26 +418,22 @@ watch(replaying, (isReplaying) => {
             </MapControlGroup>
         </div>
 
-        <!-- Bottom left, as on Google Maps: beside the panel on wide screens, above the sheet on phones. -->
+        <!-- Bottom right, clear of the Mapbox attribution: under the zoom buttons on wide screens, above the sheet on phones. -->
         <div
-            v-if="self && hasPosition(self)"
-            class="absolute z-[1000] transition-[bottom] duration-200"
-            :class="wide ? 'bottom-8 left-[404px]' : 'left-3'"
+            class="absolute right-3 z-[1000] flex flex-col items-end gap-3 transition-[bottom] duration-200"
+            :class="wide ? 'bottom-8' : undefined"
             :style="wide ? undefined : { bottom: `${(sheetExpanded ? expandedHeight : SHEET_HEADER) + 12}px` }"
         >
-            <MapControlGroup>
+            <MapControlGroup v-if="wide">
+                <MapControlButton icon="add" label="Zoom in" @click="mapView?.zoomBy(1)" />
+                <MapControlButton icon="remove" label="Zoom out" @click="mapView?.zoomBy(-1)" />
+            </MapControlGroup>
+            <MapControlGroup v-if="self && hasPosition(self)">
                 <MapControlButton
                     :icon="mapView?.following === selfId ? 'myLocation' : 'locationSearching'"
                     label="My location"
                     @click="recenterOnSelf"
                 />
-            </MapControlGroup>
-        </div>
-
-        <div v-if="wide" class="absolute right-3 bottom-8 z-[1000]">
-            <MapControlGroup>
-                <MapControlButton icon="add" label="Zoom in" @click="mapView?.zoomBy(1)" />
-                <MapControlButton icon="remove" label="Zoom out" @click="mapView?.zoomBy(-1)" />
             </MapControlGroup>
         </div>
 
