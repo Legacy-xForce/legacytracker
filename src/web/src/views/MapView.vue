@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import CheckpointsLayer from '../components/CheckpointsLayer.vue';
 import EventsLayer from '../components/EventsLayer.vue';
@@ -109,13 +109,10 @@ const insets = computed<Insets>(() =>
         : { top: 72, right: 0, bottom: sheetExpanded.value ? expandedHeight.value : SHEET_HEADER, left: 0 }
 );
 
-async function select(id: string) {
+function select(id: string) {
     selectedId.value = id;
     view.value = 'person';
     sheetExpanded.value = true;
-    // Aim once the map knows how much the opened sheet covers.
-    await nextTick();
-    mapView.value?.focus(id);
 }
 
 function showPeople() {
