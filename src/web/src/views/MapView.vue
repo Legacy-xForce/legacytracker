@@ -4,6 +4,8 @@ import { useRouter } from 'vue-router';
 import CheckpointsLayer from '../components/CheckpointsLayer.vue';
 import EventsLayer from '../components/EventsLayer.vue';
 import PeersMap from '../components/PeersMap.vue';
+import PlaceDraftLayer, { type PlaceDraft } from '../components/places/PlaceDraftLayer.vue';
+import PlacesPanel from '../components/places/PlacesPanel.vue';
 import ReplayLayer from '../components/ReplayLayer.vue';
 import UserAvatar from '../components/UserAvatar.vue';
 import ApiTokensDialog from '../components/account/ApiTokensDialog.vue';
@@ -76,7 +78,11 @@ const appearanceOpen = ref(false);
 const apiTokensOpen = ref(false);
 const sheetExpanded = ref(false);
 const selectedId = ref<string | null>(null);
-const view = ref<'people' | 'person' | 'history' | 'travel'>('people');
+const view = ref<'people' | 'person' | 'history' | 'travel' | 'places'>('people');
+// The saved place being drawn in the editor, and what is under the crosshair meanwhile.
+const placeDraft = ref<PlaceDraft | null>(null);
+const crosshair = ref<{ latitude: number; longitude: number } | null>(null);
+const draftLayer = ref<InstanceType<typeof PlaceDraftLayer> | null>(null);
 
 function readStyle(): MapStyle {
     const stored = storage.get(STYLE_KEY);
@@ -121,6 +127,30 @@ async function select(id: string) {
 function showPeople() {
     selectedId.value = null;
     view.value = 'people';
+}
+
+// Leaving the tab drops the editor with it.
+watch(view, (now) => {
+    if (now !== 'places') placeDraft.value = null;
+});
+
+function showPlaces() {
+    selectedId.value = null;
+    view.value = 'places';
+    sheetExpanded.value = true;
+}
+
+// 'people' also covers the selected-person view's list, which is not a tab of its own.
+function tabActive(id: 'people' | 'travel' | 'places'): boolean {
+    return id === 'travel'
+        ? view.value === 'travel'
+        : id === 'places'
+          ? view.value === 'places'
+          : view.value !== 'travel' && view.value !== 'places';
+}
+
+function onCrosshair(latitude: number, longitude: number) {
+    crosshair.value = { latitude, longitude };
 }
 
 // The viewer moved the map themselves, so nobody they picked is on screen any more:
@@ -276,7 +306,16 @@ watch(replaying, (isReplaying) => {
             @select="select"
             @deselect="deselect"
         >
-            <CheckpointsLayer v-if="showCheckpoints && !replaying" :checkpoints="checkpoints.checkpoints" />
+            <CheckpointsLayer
+                v-if="(showCheckpoints || view === 'places') && !replaying"
+                :checkpoints="checkpoints.checkpoints"
+            />
+            <PlaceDraftLayer
+                v-if="view === 'places' && !replaying"
+                ref="draftLayer"
+                :draft="placeDraft"
+                @move="onCrosshair"
+            />
             <EventsLayer v-if="events.available && events.enabled && !replaying" :events="events.events" />
             <ReplayLayer
                 v-if="history.playing && history.userId"
@@ -288,6 +327,21 @@ watch(replaying, (isReplaying) => {
                 @close="history.stopReplay()"
             />
         </PeersMap>
+
+        <!-- The point a saved place is set on, in the middle of the part of the map nothing covers. -->
+        <div
+            v-if="placeDraft && view === 'places'"
+            class="pointer-events-none absolute z-[1000] flex items-center justify-center"
+            :style="{
+                top: `${insets.top}px`,
+                right: `${insets.right}px`,
+                bottom: `${insets.bottom}px`,
+                left: `${insets.left}px`
+            }"
+            data-crosshair
+        >
+            <Icon name="add" :size="32" class="text-primary" />
+        </div>
 
         <div class="absolute top-3 z-[1000] flex items-center gap-2" :class="wide ? 'left-[404px]' : 'left-4'">
             <StatusPill :status="peers.status" />
@@ -397,9 +451,16 @@ watch(replaying, (isReplaying) => {
             :expanded-height="expandedHeight"
         >
             <template #header>
-                <template v-if="view === 'people' || view === 'travel' || (view === 'person' && !selected)">
+                <template
+                    v-if="
+                        view === 'people' || view === 'travel' || view === 'places' || (view === 'person' && !selected)
+                    "
+                >
                     <template v-if="view === 'travel'">
                         <h2 class="type-title-md font-bold">Travel</h2>
+                    </template>
+                    <template v-else-if="view === 'places'">
+                        <h2 class="type-title-md font-bold">Checkpoints</h2>
                     </template>
                     <template v-else>
                         <h2 class="type-title-md font-bold">People</h2>
@@ -413,21 +474,28 @@ watch(replaying, (isReplaying) => {
                         <button
                             v-for="option in [
                                 { id: 'people', icon: 'group', label: 'People' },
-                                { id: 'travel', icon: 'directionsCar', label: 'Travel' }
+                                { id: 'travel', icon: 'directionsCar', label: 'Travel' },
+                                { id: 'places', icon: 'place', label: 'Checkpoints' }
                             ] as const"
                             :key="option.id"
                             class="flex h-8 w-11 items-center justify-center rounded-full transition-colors"
                             :class="
-                                (view === 'travel') === (option.id === 'travel')
+                                tabActive(option.id)
                                     ? 'bg-secondary-container text-on-secondary-container'
                                     : 'text-on-surface-variant hover:bg-on-surface/6'
                             "
                             role="tab"
-                            :aria-selected="(view === 'travel') === (option.id === 'travel')"
+                            :aria-selected="tabActive(option.id)"
                             :aria-label="option.label"
                             :title="option.label"
                             :data-view="option.id"
-                            @click="option.id === 'travel' ? showTravel() : showPeople()"
+                            @click="
+                                option.id === 'travel'
+                                    ? showTravel()
+                                    : option.id === 'places'
+                                      ? showPlaces()
+                                      : showPeople()
+                            "
                         >
                             <Icon :name="option.icon" :size="20" />
                         </button>
@@ -451,6 +519,12 @@ watch(replaying, (isReplaying) => {
 
             <TripHistory v-if="view === 'history'" />
             <TravelLeaderboard v-else-if="view === 'travel'" :self-id="selfId" />
+            <PlacesPanel
+                v-else-if="view === 'places'"
+                :cursor="crosshair"
+                @draft="placeDraft = $event"
+                @goto="(lat, lng) => draftLayer?.goto(lat, lng)"
+            />
             <PersonDetail
                 v-else-if="view === 'person' && selected"
                 :key="selected.id"

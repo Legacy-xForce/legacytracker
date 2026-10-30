@@ -217,7 +217,10 @@ export class Map {
     }
 
     addSource(id: string, source: unknown): this {
-        this.sources.set(id, source);
+        // A GeoJSON source can be given new data in place.
+        const stored = { ...(source as object) } as { data?: unknown; setData?: (data: unknown) => void };
+        stored.setData = (data) => (stored.data = data);
+        this.sources.set(id, stored);
         return this;
     }
 
