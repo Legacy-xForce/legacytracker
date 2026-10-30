@@ -297,11 +297,32 @@ html[data-theme='catppuccin-latte'] {
     line-height: 20px;
 }
 
+/* The tip is a CSS border triangle: only the side facing the content should be
+   filled, the rest transparent. Mapbox's per-anchor rules (e.g.
+   `.mapboxgl-popup-anchor-top .mapboxgl-popup-tip`) set the visible side to
+   white, so they need matching selectors here to be overridden. */
 .mapboxgl-popup-tip {
-    border-top-color: var(--color-surface-container-high);
+    border-color: transparent;
+}
+
+.mapboxgl-popup-anchor-top .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-top-left .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-top-right .mapboxgl-popup-tip {
     border-bottom-color: var(--color-surface-container-high);
-    border-left-color: var(--color-surface-container-high);
+}
+
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-bottom-left .mapboxgl-popup-tip,
+.mapboxgl-popup-anchor-bottom-right .mapboxgl-popup-tip {
+    border-top-color: var(--color-surface-container-high);
+}
+
+.mapboxgl-popup-anchor-left .mapboxgl-popup-tip {
     border-right-color: var(--color-surface-container-high);
+}
+
+.mapboxgl-popup-anchor-right .mapboxgl-popup-tip {
+    border-left-color: var(--color-surface-container-high);
 }
 
 .mapboxgl-popup-close-button {
