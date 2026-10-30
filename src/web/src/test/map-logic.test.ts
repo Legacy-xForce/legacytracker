@@ -149,7 +149,8 @@ describe('resolveCheckpoint', () => {
         name: id,
         latitude,
         longitude: 9,
-        radius
+        radius,
+        canEdit: true
     });
 
     it('finds the place a point is inside', () => {

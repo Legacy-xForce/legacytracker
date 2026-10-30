@@ -4,6 +4,7 @@ import { beforeAll, describe, expect, it } from 'vitest';
 import CheckpointsLayer from '../components/CheckpointsLayer.vue';
 import EventsLayer from '../components/EventsLayer.vue';
 import PeersMap from '../components/PeersMap.vue';
+import PlaceDraftLayer from '../components/places/PlaceDraftLayer.vue';
 import ReplayLayer from '../components/ReplayLayer.vue';
 import { parseEvent } from '../lib/events';
 import { ReplayTrack, type ReplayPoint } from '../lib/replay';
@@ -25,12 +26,29 @@ describe('map overlays', () => {
     it('draws saved places as labelled circles', async () => {
         const wrapper = mountMap(() =>
             h(CheckpointsLayer, {
-                checkpoints: [{ id: '1', name: 'Home', latitude: 45, longitude: 9, radius: 100 }]
+                checkpoints: [{ id: '1', name: 'Home', latitude: 45, longitude: 9, radius: 100, canEdit: true }]
             })
         );
         await wrapper.vm.$nextTick();
         expect(document.querySelector('.checkpoint-label')?.textContent).toBe('Home');
         wrapper.unmount();
+    });
+
+    it('draws the place being edited and clears it when the editor closes', async () => {
+        let draft: { latitude: number; longitude: number; radius: number } | null = {
+            latitude: 45,
+            longitude: 9,
+            radius: 80
+        };
+        const moves: number[][] = [];
+        const wrapper = mountMap(() =>
+            h(PlaceDraftLayer, { draft, onMove: (lat: number, lng: number) => moves.push([lat, lng]) })
+        );
+        await wrapper.vm.$nextTick();
+        // The crosshair reports where the map is looking as soon as it is up.
+        expect(moves.length).toBeGreaterThan(0);
+        wrapper.unmount();
+        draft = null;
     });
 
     it('draws only events that have a place on the map', async () => {

@@ -40,6 +40,7 @@ import layers from '@material-symbols/svg-400/rounded/layers.svg?raw';
 import lightMode from '@material-symbols/svg-400/rounded/light_mode.svg?raw';
 import location from '@material-symbols/svg-400/rounded/location_on.svg?raw';
 import locationOff from '@material-symbols/svg-400/rounded/location_off.svg?raw';
+import edit from '@material-symbols/svg-400/rounded/edit.svg?raw';
 import lock from '@material-symbols/svg-400/rounded/lock.svg?raw';
 import logout from '@material-symbols/svg-400/rounded/logout.svg?raw';
 import locationSearching from '@material-symbols/svg-400/rounded/location_searching.svg?raw';
@@ -64,6 +65,7 @@ import speed from '@material-symbols/svg-400/rounded/speed-fill.svg?raw';
 import speedOutlined from '@material-symbols/svg-400/rounded/speed.svg?raw';
 import straighten from '@material-symbols/svg-400/rounded/straighten-fill.svg?raw';
 import timelapse from '@material-symbols/svg-400/rounded/timelapse-fill.svg?raw';
+import search from '@material-symbols/svg-400/rounded/search.svg?raw';
 import trash from '@material-symbols/svg-400/rounded/delete.svg?raw';
 import timer from '@material-symbols/svg-400/rounded/timer.svg?raw';
 import touchApp from '@material-symbols/svg-400/rounded/touch_app.svg?raw';
@@ -96,6 +98,7 @@ const raw = {
     contentCopy,
     dateRange,
     darkMode,
+    edit,
     directions,
     directionsCar,
     error,
@@ -126,6 +129,7 @@ const raw = {
     pause,
     person,
     place,
+    search,
     playArrow,
     refresh,
     remove,
