@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'connection_monitor.dart';
 import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 /// Wraps the whole app so the banner floats over every screen, pushed routes
 /// included, without any of them having to know about it.
@@ -92,7 +93,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
             child: Material(
               color: style.background,
               elevation: 6,
-              shadowColor: Colors.black54,
+              shadowColor: AppPalette.black.withValues(alpha: 0.54),
               borderRadius: AppShape.lg,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
@@ -162,5 +163,5 @@ class _BannerStyle {
   final Color foreground;
 }
 
-const _offlineStyle = _BannerStyle(Color(0xFFC62828), Colors.white);
-const _poorStyle = _BannerStyle(Color(0xFFFFC928), Color(0xFF2B2100));
+const _offlineStyle = _BannerStyle(AppPalette.offlineBanner, AppPalette.onOfflineBanner);
+const _poorStyle = _BannerStyle(AppPalette.poorBanner, AppPalette.onPoorBanner);

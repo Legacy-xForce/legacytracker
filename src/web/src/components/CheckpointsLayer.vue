@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { palette } from '../lib/palette';
 import { Marker } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
 import { circlePolygon } from '../lib/geo';
@@ -74,13 +75,18 @@ function paint() {
             id: FILL,
             type: 'fill',
             source: SOURCE,
-            paint: { 'fill-color': '#82d5c8', 'fill-opacity': 0.14, 'fill-emissive-strength': 1 }
+            paint: { 'fill-color': palette.mapAccent, 'fill-opacity': 0.14, 'fill-emissive-strength': 1 }
         });
         target.addLayer({
             id: LINE,
             type: 'line',
             source: SOURCE,
-            paint: { 'line-color': '#82d5c8', 'line-width': 1.5, 'line-opacity': 0.9, 'line-emissive-strength': 1 }
+            paint: {
+                'line-color': palette.mapAccent,
+                'line-width': 1.5,
+                'line-opacity': 0.9,
+                'line-emissive-strength': 1
+            }
         });
         for (const checkpoint of props.checkpoints) {
             const el = document.createElement('div');
@@ -126,7 +132,7 @@ onBeforeUnmount(() => {
     gap: 4px;
     padding: 3px 10px 3px 6px;
     border-radius: var(--radius-full);
-    background: rgb(37 43 42 / 0.92);
+    background: v-bind('palette.nameChip');
     color: var(--color-on-surface);
     font-size: 12px;
     font-weight: 600;

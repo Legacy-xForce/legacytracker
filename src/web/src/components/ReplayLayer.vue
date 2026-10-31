@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { palette } from '../lib/palette';
 import { Marker } from 'mapbox-gl';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import PeerMarker from './map/PeerMarker.vue';
@@ -147,7 +148,7 @@ function paint() {
         type: 'line',
         source: EDGE_SOURCE,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#000', 'line-opacity': 0.35, 'line-width': 8, 'line-emissive-strength': 1 }
+        paint: { 'line-color': palette.black, 'line-opacity': 0.35, 'line-width': 8, 'line-emissive-strength': 1 }
     });
     // One line per run of similar speed: red when slow, green when fast.
     target.addLayer({

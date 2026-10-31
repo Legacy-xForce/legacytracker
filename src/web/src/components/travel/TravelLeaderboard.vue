@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { palette } from '../../lib/palette';
 import { computed, ref, watch } from 'vue';
 import UserAvatar from '../UserAvatar.vue';
 import Icon from '../ui/Icon.vue';
@@ -19,7 +20,7 @@ const KINDS: { kind: PeriodKind; label: string }[] = [
     { kind: 'custom', label: 'Custom' }
 ];
 // Gold, silver, bronze for the podium.
-const MEDALS = ['#f5c542', '#c0c7cc', '#d08b54'];
+const MEDALS = palette.medals;
 
 // The picked custom range as the date inputs show it (the period's last day, not the midnight after).
 const firstDay = ref('');
@@ -180,9 +181,7 @@ function onTabKey(event: KeyboardEvent) {
                             <span
                                 class="type-label-lg flex size-7 shrink-0 items-center justify-center rounded-full font-bold tabular-nums"
                                 :class="
-                                    entry.rank <= 3 && entry.tripCount > 0
-                                        ? 'text-[#1a1300]'
-                                        : 'text-on-surface-variant'
+                                    entry.rank <= 3 && entry.tripCount > 0 ? 'text-on-medal' : 'text-on-surface-variant'
                                 "
                                 :style="
                                     entry.rank <= 3 && entry.tripCount > 0

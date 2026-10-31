@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { palette } from '../../lib/palette';
 import type { GeoJSONSource } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
 import { centerShowing, visibleCenter } from '../../lib/camera';
@@ -59,13 +60,13 @@ function paint() {
         id: FILL,
         type: 'fill',
         source: SOURCE,
-        paint: { 'fill-color': '#82d5c8', 'fill-opacity': 0.22, 'fill-emissive-strength': 1 }
+        paint: { 'fill-color': palette.mapAccent, 'fill-opacity': 0.22, 'fill-emissive-strength': 1 }
     });
     target.addLayer({
         id: LINE,
         type: 'line',
         source: SOURCE,
-        paint: { 'line-color': '#82d5c8', 'line-width': 2, 'line-emissive-strength': 1 }
+        paint: { 'line-color': palette.mapAccent, 'line-width': 2, 'line-emissive-strength': 1 }
     });
 }
 

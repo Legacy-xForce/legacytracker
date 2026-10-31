@@ -25,6 +25,7 @@ import 'tracking_issues_banner.dart';
 import 'tracking_location_street_label.dart';
 import 'user_avatar.dart';
 import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// The people sheet over the map: a list of everyone sharing, and a detail
 /// pane for whoever is selected. Collapsed it still shows its header, so it
@@ -309,7 +310,7 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
               return Material(
                 color: theme.colorScheme.surfaceContainerLow,
                 elevation: 16,
-                shadowColor: Colors.black,
+                shadowColor: AppPalette.black,
                 shape: const RoundedRectangleBorder(
                   borderRadius: AppShape.sheetTop,
                 ),
@@ -437,7 +438,7 @@ class _SheetHeader extends StatelessWidget {
                     Tooltip(
                       message: 'All people',
                       child: Material(
-                        color: Colors.transparent,
+                        color: AppPalette.transparent,
                         child: InkWell(
                           onTap: onBack,
                           borderRadius: AppShape.full,
@@ -606,23 +607,23 @@ class _DrawerUser {
         _UserStatus(
           'Not sharing with you',
           Icons.visibility_off_outlined,
-          Colors.blueGrey,
+          AppPalette.hidden,
         ),
       );
     }
     if (trackingPaused) {
       result.add(
-        _UserStatus('Sharing paused', Icons.pause_circle, Colors.amber),
+        _UserStatus('Sharing paused', Icons.pause_circle, AppPalette.paused),
       );
     }
     if (missingPermissions) {
       result.add(
-        _UserStatus('Missing permissions', Icons.block, Colors.redAccent),
+        _UserStatus('Missing permissions', Icons.block, AppPalette.missing),
       );
     }
     if (batterySavingEnabled) {
       result.add(
-        _UserStatus('Battery saver', Icons.battery_saver, Colors.tealAccent),
+        _UserStatus('Battery saver', Icons.battery_saver, AppPalette.battery),
       );
     }
     return result;
@@ -760,7 +761,7 @@ class _UserRow extends StatelessWidget {
     return Material(
       color: isSelected
           ? scheme.primary.withValues(alpha: 0.12)
-          : Colors.transparent,
+          : AppPalette.transparent,
       borderRadius: AppShape.lg,
       child: InkWell(
         borderRadius: AppShape.lg,
@@ -845,10 +846,10 @@ class _PresenceAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dotColor = user.trackingPaused
-        ? Colors.amber
+        ? AppPalette.paused
         : user.isStale
-        ? Colors.grey.shade500
-        : const Color(0xFF34C759);
+        ? AppPalette.stale
+        : AppPalette.online;
     final dot = size * 0.28;
     return SizedBox(
       width: size,
@@ -899,7 +900,7 @@ class _BatteryPill extends StatelessWidget {
     if (level == null) return const SizedBox.shrink();
     final low = level <= 20 && !charging;
     final color = charging
-        ? const Color(0xFF34C759)
+        ? AppPalette.online
         : low
         ? theme.colorScheme.error
         : theme.colorScheme.onSurfaceVariant;

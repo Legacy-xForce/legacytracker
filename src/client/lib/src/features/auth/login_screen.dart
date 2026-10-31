@@ -8,6 +8,7 @@ import '../tracking/widgets/user_avatar.dart';
 import '../updates/app_update_banner.dart';
 import 'auth_provider.dart';
 import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -24,7 +25,7 @@ class LoginScreen extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
           .copyWith(
-            statusBarColor: Colors.transparent,
+            statusBarColor: AppPalette.transparent,
             systemNavigationBarColor: scheme.surface,
             systemNavigationBarIconBrightness: dark
                 ? Brightness.light

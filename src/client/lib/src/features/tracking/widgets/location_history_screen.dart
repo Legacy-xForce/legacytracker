@@ -7,6 +7,7 @@ import '../../../data/network/history_service.dart';
 import 'session_replay_screen.dart';
 import 'tracking_location_street_label.dart';
 import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// A user's trips: a month calendar marking the days with trips first, then
 /// the selected day's trips, each opening a replay.
@@ -486,7 +487,7 @@ class _DayCell extends StatelessWidget {
       height: 46,
       child: Center(
         child: Material(
-          color: fill ?? Colors.transparent,
+          color: fill ?? AppPalette.transparent,
           // A circle for the usual day, a pill once the km label needs the room.
           shape: StadiumBorder(
             side: isToday && !isSelected
@@ -898,14 +899,14 @@ class _TimelineRail extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(color: AppPalette.white, width: 2),
       ),
     );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
-          dot(const Color(0xFF34C759)),
+          dot(AppPalette.online),
           Expanded(
             child: Container(
               width: 2,
@@ -913,7 +914,7 @@ class _TimelineRail extends StatelessWidget {
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
           ),
-          dot(const Color(0xFFFF453A)),
+          dot(AppPalette.arrival),
         ],
       ),
     );

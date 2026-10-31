@@ -8,6 +8,7 @@ import '../../data/network/leaderboard_service.dart';
 import '../tracking/widgets/location_history_screen.dart';
 import '../tracking/widgets/user_avatar.dart';
 import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 /// The travel leaderboard: who went furthest this week, this month or over
 /// a picked range, with each person's moving time and speeds.
@@ -35,11 +36,7 @@ class TravelTab extends StatefulWidget {
 
 class _TravelTabState extends State<TravelTab> {
   // Gold, silver, bronze for the podium.
-  static const _medals = [
-    Color(0xFFF5C542),
-    Color(0xFFC0C7CC),
-    Color(0xFFD08B54),
-  ];
+  static const _medals = AppPalette.medals;
 
   late final LeaderboardService _service;
   Period _period = Period.containing(PeriodKind.week, DateTime.now());
@@ -388,7 +385,7 @@ class _EntryCard extends StatelessWidget {
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: medal != null
-                            ? const Color(0xFF1A1300)
+                            ? AppPalette.onMedal
                             : scheme.onSurfaceVariant,
                       ),
                     ),

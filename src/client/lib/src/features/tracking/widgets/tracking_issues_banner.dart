@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/tracking_issue.dart';
 import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// Warns that phone settings are stopping or delaying someone's location
 /// updates, with an expandable "how to fix this". Renders nothing when there
@@ -31,7 +32,7 @@ class _TrackingIssuesBannerState extends State<TrackingIssuesBanner> {
     if (issues.isEmpty) return const SizedBox.shrink();
 
     final theme = Theme.of(context);
-    final accent = Colors.amber;
+    final accent = AppPalette.paused;
     final single = issues.length == 1;
 
     return Semantics(

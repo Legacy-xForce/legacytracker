@@ -1,23 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../../core/palette.dart';
 
 /// Saturated enough to read on light map tiles and the dark UI alike. The
 /// initial is white or near-black, whichever contrasts more ([initialColorFor]).
-const avatarPalette = <Color>[
-  Color(0xFF1E88E5), // blue
-  Color(0xFF8E24AA), // purple
-  Color(0xFFF4511E), // deep orange
-  Color(0xFF00796B), // teal
-  Color(0xFFD81B60), // pink
-  Color(0xFF43A047), // green
-  Color(0xFF3949AB), // indigo
-  Color(0xFFEF6C00), // orange
-  Color(0xFF6D4C41), // brown
-  Color(0xFF00838F), // cyan
-];
+const avatarPalette = AppPalette.avatars;
 
-const _darkInitial = Color(0xFF1B1B1B);
+const _darkInitial = AppPalette.onAvatarDark;
 
 double _contrast(Color a, Color b) {
   final hi = a.computeLuminance();
@@ -28,8 +18,8 @@ double _contrast(Color a, Color b) {
 /// The initial's color on an avatar background: white or near-black,
 /// whichever reads better (at least 4.5:1 for every palette color).
 Color initialColorFor(Color background) =>
-    _contrast(Colors.white, background) >= _contrast(_darkInitial, background)
-        ? Colors.white
+    _contrast(AppPalette.white, background) >= _contrast(_darkInitial, background)
+        ? AppPalette.white
         : _darkInitial;
 
 /// A stable color per user, so the same person reads the same on their
@@ -127,7 +117,7 @@ class UserAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = dimmed ? Colors.grey.shade600 : userColor(userId);
+    final color = dimmed ? AppPalette.staleDark : userColor(userId);
 
     // The initial always sits underneath, so it shows while the picture loads
     // and stays when there is none (Legacy Auth answers 404).

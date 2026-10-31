@@ -17,6 +17,26 @@ void main() {
     expect(title.height, closeTo(28 / 22, 1e-9));
   });
 
+  test('feature code takes fixed colours from AppPalette, not literals', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/theme.dart') ||
+          file.path.endsWith('core/palette.dart') ||
+          file.path.endsWith('main_mapcheck.dart')) {
+        continue;
+      }
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'Color\(0x|\bColors\.[a-z]').hasMatch(lines[i]) &&
+            !lines[i].contains('int.parse')) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
   test('no text size is written outside the theme and token files', () {
     final offenders = <String>[];
     for (final file in Directory('lib').listSync(recursive: true)) {

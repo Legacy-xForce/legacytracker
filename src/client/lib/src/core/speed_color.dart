@@ -1,5 +1,7 @@
 import 'dart:ui';
 
+import 'palette.dart';
+
 /// Speed (km/h) at which a replay line is fully green.
 ///
 /// Slower speeds fade through amber and yellow, so a stop reads red and a
@@ -7,12 +9,7 @@ import 'dart:ui';
 const double speedColorMaxKmh = 70;
 
 /// Red at a standstill, orange and yellow through the middle, green at full speed.
-const List<(double, Color)> _speedColorStops = [
-  (0, Color(0xFFF44336)),
-  (0.35, Color(0xFFFF9800)),
-  (0.65, Color(0xFFFFEB3B)),
-  (1, Color(0xFF4CAF50)),
-];
+const List<(double, Color)> _speedColorStops = AppPalette.speedStops;
 
 /// Nearby speeds share a colour, so consecutive route segments merge into one
 /// polyline instead of redrawing the line for every fix.

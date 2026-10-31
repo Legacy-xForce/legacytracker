@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/map_viewer.dart';
 import 'user_avatar.dart';
+import '../../../core/palette.dart';
 
 /// Who has the live map open right now, as overlapping faces in a pill beside
 /// the sharing pill. Nothing shows while nobody does.
@@ -95,7 +96,7 @@ class MapViewersRow extends StatelessWidget {
       child: Material(
         color: background,
         elevation: 4,
-        shadowColor: Colors.black54,
+        shadowColor: AppPalette.black.withValues(alpha: 0.54),
         shape: const StadiumBorder(),
         child: Padding(
           padding: const EdgeInsets.all(_padding),

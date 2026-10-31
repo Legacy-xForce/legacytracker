@@ -10,9 +10,10 @@ import '../../core/navigation.dart';
 import '../../data/models/calendar_event.dart';
 import '../tracking/widgets/user_avatar.dart';
 import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 /// Fallback when the calendar gives an event no color.
-const eventFallbackColor = Color(0xFF7C4DFF);
+const eventFallbackColor = AppPalette.eventFallback;
 
 Future<void> showEventDetails(BuildContext context, CalendarEvent event) {
   return showModalBottomSheet<void>(

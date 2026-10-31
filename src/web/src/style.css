@@ -53,6 +53,8 @@
 
     /* Fixed accents the app uses regardless of theme. */
     --color-online: #34c759;
+    --color-on-medal: #1a1300;
+    --color-stale: #9e9e9e;
     --color-arrival: #ff453a;
     --color-beam: #0985fb;
     --color-paused: #ffc107;
