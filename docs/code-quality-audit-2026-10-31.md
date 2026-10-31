@@ -1,8 +1,8 @@
 # Code Quality Audit — 2026-10-31
 
 A repo-wide sweep for **duplicated, obsolete, redundant and non-optimized code**. All 78 findings below
-have been filed as issues **#141 – #218** with labels, issue type, priority and effort — see Appendix 2
-for the ID→issue map and the label scheme.
+are filed as **14 bundle issues (#219 – #232)** — the original one-per-finding issues #141 – #218 are
+closed with pointers to their bundle. Appendix 2 has the ID→issue map and the label scheme.
 
 ## Scope and method
 
@@ -1831,44 +1831,48 @@ detector radii, storage caps. Visit monitoring is **not** deprecated, so its use
 `analysis_options.yaml:16`. README, OpenAPI and route status codes agree for `your_ip`, `201` and the
 API-token endpoints.
 
-## Appendix 2 — Filed as issues
+## Appendix 2 — Issue record
 
-All 78 findings were filed on 2026-10-31 as **#141 – #218**, each with the labels from the table in
-*Labels* above, an issue type, and a link back to this file. `D-10` is the reference table rather than a
-finding, so it was skipped and the numbering stays contiguous:
+The 78 findings were first filed one per issue (**#141 – #218**), then folded into **14 bundle issues**
+(**#219 – #232**) matching the PR groupings in section G. The 78 originals are **closed as completed with
+a comment pointing at their bundle**, so their history and this document remain the archive; each bundle
+issue carries the full evidence and proposed fix of every member, so the live detail is in the bundle.
 
-| Section | Findings | Issues |
-|---|---|---|
-| A — repo, CI, cross-package | A-1 … A-16 | #141 … #156 |
-| B — server | B-1 … B-14 | #157 … #170 |
-| C — Flutter client | C-1 … C-21 | #171 … #191 |
-| D — native engines | D-1 … D-9 | #192 … #200 |
-| E — web logic | E-1 … E-10 | #201 … #210 |
-| F — web UI | F-1 … F-8 | #211 … #218 |
+| Bundle | Members (finding IDs) | Priority | Effort | Type |
+|---|---|---|---|---|
+| [#219](https://github.com/Legacy-xForce/legacytracker/issues/219) CI and repo hygiene | A-1 A-2 A-3 A-15 A-16 | P1 | M | Task |
+| [#220](https://github.com/Legacy-xForce/legacytracker/issues/220) API contract as the single source | A-4 A-12 A-13 A-14 B-14 E-10 | P1 | L | Task |
+| [#221](https://github.com/Legacy-xForce/legacytracker/issues/221) Shared constants and domain models | A-6 A-7 A-9 A-10 A-11 | P2 | M | Task |
+| [#222](https://github.com/Legacy-xForce/legacytracker/issues/222) Design tokens; no hard-coded colours | A-8 C-19 F-1 F-8 | P1 | L | **Bug** |
+| [#223](https://github.com/Legacy-xForce/legacytracker/issues/223) One Nominatim client per platform | A-5 C-4 C-9 E-8 | P1 | M | Task |
+| [#224](https://github.com/Legacy-xForce/legacytracker/issues/224) Client network layer / `ApiClient` | C-1 C-5 C-6 C-8 C-11 | P1 | M | Task |
+| [#225](https://github.com/Legacy-xForce/legacytracker/issues/225) Client shared widgets | C-3 C-12 C-13 C-15 C-18 | P1 | M | Task |
+| [#226](https://github.com/Legacy-xForce/legacytracker/issues/226) Realtime and render cost | C-2 C-7 C-14 C-16 C-17 E-1 F-4 | P1 | M | Task |
+| [#227](https://github.com/Legacy-xForce/legacytracker/issues/227) Tracking engine parity and battery | D-1 … D-8 | P1 | L | **Bug** |
+| [#228](https://github.com/Legacy-xForce/legacytracker/issues/228) Server queries and hot path | B-1 B-2 B-3 B-4 B-9 B-11 B-12 | P1 | M | Task |
+| [#229](https://github.com/Legacy-xForce/legacytracker/issues/229) Server structure and legacy auth | B-5 B-6 B-7 B-8 B-10 B-13 | P2 | M | Task |
+| [#230](https://github.com/Legacy-xForce/legacytracker/issues/230) Web shared components and API helpers | E-2 E-3 E-4 E-5 E-7 | P1 | M | Task |
+| [#231](https://github.com/Legacy-xForce/legacytracker/issues/231) Web render and listener hygiene | E-9 F-2 F-3 F-5 F-6 | P2 | M | Task |
+| [#232](https://github.com/Legacy-xForce/legacytracker/issues/232) Dead-code sweep | C-10 C-20 C-21 D-9 E-6 F-7 | P2 | S | Task |
 
-So within a section, subtract from the first issue of that section: `C-1`=#171 so `C-4`=#174,
-`B-1`=#157 so `B-11`=#167, `E-1`=#201 so `E-8`=#208. The full ID→number list is `gh issue list --search
-"code-quality-audit" --json number,title`.
+Labels on a bundle are the union of its members' labels; priority is the highest among them, effort is the
+largest single item (total work is the sum — see the per-member `priority`/`effort` note inside each body).
+Every bundle references this file, and `gh issue list --search "code-quality-audit-2026-10-31"` still
+returns the full set including the closed per-finding issues.
 
-**Filed as type `Bug`** (behaviour is already wrong, not merely untidy):
-#143 (A-3), #146 (A-6), #164 (B-8), #184 (C-14), #193 (D-2), #199 (D-8), #211 (F-1). Everything else is
-type `Task`.
+**Findings that were `Bug`-typed on their own** (behaviour is already wrong, not merely untidy): A-3, A-6,
+B-8, C-14, D-2, D-8, F-1. They sit inside bundles #219, #221, #229, #226, #227 and #222 respectively —
+those bundles carry the `bug` label alongside their cleanup work, so a maintainer picking up #222 or #227
+knows it contains a live defect, not just tidying.
 
-**P1 — the 20 high-priority issues**, in filing order:
-#141 A-1, #142 A-2, #143 A-3, #144 A-4, #152 A-12, #154 A-14, #157 B-1, #158 B-2, #171 C-1, #172 C-2,
-#173 C-3, #174 C-4, #181 C-11, #192 D-1, #193 D-2, #194 D-3, #201 E-1, #202 E-2, #203 E-3, #211 F-1.
+**Dependency.** #229 (legacy auth cleanup) is *blocked by* #220, because the migration doc has to list the
+still-live legacy branches before any of them can be deleted. Two more orderings are worth respecting
+without a formal link, since either order works: finish `C-1` inside #224 before taking `C-11` from the
+same bundle, and land #219 (CI) before the cross-package contract work in #220 so generated artefacts
+have somewhere to be checked.
 
-**Dependencies between issues.** #162 (B-6, legacy auth cleanup) is set as *blocked by* #153 (A-13, the
-migration doc must list the live sites first) using GitHub's issue relationship. Three more pairs are
-worth doing in the stated order but are not formally linked, because either order works if you prefer:
-`C-1` before `C-11` (the `ApiClient` refactor absorbs `MockBackend`'s seam), `E-1` together with `F-4`
-(one coalescing rule, two surfaces), and every `A-*` cross-package item after `A-1`/`A-2` land (so the
-generated contracts have somewhere to run in CI). Section G groups all 78 into 13 PR-sized bundles, which
-is the better unit of work than 78 separate branches — consider `gh issue edit --add-parent` to hang each
-bundle's issues under one `epic`.
-
-Re-filing or repairing a single finding after editing this document (labels are `--add-label`/
-`--remove-label` on `gh issue edit`; `gh issue create` takes `--label`):
+Re-extracting one finding from this document, e.g. to reopen it as its own issue or repair a bundle body
+(`gh issue edit` takes `--add-label`/`--remove-label`, while `gh issue create` takes `--label`):
 
 ```bash
 f=docs/code-quality-audit-2026-10-31.md
@@ -1878,6 +1882,7 @@ title=$(awk -v s="$start" 'index($0,s){split($0,p,"· "); print p[2]; exit}' "$f
 body=$(awk -v s="$start" 'index($0,s){f=1;next} f && /^(###|## |---$)/{exit} f && /^\*\*Kind:/{next} f' "$f")
 echo "$title"; printf '%s\n' "$body" | head    # review before pushing the edit
 ```
+
 
 
 
