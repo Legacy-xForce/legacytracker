@@ -20,7 +20,7 @@ class MapControlGroup extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surfaceContainerHigh,
-      elevation: 4,
+      elevation: 2,
       shadowColor: AppPalette.black.withValues(alpha: 0.54),
       borderRadius: AppShape.lg,
       clipBehavior: Clip.antiAlias,

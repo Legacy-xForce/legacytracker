@@ -36,7 +36,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 aria-modal="true"
                 aria-labelledby="appearance-title"
                 tabindex="-1"
-                class="bg-surface-container-high w-full max-w-md rounded-xl p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
+                class="bg-surface-container-high shadow-level-3 w-full max-w-md rounded-xl p-6 outline-none"
             >
                 <div class="flex items-start justify-between gap-4">
                     <div>

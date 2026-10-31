@@ -375,7 +375,7 @@ class _SearchBox extends StatelessWidget {
     final scheme = Theme.of(context).colorScheme;
     return Material(
       color: scheme.surfaceContainerHigh,
-      elevation: 4,
+      elevation: 2,
       borderRadius: AppShape.lg,
       clipBehavior: Clip.antiAlias,
       child: Column(

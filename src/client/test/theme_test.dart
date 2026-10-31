@@ -37,6 +37,21 @@ void main() {
     expect(offenders, isEmpty);
   });
 
+  test('surfaces stay tonal: no elevation above 2', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final match = RegExp(r'elevation:\s*(\d+)').firstMatch(lines[i]);
+        if (match != null && int.parse(match.group(1)!) > 2) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
   test('no text size is written outside the theme and token files', () {
     final offenders = <String>[];
     for (final file in Directory('lib').listSync(recursive: true)) {

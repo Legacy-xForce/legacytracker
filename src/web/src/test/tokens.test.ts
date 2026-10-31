@@ -59,3 +59,21 @@ describe('shape tokens', () => {
         expect(offenders).toEqual([]);
     });
 });
+describe('elevation', () => {
+    it('takes every shadow from the shadow tokens', () => {
+        const offenders: string[] = [];
+        for (const file of sources(root)) {
+            for (const [index, line] of readFileSync(file, 'utf8').split('\n').entries()) {
+                if (!/shadow-\[|box-shadow:|drop-shadow\(/.test(line)) continue;
+                // The brand mark's glow and inset rings are not elevation.
+                if (/shadow-level|--color-shadow|box-shadow: inset|rgb\(130 213 200/.test(line)) continue;
+                offenders.push(`${file}:${index + 1} ${line.trim()}`);
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
+
+    it('defines no more than five shadow tokens', () => {
+        expect([...css.matchAll(/--shadow-level-[0-9]+:/g)].length).toBeLessThanOrEqual(5);
+    });
+});

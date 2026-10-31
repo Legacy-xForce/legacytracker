@@ -246,7 +246,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="api-tokens-title"
-                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-xl"
+                class="bg-surface-container scroll-panel shadow-level-3 flex w-full flex-col overflow-y-auto outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-xl"
             >
                 <header class="flex items-center gap-3 px-6 pt-5 pb-2">
                     <span

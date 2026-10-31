@@ -85,7 +85,7 @@ onBeforeUnmount(() => {
                 ref="menu"
                 role="menu"
                 @keydown="onMenuKey"
-                class="bg-surface-container-high absolute top-0 right-full z-10 mr-2 min-w-[200px] origin-top-right rounded-lg py-2 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)]"
+                class="bg-surface-container-high shadow-level-3 absolute top-0 right-full z-10 mr-2 min-w-[200px] origin-top-right rounded-lg py-2"
             >
                 <slot />
             </div>

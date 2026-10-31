@@ -92,7 +92,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
             container: true,
             child: Material(
               color: style.background,
-              elevation: 6,
+              elevation: 2,
               shadowColor: AppPalette.black.withValues(alpha: 0.54),
               borderRadius: AppShape.lg,
               child: Padding(

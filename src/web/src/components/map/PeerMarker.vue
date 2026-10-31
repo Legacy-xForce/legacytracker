@@ -152,7 +152,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     padding: 2px;
     border-radius: var(--radius-full);
     background: var(--ring);
-    box-shadow: 0 4px 10px rgb(0 0 0 / 0.28);
+    box-shadow: var(--shadow-level-1);
 }
 
 /* Greyed out, never see-through: a quiet phone is still where it was last seen. */
@@ -173,7 +173,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     line-height: 12px;
     font-weight: 600;
     white-space: nowrap;
-    box-shadow: 0 3px 8px rgb(0 0 0 / 0.12);
+    box-shadow: var(--shadow-level-1);
     pointer-events: none;
 }
 

@@ -1,9 +1,7 @@
 <template>
     <!-- A floating card holding a column of map buttons separated by hairlines, so related controls
          read as one group instead of a stack of buttons. -->
-    <div
-        class="map-control-group bg-surface-container-high flex flex-col items-center rounded-lg shadow-[0_4px_12px_color-mix(in_srgb,var(--color-shadow)_40%,transparent)]"
-    >
+    <div class="map-control-group bg-surface-container-high shadow-level-1 flex flex-col items-center rounded-lg">
         <slot />
     </div>
 </template>

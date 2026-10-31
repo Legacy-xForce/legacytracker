@@ -309,7 +309,7 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                       .clamp(0.0, 1.0);
               return Material(
                 color: theme.colorScheme.surfaceContainerLow,
-                elevation: 16,
+                elevation: 2,
                 shadowColor: AppPalette.black,
                 shape: const RoundedRectangleBorder(
                   borderRadius: AppShape.sheetTop,

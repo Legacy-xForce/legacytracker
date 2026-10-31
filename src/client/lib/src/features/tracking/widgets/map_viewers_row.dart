@@ -95,7 +95,7 @@ class MapViewersRow extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: background,
-        elevation: 4,
+        elevation: 2,
         shadowColor: AppPalette.black.withValues(alpha: 0.54),
         shape: const StadiumBorder(),
         child: Padding(

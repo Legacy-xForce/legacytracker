@@ -137,7 +137,7 @@ onBeforeUnmount(() => {
     font-size: 12px;
     font-weight: 600;
     line-height: 16px;
-    box-shadow: 0 2px 8px rgb(0 0 0 / 0.35);
+    box-shadow: var(--shadow-level-1);
     white-space: nowrap;
 }
 

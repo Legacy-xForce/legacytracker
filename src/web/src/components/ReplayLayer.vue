@@ -279,7 +279,7 @@ onBeforeUnmount(() => {
     >
         <div
             ref="card"
-            class="bg-surface-container-low pointer-events-auto w-full max-w-[560px] rounded-xl px-5 pt-4 pb-4 shadow-[0_8px_32px_color-mix(in_srgb,var(--color-shadow)_45%,transparent)]"
+            class="bg-surface-container-low shadow-level-3 pointer-events-auto w-full max-w-[560px] rounded-xl px-5 pt-4 pb-4"
         >
             <div class="flex items-center gap-3">
                 <UserAvatar :user-id="userId" :name="userName" :size="36" />
@@ -355,6 +355,6 @@ onBeforeUnmount(() => {
     height: 18px;
     border-radius: var(--radius-full);
     border: 3px solid #fff;
-    box-shadow: 0 0 4px rgb(0 0 0 / 0.38);
+    box-shadow: var(--shadow-level-1);
 }
 </style>

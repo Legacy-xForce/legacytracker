@@ -6,6 +6,15 @@
  */
 @theme static {
     /* Material 3 shape scale; the same values as the phone's AppShape. */
+    /* Elevation is mostly tone (surface-container-*); a shadow is kept only
+       where something floats over the map (level 1) or over the page
+       (level 3: dialogs, menus, sheets, toasts). */
+    --shadow-*: initial;
+    --shadow-level-1:
+        0 1px 3px color-mix(in srgb, var(--color-shadow) 35%, transparent),
+        0 2px 8px color-mix(in srgb, var(--color-shadow) 20%, transparent);
+    --shadow-level-3: 0 8px 24px color-mix(in srgb, var(--color-shadow) 40%, transparent);
+
     --radius-*: initial;
     --radius-none: 0;
     --radius-xs: 4px;
@@ -409,7 +418,7 @@ html[data-theme='catppuccin-latte'] {
     border-radius: var(--radius-md);
     margin: 0;
     padding: 16px 18px;
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+    box-shadow: var(--shadow-level-3);
     font-size: 14px;
     line-height: 20px;
 }
