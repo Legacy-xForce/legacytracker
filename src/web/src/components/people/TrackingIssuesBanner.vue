@@ -27,7 +27,7 @@ const expanded = ref(false);
         <div class="flex items-start gap-3">
             <Icon name="locationOff" :size="24" class="mt-0.5" :style="{ color: 'var(--color-paused)' }" />
             <div class="min-w-0 flex-1">
-                <h3 class="type-title-sm font-bold" :style="{ color: 'var(--color-paused)' }">{{ title }}</h3>
+                <h3 class="type-title-sm font-bold">{{ title }}</h3>
                 <p v-if="copies.length === 1" class="type-body-md mt-0.5">{{ copies[0].summary }}</p>
                 <ul v-else class="type-body-md mt-0.5 list-disc space-y-0.5 pl-4">
                     <li v-for="(copy, index) in copies" :key="issues[index]">{{ copy.summary }}</li>

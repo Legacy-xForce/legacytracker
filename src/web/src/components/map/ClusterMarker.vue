@@ -130,6 +130,6 @@ function left(index: number): string {
 }
 
 .peer-cluster__dot--stale {
-    background: #757575;
+    background: var(--color-outline);
 }
 </style>

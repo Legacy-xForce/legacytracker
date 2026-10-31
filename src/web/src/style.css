@@ -103,7 +103,7 @@ html[data-theme='catppuccin-mocha'] {
     --color-surface-container-high: #45475a;
     --color-surface-container-highest: #585b70;
     --color-on-surface: #cdd6f4;
-    --color-on-surface-variant: #a6adc8;
+    --color-on-surface-variant: #bac2de;
     --color-outline: #9399b2;
     --color-outline-variant: #585b70;
     --color-primary: #cba6f7;
@@ -140,7 +140,7 @@ html[data-theme='catppuccin-macchiato'] {
     --color-surface-container-high: #494d64;
     --color-surface-container-highest: #5b6078;
     --color-on-surface: #cad3f5;
-    --color-on-surface-variant: #a5adcb;
+    --color-on-surface-variant: #b8c0e0;
     --color-outline: #939ab7;
     --color-outline-variant: #5b6078;
     --color-primary: #c6a0f6;
@@ -177,7 +177,7 @@ html[data-theme='catppuccin-frappe'] {
     --color-surface-container-high: #51576d;
     --color-surface-container-highest: #626880;
     --color-on-surface: #c6d0f5;
-    --color-on-surface-variant: #a5adce;
+    --color-on-surface-variant: #b5bfe2;
     --color-outline: #949cbb;
     --color-outline-variant: #626880;
     --color-primary: #ca9ee6;
@@ -214,7 +214,7 @@ html[data-theme='catppuccin-latte'] {
     --color-surface-container-high: #dce0e8;
     --color-surface-container-highest: #ccd0da;
     --color-on-surface: #4c4f69;
-    --color-on-surface-variant: #6c6f85;
+    --color-on-surface-variant: #4f5269;
     --color-outline: #7c7f93;
     --color-outline-variant: #acb0be;
     --color-primary: #8839ef;

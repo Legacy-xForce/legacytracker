@@ -2,12 +2,12 @@ import { reactive } from 'vue';
 import { config } from '../config';
 
 // The phone app's avatar palette: saturated enough to read on light map tiles and the dark UI
-// alike, and dark enough for a white initial.
+// alike. The initial is white or near-black, whichever contrasts more (see initialColor).
 const PALETTE = [
     '#1e88e5', // blue
     '#8e24aa', // purple
     '#f4511e', // deep orange
-    '#00897b', // teal
+    '#00796b', // teal
     '#d81b60', // pink
     '#43a047', // green
     '#3949ab', // indigo
@@ -18,6 +18,30 @@ const PALETTE = [
 
 /** Greyed-out people (not heard from in a while) lose their colour. */
 export const DIMMED_COLOR = '#757575';
+
+const DARK_INITIAL = '#1b1b1b';
+
+/** WCAG relative luminance of a `#rrggbb` colour. */
+export function relativeLuminance(hex: string): number {
+    const channel = (offset: number) => {
+        const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+/** WCAG contrast ratio between two `#rrggbb` colours. */
+export function contrastRatio(a: string, b: string): number {
+    const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+/** The initial's colour on an avatar background: white or near-black, whichever reads better. */
+export function initialColor(background: string): string {
+    return contrastRatio('#ffffff', background) >= contrastRatio(DARK_INITIAL, background) ? '#ffffff' : DARK_INITIAL;
+}
+
+export const AVATAR_COLORS: readonly string[] = PALETTE;
 
 /** A stable colour per person, the same one the phone app picks (FNV-1a over UTF-16 units). */
 export function userColor(userId: string): string {
