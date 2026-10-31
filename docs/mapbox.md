@@ -300,11 +300,21 @@ a pin costs far more than the move. Three rules avoid that:
 
 Legacy Auth serves `https://auth.legacy-group.tech/auth/profile-picture/<uuid>`,
 but the tracker still carries an older `avatar_url` for accounts that set one
-before Legacy Auth took over. Those legacy paths answer `200` with the single
-page app's HTML, which decodes as a broken image, so nobody's photo shows.
-`avatarCandidateUrls` lists the stored URL first and the Legacy Auth URL after
-it, and both `UserAvatar` (`_FallbackNetworkImage`) and the map markers
+before Legacy Auth took over. Those legacy paths can answer `200` with the
+single page app's HTML, which decodes as a broken image, and some are dead or
+slow. `avatarCandidateUrls` therefore asks Legacy Auth first and keeps the
+stored URL only as a fallback, and both `UserAvatar` and the map markers
 (`MarkerIconFactory._loadAvatar`) walk the list until one decodes.
+
+`UserAvatar` fetches through `AvatarPictures`, a session cache, instead of
+letting `Image.network` do it per widget. That matters because Flutter evicts a
+failed image key, so a row that failed once re-fetched on every remount (opening
+a person's details and going back), and a hanging legacy URL had no timeout to
+fall through on. The cache dedupes concurrent requests, gives each candidate a
+timeout, remembers a real 404 as "no picture" for the session, retries a
+temporary failure with a backoff, and keeps the bytes so rebuilding or
+remounting costs nothing. A photo that arrives after a failure appears on its
+own, without reopening the list.
 
 A marker is drawn with the person's initial immediately and re-rendered with the
 photo when it arrives, because the icon id encodes the avatar state (`initial`,
