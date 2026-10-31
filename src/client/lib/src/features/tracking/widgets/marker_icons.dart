@@ -6,9 +6,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'user_avatar.dart';
+import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// Accent used by the map markers, matching the app's teal/blue accents.
-const markerAccentColor = Color(0xFF0985FB);
+const markerAccentColor = AppPalette.beam;
 
 /// A bitmap ready to be added to the Mapbox style as a symbol image.
 class MarkerImage {
@@ -97,10 +99,10 @@ class MarkerColors {
   /// The fixed teal look, for harnesses without an app theme.
   static const teal = MarkerColors(
     accent: markerAccentColor,
-    selfPill: Color(0xFF00695C),
-    selfPillText: Colors.white,
-    peerPill: Color(0xFF212121),
-    peerPillText: Colors.white,
+    selfPill: AppPalette.selfPill,
+    selfPillText: AppPalette.white,
+    peerPill: AppPalette.peerPill,
+    peerPillText: AppPalette.white,
   );
 
   /// The accent: heading beam and the cluster tail dot.
@@ -113,8 +115,8 @@ class MarkerColors {
   final Color peerPillText;
 
   /// Stale is a state, not a theme: offline keeps its own greys.
-  static const staleRing = Color(0xFF9E9E9E);
-  static const staleBadge = Color(0xFF616161);
+  static const staleRing = AppPalette.stale;
+  static const staleBadge = AppPalette.staleBadge;
 
   String get id =>
       '${accent.toARGB32()}-${selfPill.toARGB32()}-'
@@ -141,9 +143,9 @@ class ClusterStyle {
   final Color accent;
 
   static const light = ClusterStyle(
-    bubble: Colors.white,
-    chip: Color(0xFF2B3134),
-    chipText: Colors.white,
+    bubble: AppPalette.white,
+    chip: AppPalette.chip,
+    chipText: AppPalette.white,
     accent: markerAccentColor,
   );
 
@@ -232,7 +234,7 @@ class MarkerIconFactory extends ChangeNotifier {
         ? colors.selfPill
         : colors.peerPill;
     final badgeText = person.isStale
-        ? Colors.white
+        ? AppPalette.white
         : person.isSelf
         ? colors.selfPillText
         : colors.peerPillText;
@@ -242,7 +244,7 @@ class MarkerIconFactory extends ChangeNotifier {
         ..addOval(
           Rect.fromCircle(center: _personCenter, radius: _personRingSize / 2),
         );
-      canvas.drawShadow(ringPath, Colors.black, 6, false);
+      canvas.drawShadow(ringPath, AppPalette.black, 6, false);
       canvas.drawPath(ringPath, Paint()..color = ring);
       _drawRoundAvatar(
         canvas,
@@ -371,7 +373,7 @@ class MarkerIconFactory extends ChangeNotifier {
           bubbleHeight: _clusterBubbleHeight,
           tailHeight: _clusterTailHeight,
         );
-        canvas.drawShadow(path, Colors.black, 4, false);
+        canvas.drawShadow(path, AppPalette.black, 4, false);
         canvas.drawPath(path, Paint()..color = style.bubble);
 
         if (overflow > 0) {
@@ -407,7 +409,7 @@ class MarkerIconFactory extends ChangeNotifier {
         canvas.drawCircle(
           dot,
           _clusterDotSize / 2 - 2,
-          Paint()..color = allStale ? Colors.grey.shade600 : style.accent,
+          Paint()..color = allStale ? AppPalette.staleDark : style.accent,
         );
       },
       id: id,
@@ -430,10 +432,10 @@ class MarkerIconFactory extends ChangeNotifier {
       text: TextSpan(
         text: name,
         style: const TextStyle(
-          color: Colors.white,
-          fontSize: 12,
+          color: AppPalette.white,
+          fontSize: AppType.labelMd,
           fontWeight: FontWeight.w600,
-          height: 16 / 12,
+          height: 16 / AppType.labelMd,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -449,8 +451,8 @@ class MarkerIconFactory extends ChangeNotifier {
     final image = await _render(width, height, (canvas) {
       final rect = Rect.fromLTWH(0, 0, width, height);
       final pill = RRect.fromRectAndRadius(rect, Radius.circular(height / 2));
-      canvas.drawShadow(Path()..addRRect(pill), Colors.black, 4, false);
-      canvas.drawRRect(pill, Paint()..color = const Color(0xEB252B2A));
+      canvas.drawShadow(Path()..addRRect(pill), AppPalette.black, 4, false);
+      canvas.drawRRect(pill, Paint()..color = AppPalette.nameChip);
       iconPainter.paint(
         canvas,
         Offset(padLeft, rect.center.dy - iconPainter.height / 2),
@@ -476,17 +478,17 @@ class MarkerIconFactory extends ChangeNotifier {
 
     final onColor =
         ThemeData.estimateBrightnessForColor(color) == Brightness.dark
-        ? Colors.white
-        : Colors.black87;
+        ? AppPalette.white
+        : AppPalette.black.withValues(alpha: 0.87);
     return _render(44, 44, (canvas) {
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(4, 4, 36, 36),
-        const Radius.circular(12),
+        AppShape.mdRadius,
       );
       canvas.drawRRect(
         rect.shift(const Offset(0, 2)),
         Paint()
-          ..color = Colors.black.withValues(alpha: 0.35)
+          ..color = AppPalette.black.withValues(alpha: 0.35)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 4),
       );
       canvas.drawRRect(rect, Paint()..color = color);
@@ -495,7 +497,7 @@ class MarkerIconFactory extends ChangeNotifier {
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.5
-          ..color = Colors.white,
+          ..color = AppPalette.white,
       );
       _drawCalendarGlyph(canvas, const Rect.fromLTWH(13, 13, 18, 18), onColor);
     }, id: id);
@@ -508,7 +510,7 @@ class MarkerIconFactory extends ChangeNotifier {
     if (cached != null) return cached;
     return _render(20, 20, (canvas) {
       final center = const Offset(10, 10);
-      canvas.drawCircle(center, 10, Paint()..color = Colors.white);
+      canvas.drawCircle(center, 10, Paint()..color = AppPalette.white);
       canvas.drawCircle(
         center,
         7,
@@ -731,15 +733,15 @@ class MarkerIconFactory extends ChangeNotifier {
         center,
         TextStyle(
           color: style.chipText,
-          fontSize: 11,
+          fontSize: AppType.labelSm,
           fontWeight: FontWeight.w700,
         ),
       );
       return;
     }
 
-    final color = person.isStale ? Colors.grey.shade600 : userColor(person.id);
-    final saturated = person.isStale ? Colors.grey.shade500 : color;
+    final color = person.isStale ? AppPalette.staleDark : userColor(person.id);
+    final saturated = person.isStale ? AppPalette.stale : color;
     canvas.drawCircle(center, size / 2, Paint()..color = saturated);
     if (image != null) {
       canvas.save();
@@ -754,7 +756,7 @@ class MarkerIconFactory extends ChangeNotifier {
         userInitial(person.name),
         center,
         TextStyle(
-          color: Colors.white,
+          color: initialColorFor(saturated),
           fontSize: size * 0.42,
           fontWeight: FontWeight.w700,
         ),
@@ -779,6 +781,8 @@ class MarkerIconFactory extends ChangeNotifier {
     required double size,
   }) {
     final radius = size / 2;
+    final initialBackground =
+        person.isStale ? AppPalette.staleDark : userColor(person.id);
     final circle = Rect.fromCircle(center: center, radius: radius);
     canvas.save();
     canvas.clipPath(Path()..addOval(circle));
@@ -788,17 +792,14 @@ class MarkerIconFactory extends ChangeNotifier {
       canvas.drawCircle(
         center,
         radius,
-        Paint()
-          ..color = person.isStale
-              ? Colors.grey.shade600
-              : userColor(person.id),
+        Paint()..color = initialBackground,
       );
       _drawText(
         canvas,
         userInitial(person.name),
         center,
         TextStyle(
-          color: Colors.white,
+          color: initialColorFor(initialBackground),
           fontSize: size * 0.42,
           fontWeight: FontWeight.w700,
           height: 1,
@@ -852,8 +853,8 @@ class MarkerIconFactory extends ChangeNotifier {
     final width = contentWidth + _badgePadX * 2;
     final left = right != null ? right - width : (centerX ?? 0) - width / 2;
     final rect = Rect.fromLTWH(left, top, width, _badgeHeight);
-    final pill = RRect.fromRectAndRadius(rect, const Radius.circular(999));
-    canvas.drawShadow(Path()..addRRect(pill), Colors.black, 3, false);
+    final pill = RRect.fromRectAndRadius(rect, AppShape.fullRadius);
+    canvas.drawShadow(Path()..addRRect(pill), AppPalette.black, 3, false);
     canvas.drawRRect(pill, Paint()..color = background);
     iconPainter.paint(
       canvas,
@@ -945,7 +946,7 @@ class MarkerIconFactory extends ChangeNotifier {
       ..strokeCap = StrokeCap.round;
     final body = RRect.fromRectAndRadius(
       Rect.fromLTWH(rect.left, rect.top + 3, rect.width, rect.height - 3),
-      const Radius.circular(2.5),
+      AppShape.fullRadius,
     );
     canvas.drawRRect(body, stroke);
     canvas.drawLine(

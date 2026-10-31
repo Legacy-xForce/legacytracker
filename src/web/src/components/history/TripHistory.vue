@@ -144,7 +144,7 @@ const daySummary = computed(() => {
                             { value: overview.distance, label: 'Distance' }
                         ]"
                         :key="stat.label"
-                        class="bg-surface-container rounded-[18px] px-3.5 py-3"
+                        class="bg-surface-container rounded-lg px-3.5 py-3"
                     >
                         <p class="type-title-lg font-bold">{{ stat.value }}</p>
                         <p class="type-label-md text-on-surface-variant">{{ stat.label }}</p>

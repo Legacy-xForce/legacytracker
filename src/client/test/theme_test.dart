@@ -1,13 +1,157 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legacytracker/src/core/theme.dart';
+import 'package:legacytracker/src/core/tokens.dart';
 import 'package:legacytracker/src/core/theme_settings.dart';
 import 'package:legacytracker/src/features/tracking/widgets/appearance_card.dart';
 
 void main() {
+  test('the app bar title is the M3 titleLarge', () {
+    final title = buildThemeFor(appThemes.first.id).appBarTheme.titleTextStyle!;
+    expect(title.fontSize, 22);
+    expect(title.height, closeTo(28 / 22, 1e-9));
+  });
+
+  test('feature code takes fixed colours from AppPalette, not literals', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/theme.dart') ||
+          file.path.endsWith('core/palette.dart') ||
+          file.path.endsWith('main_mapcheck.dart')) {
+        continue;
+      }
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'Color\(0x|\bColors\.[a-z]').hasMatch(lines[i]) &&
+            !lines[i].contains('int.parse')) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
+  test('surfaces stay tonal: no elevation above 2', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        final match = RegExp(r'elevation:\s*(\d+)').firstMatch(lines[i]);
+        if (match != null && int.parse(match.group(1)!) > 2) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
+  testWidgets('motion collapses when the system turns animations off', (
+    tester,
+  ) async {
+    late Duration normal;
+    late Duration reduced;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(),
+        child: Builder(
+          builder: (context) {
+            normal = AppMotion.of(context, AppMotion.long);
+            return MediaQuery(
+              data: const MediaQueryData(disableAnimations: true),
+              child: Builder(
+                builder: (context) {
+                  reduced = AppMotion.of(context, AppMotion.long);
+                  return const SizedBox();
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    expect(normal, AppMotion.long);
+    expect(reduced, Duration.zero);
+  });
+
+  test('the four durations are 100, 200, 300 and 500 ms', () {
+    expect(
+      [AppMotion.short, AppMotion.medium, AppMotion.long, AppMotion.extraLong]
+          .map((d) => d.inMilliseconds),
+      [100, 200, 300, 500],
+    );
+  });
+
+  test('animations take their duration from AppMotion', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/tokens.dart')) continue;
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'duration: const Duration\(milliseconds').hasMatch(lines[i])) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
+  test('no text size is written outside the theme and token files', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/theme.dart') ||
+          file.path.endsWith('core/tokens.dart')) {
+        continue;
+      }
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'fontSize:\s*[0-9]').hasMatch(lines[i])) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
+  test('the shape scale follows Material 3', () {
+    expect(
+      [
+        AppShape.noneDp,
+        AppShape.xsDp,
+        AppShape.smDp,
+        AppShape.mdDp,
+        AppShape.lgDp,
+        AppShape.xlDp,
+        AppShape.fullDp,
+      ],
+      [0, 4, 8, 12, 16, 28, 999],
+    );
+  });
+
+  test('component themes take their corners and heights from the tokens', () {
+    for (final option in appThemes) {
+      final data = buildThemeFor(option.id);
+      expect(data.extension<AppTokens>(), isNotNull);
+      expect(
+        (data.cardTheme.shape as RoundedRectangleBorder).borderRadius,
+        AppShape.md,
+      );
+      expect(
+        (data.dialogTheme.shape as RoundedRectangleBorder).borderRadius,
+        AppShape.xl,
+      );
+      expect(data.navigationBarTheme.height, 80);
+    }
+  });
+
   test('every shipped theme builds with its own brightness', () {
     for (final option in appThemes) {
       final data = buildThemeFor(option.id);

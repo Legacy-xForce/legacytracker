@@ -203,7 +203,7 @@ defineExpose({ open });
                     <template #suffix><Spinner v-if="searching" :size="18" class="text-primary mr-4" /></template>
                 </TextField>
                 <p v-if="searchError" class="type-body-sm text-on-surface-variant px-2">{{ searchError }}</p>
-                <ul v-if="results.length" class="bg-surface-container-high overflow-hidden rounded-2xl">
+                <ul v-if="results.length" class="bg-surface-container-high overflow-hidden rounded-lg">
                     <li v-for="place in results" :key="`${place.latitude},${place.longitude}`">
                         <button
                             class="hover:bg-on-surface/6 type-body-md flex w-full items-center gap-3 px-4 py-2.5 text-left"
@@ -284,7 +284,7 @@ defineExpose({ open });
                 <li
                     v-for="checkpoint in visible"
                     :key="checkpoint.id"
-                    class="hover:bg-on-surface/6 flex items-center gap-1 rounded-2xl pr-1"
+                    class="hover:bg-on-surface/6 flex items-center gap-1 rounded-lg pr-1"
                     data-checkpoint
                 >
                     <button

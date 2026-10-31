@@ -7,9 +7,9 @@ defineProps<{ icon: IconName; label: string; color: string }>();
 
 <template>
     <span
-        class="type-label-sm inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold"
-        :style="{ color, background: `color-mix(in srgb, ${color} 14%, transparent)` }"
+        class="type-label-sm text-on-surface inline-flex items-center gap-1 rounded-full px-2 py-1 font-semibold"
+        :style="{ background: `color-mix(in srgb, ${color} 14%, transparent)` }"
     >
-        <Icon :name="icon" :size="13" />{{ label }}
+        <Icon :name="icon" :size="13" :style="{ color }" />{{ label }}
     </span>
 </template>

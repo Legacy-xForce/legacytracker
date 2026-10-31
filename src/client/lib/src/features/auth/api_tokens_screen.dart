@@ -9,6 +9,7 @@ import '../../data/network/api_token_service.dart';
 import 'api_token_requests_screen.dart';
 import 'api_tokens_audit_screen.dart';
 import 'auth_provider.dart';
+import '../../core/tokens.dart';
 
 /// Lists the account's personal API tokens and creates, rotates or deletes
 /// them. A token's value is shown once, right after it is created or rotated.
@@ -518,7 +519,7 @@ class _IssuedCard extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(12, 4, 4, 4),
               decoration: BoxDecoration(
                 color: scheme.surface,
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppShape.md,
               ),
               child: Row(
                 children: [
@@ -623,7 +624,7 @@ class _TokenTile extends StatelessWidget {
                                 color: write
                                     ? scheme.errorContainer
                                     : scheme.secondaryContainer,
-                                borderRadius: BorderRadius.circular(6),
+                                borderRadius: AppShape.sm,
                               ),
                               child: Text(
                                 write ? 'WRITE' : 'READ',

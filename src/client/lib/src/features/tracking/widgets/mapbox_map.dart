@@ -9,6 +9,7 @@ import '../map_variant.dart';
 import 'map_geometry.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
+import '../../../core/palette.dart';
 
 /// Annotation layers in draw order. Checkpoint names sit under everything,
 /// beams and calendar events under people, checkpoints under all of them but
@@ -64,7 +65,7 @@ class MapCheckpointOverlay {
     required this.id,
     required this.center,
     required this.radiusMeters,
-    this.color = const Color(0xFF82D5C8),
+    this.color = AppPalette.mapAccent,
   });
 
   final String id;

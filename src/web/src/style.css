@@ -4,7 +4,38 @@
  * The phone app's theme: Material 3, dark, seeded from teal (its ColorScheme.fromSeed). The
  * values were read off the app's screens, so both clients look like one product.
  */
-@theme {
+@theme static {
+    /* Material 3 shape scale; the same values as the phone's AppShape. */
+    /* Elevation is mostly tone (surface-container-*); a shadow is kept only
+       where something floats over the map (level 1) or over the page
+       (level 3: dialogs, menus, sheets, toasts). */
+    /* Material 3 motion. */
+    --duration-short: 100ms;
+    --duration-medium: 200ms;
+    --duration-long: 300ms;
+    --duration-extra-long: 500ms;
+    --default-transition-duration: var(--duration-medium);
+    --default-transition-timing-function: var(--ease-standard);
+    --ease-*: initial;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+
+    --shadow-*: initial;
+    --shadow-level-1:
+        0 1px 3px color-mix(in srgb, var(--color-shadow) 35%, transparent),
+        0 2px 8px color-mix(in srgb, var(--color-shadow) 20%, transparent);
+    --shadow-level-3: 0 8px 24px color-mix(in srgb, var(--color-shadow) 40%, transparent);
+
+    --radius-*: initial;
+    --radius-none: 0;
+    --radius-xs: 4px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 28px;
+    --radius-full: 9999px;
+
     --font-sans: 'Roboto Variable', Roboto, system-ui, sans-serif;
 
     --color-surface: #0e1513;
@@ -23,12 +54,28 @@
     --color-on-primary-container: #9ef2e4;
     --color-secondary-container: #334b47;
     --color-on-secondary-container: #cce8e2;
+    --color-secondary: #b1ccc6;
+    --color-on-secondary: #1c3531;
+    --color-tertiary: #abcae6;
+    --color-on-tertiary: #0d3350;
+    --color-tertiary-container: #2a4a67;
+    --color-on-tertiary-container: #cde5ff;
+    --color-surface-dim: #0e1513;
+    --color-surface-bright: #343b39;
+    --color-inverse-surface: #dde4e1;
+    --color-inverse-on-surface: #2b3230;
+    --color-inverse-primary: #006a62;
+    --color-surface-tint: #82d5c8;
+    --color-scrim: #000000;
+    --color-shadow: #000000;
     --color-error: #ffb4ab;
     --color-error-container: #93000a;
     --color-on-error-container: #ffdad6;
 
     /* Fixed accents the app uses regardless of theme. */
     --color-online: #34c759;
+    --color-on-medal: #1a1300;
+    --color-stale: #9e9e9e;
     --color-arrival: #ff453a;
     --color-beam: #0985fb;
     --color-paused: #ffc107;
@@ -61,6 +108,20 @@ html[data-theme='oled'] {
     --color-on-primary-container: #9ef2e4;
     --color-secondary-container: #334b47;
     --color-on-secondary-container: #cce8e2;
+    --color-secondary: #b1ccc6;
+    --color-on-secondary: #1c3531;
+    --color-tertiary: #abcae6;
+    --color-on-tertiary: #0d3350;
+    --color-tertiary-container: #2a4a67;
+    --color-on-tertiary-container: #cde5ff;
+    --color-surface-dim: #000000;
+    --color-surface-bright: #2a312f;
+    --color-inverse-surface: #dde4e1;
+    --color-inverse-on-surface: #2b3230;
+    --color-inverse-primary: #006a62;
+    --color-surface-tint: #82d5c8;
+    --color-scrim: #000000;
+    --color-shadow: #000000;
     --color-error: #ffb4ab;
     --color-error-container: #93000a;
     --color-on-error-container: #ffdad6;
@@ -75,7 +136,7 @@ html[data-theme='catppuccin-mocha'] {
     --color-surface-container-high: #45475a;
     --color-surface-container-highest: #585b70;
     --color-on-surface: #cdd6f4;
-    --color-on-surface-variant: #a6adc8;
+    --color-on-surface-variant: #bac2de;
     --color-outline: #9399b2;
     --color-outline-variant: #585b70;
     --color-primary: #cba6f7;
@@ -84,6 +145,20 @@ html[data-theme='catppuccin-mocha'] {
     --color-on-primary-container: #cdd6f4;
     --color-secondary-container: #384953;
     --color-on-secondary-container: #cdd6f4;
+    --color-secondary: #89dceb;
+    --color-on-secondary: #11111b;
+    --color-tertiary: #f5c2e7;
+    --color-on-tertiary: #11111b;
+    --color-tertiary-container: #5a4458;
+    --color-on-tertiary-container: #cdd6f4;
+    --color-surface-dim: #181825;
+    --color-surface-bright: #45475a;
+    --color-inverse-surface: #cdd6f4;
+    --color-inverse-on-surface: #1e1e2e;
+    --color-inverse-primary: #8839ef;
+    --color-surface-tint: #cba6f7;
+    --color-scrim: #000000;
+    --color-shadow: #000000;
     --color-error: #f38ba8;
     --color-error-container: #51384b;
     --color-on-error-container: #cdd6f4;
@@ -98,7 +173,7 @@ html[data-theme='catppuccin-macchiato'] {
     --color-surface-container-high: #494d64;
     --color-surface-container-highest: #5b6078;
     --color-on-surface: #cad3f5;
-    --color-on-surface-variant: #a5adcb;
+    --color-on-surface-variant: #b8c0e0;
     --color-outline: #939ab7;
     --color-outline-variant: #5b6078;
     --color-primary: #c6a0f6;
@@ -107,6 +182,20 @@ html[data-theme='catppuccin-macchiato'] {
     --color-on-primary-container: #cad3f5;
     --color-secondary-container: #3b4d5a;
     --color-on-secondary-container: #cad3f5;
+    --color-secondary: #91d7e3;
+    --color-on-secondary: #181926;
+    --color-tertiary: #f5bde6;
+    --color-on-tertiary: #181926;
+    --color-tertiary-container: #594560;
+    --color-on-tertiary-container: #cad3f5;
+    --color-surface-dim: #1e2030;
+    --color-surface-bright: #494d64;
+    --color-inverse-surface: #cad3f5;
+    --color-inverse-on-surface: #24273a;
+    --color-inverse-primary: #8839ef;
+    --color-surface-tint: #c6a0f6;
+    --color-scrim: #000000;
+    --color-shadow: #000000;
     --color-error: #ed8796;
     --color-error-container: #543e50;
     --color-on-error-container: #cad3f5;
@@ -121,7 +210,7 @@ html[data-theme='catppuccin-frappe'] {
     --color-surface-container-high: #51576d;
     --color-surface-container-highest: #626880;
     --color-on-surface: #c6d0f5;
-    --color-on-surface-variant: #a5adce;
+    --color-on-surface-variant: #b5bfe2;
     --color-outline: #949cbb;
     --color-outline-variant: #626880;
     --color-primary: #ca9ee6;
@@ -130,6 +219,20 @@ html[data-theme='catppuccin-frappe'] {
     --color-on-primary-container: #c6d0f5;
     --color-secondary-container: #425560;
     --color-on-secondary-container: #c6d0f5;
+    --color-secondary: #99d1db;
+    --color-on-secondary: #232634;
+    --color-tertiary: #f4b8e4;
+    --color-on-tertiary: #232634;
+    --color-tertiary-container: #5c4a63;
+    --color-on-tertiary-container: #c6d0f5;
+    --color-surface-dim: #292c3c;
+    --color-surface-bright: #51576d;
+    --color-inverse-surface: #c6d0f5;
+    --color-inverse-on-surface: #303446;
+    --color-inverse-primary: #8839ef;
+    --color-surface-tint: #ca9ee6;
+    --color-scrim: #000000;
+    --color-shadow: #000000;
     --color-error: #e78284;
     --color-error-container: #5c4755;
     --color-on-error-container: #c6d0f5;
@@ -144,7 +247,7 @@ html[data-theme='catppuccin-latte'] {
     --color-surface-container-high: #dce0e8;
     --color-surface-container-highest: #ccd0da;
     --color-on-surface: #4c4f69;
-    --color-on-surface-variant: #6c6f85;
+    --color-on-surface-variant: #4f5269;
     --color-outline: #7c7f93;
     --color-outline-variant: #acb0be;
     --color-primary: #8839ef;
@@ -153,6 +256,20 @@ html[data-theme='catppuccin-latte'] {
     --color-on-primary-container: #4c4f69;
     --color-secondary-container: #c8e0e4;
     --color-on-secondary-container: #4c4f69;
+    --color-secondary: #1b6d80;
+    --color-on-secondary: #eff1f5;
+    --color-tertiary: #b0307f;
+    --color-on-tertiary: #eff1f5;
+    --color-tertiary-container: #f4d4ea;
+    --color-on-tertiary-container: #4c4f69;
+    --color-surface-dim: #dce0e8;
+    --color-surface-bright: #fcfcfe;
+    --color-inverse-surface: #4c4f69;
+    --color-inverse-on-surface: #eff1f5;
+    --color-inverse-primary: #cba6f7;
+    --color-surface-tint: #8839ef;
+    --color-scrim: #000000;
+    --color-shadow: #000000;
     --color-error: #d20f39;
     --color-error-container: #eacdd7;
     --color-on-error-container: #4c4f69;
@@ -160,6 +277,27 @@ html[data-theme='catppuccin-latte'] {
 }
 
 /* Material 3 type scale, as Flutter applies it. */
+@utility type-display-lg {
+    font-size: 57px;
+    line-height: 64px;
+    letter-spacing: -0.25px;
+}
+@utility type-display-md {
+    font-size: 45px;
+    line-height: 52px;
+}
+@utility type-display-sm {
+    font-size: 36px;
+    line-height: 44px;
+}
+@utility type-headline-lg {
+    font-size: 32px;
+    line-height: 40px;
+}
+@utility type-headline-md {
+    font-size: 28px;
+    line-height: 36px;
+}
 @utility type-headline-sm {
     font-size: 24px;
     line-height: 32px;
@@ -268,7 +406,7 @@ html[data-theme='catppuccin-latte'] {
 .mapboxgl-ctrl-attrib {
     background: color-mix(in srgb, var(--color-surface) 70%, transparent) !important;
     color: var(--color-on-surface-variant) !important;
-    border-radius: 8px 0 0 0;
+    border-radius: var(--radius-sm) 0 0 0;
     font-size: 10px;
 }
 
@@ -289,10 +427,10 @@ html[data-theme='catppuccin-latte'] {
 .mapboxgl-popup-content {
     background: var(--color-surface-container-high);
     color: var(--color-on-surface);
-    border-radius: 20px;
+    border-radius: var(--radius-md);
     margin: 0;
     padding: 16px 18px;
-    box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
+    box-shadow: var(--shadow-level-3);
     font-size: 14px;
     line-height: 20px;
 }
@@ -361,7 +499,7 @@ html[data-theme='catppuccin-latte'] {
 
 .m3-slider::-webkit-slider-runnable-track {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: linear-gradient(
         to right,
         var(--color-primary) var(--progress, 0%),
@@ -371,13 +509,13 @@ html[data-theme='catppuccin-latte'] {
 
 .m3-slider::-moz-range-track {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-secondary-container);
 }
 
 .m3-slider::-moz-range-progress {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-primary);
 }
 
@@ -386,7 +524,7 @@ html[data-theme='catppuccin-latte'] {
     width: 20px;
     height: 20px;
     margin-top: -8px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-primary);
     border: none;
 }
@@ -394,7 +532,37 @@ html[data-theme='catppuccin-latte'] {
 .m3-slider::-moz-range-thumb {
     width: 20px;
     height: 20px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-primary);
     border: none;
+}
+
+@utility duration-short {
+    transition-duration: var(--duration-short);
+}
+@utility duration-medium {
+    transition-duration: var(--duration-medium);
+}
+@utility duration-long {
+    transition-duration: var(--duration-long);
+}
+@utility duration-extra-long {
+    transition-duration: var(--duration-extra-long);
+}
+
+/* Reduced motion: transitions and animations finish at once. Spinners keep
+   turning, since a frozen one reads as a hang. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .animate-spin {
+        animation-duration: 1s !important;
+        animation-iteration-count: infinite !important;
+    }
 }

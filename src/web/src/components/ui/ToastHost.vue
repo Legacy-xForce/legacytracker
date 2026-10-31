@@ -11,7 +11,7 @@ import { dismissToast, toasts } from '../../lib/toast';
         <button
             v-for="toast in toasts"
             :key="toast.id"
-            class="bg-surface-container-highest text-on-surface type-body-md pointer-events-auto max-w-md rounded-2xl px-4 py-3 text-left shadow-[0_8px_32px_rgb(0_0_0/0.45)]"
+            class="bg-surface-container-highest text-on-surface type-body-md shadow-level-3 pointer-events-auto max-w-md rounded-lg px-4 py-3 text-left"
             @click="dismissToast(toast.id)"
         >
             {{ toast.message }}

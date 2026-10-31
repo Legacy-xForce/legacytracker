@@ -25,27 +25,27 @@ const names = computed(() =>
 <template>
     <Transition
         enter-from-class="opacity-0 scale-75"
-        enter-active-class="transition duration-200 ease-out"
-        leave-active-class="transition duration-150 ease-in"
+        enter-active-class="transition duration-medium ease-standard"
+        leave-active-class="transition duration-medium ease-standard"
         leave-to-class="opacity-0 scale-75"
     >
         <!-- Who has the map open right now, us included. Faces only, like the app. -->
         <div
             v-if="ordered.length > 0"
-            class="bg-surface-container-high origin-left rounded-full p-[3px] shadow-[0_4px_12px_rgb(0_0_0/0.4)]"
+            class="bg-surface-container-high shadow-level-1 origin-left rounded-full p-[3px]"
             role="img"
             :aria-label="`Viewing the map: ${names}`"
             :title="`Viewing the map: ${names}`"
         >
             <div
-                class="relative transition-[width] duration-200 ease-out"
+                class="duration-medium ease-standard relative transition-[width]"
                 :style="{ width: `${FACE + (circles - 1) * STEP}px`, height: `${FACE}px` }"
             >
                 <TransitionGroup enter-from-class="opacity-0 scale-0" leave-to-class="opacity-0 scale-0">
                     <span
                         v-for="(viewer, i) in faces"
                         :key="viewer.id"
-                        class="absolute top-0 transition-all duration-200 ease-out"
+                        class="duration-medium ease-standard absolute top-0 transition-all"
                         :style="{ left: `${i * STEP}px` }"
                         :data-viewer="viewer.id"
                     >
@@ -60,7 +60,7 @@ const names = computed(() =>
                     <span
                         v-if="more > 0"
                         key="more"
-                        class="bg-surface-container-highest type-label-md absolute top-0 flex items-center justify-center rounded-full font-bold transition-all duration-200 ease-out"
+                        class="bg-surface-container-highest type-label-md duration-medium ease-standard absolute top-0 flex items-center justify-center rounded-full font-bold transition-all"
                         :style="{
                             left: `${faces.length * STEP}px`,
                             width: `${FACE}px`,

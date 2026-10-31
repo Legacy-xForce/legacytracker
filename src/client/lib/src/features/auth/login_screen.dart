@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import '../tracking/widgets/user_avatar.dart';
 import '../updates/app_update_banner.dart';
 import 'auth_provider.dart';
+import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -23,7 +25,7 @@ class LoginScreen extends StatelessWidget {
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
           .copyWith(
-            statusBarColor: Colors.transparent,
+            statusBarColor: AppPalette.transparent,
             systemNavigationBarColor: scheme.surface,
             systemNavigationBarIconBrightness: dark
                 ? Brightness.light
@@ -79,8 +81,8 @@ class LoginScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             AnimatedSize(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOutCubic,
+                              duration: AppMotion.of(context, AppMotion.medium),
+                              curve: AppMotion.standard,
                               alignment: Alignment.topCenter,
                               child: error == null
                                   ? const SizedBox(width: double.infinity)
@@ -259,7 +261,7 @@ class _ErrorBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
         decoration: BoxDecoration(
           color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: AppShape.md,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

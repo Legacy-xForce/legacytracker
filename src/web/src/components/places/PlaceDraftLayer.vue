@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { duration, motion } from '../../lib/motionTokens';
+import { palette } from '../../lib/palette';
 import type { GeoJSONSource } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
 import { centerShowing, visibleCenter } from '../../lib/camera';
@@ -59,13 +61,13 @@ function paint() {
         id: FILL,
         type: 'fill',
         source: SOURCE,
-        paint: { 'fill-color': '#82d5c8', 'fill-opacity': 0.22, 'fill-emissive-strength': 1 }
+        paint: { 'fill-color': palette.mapAccent, 'fill-opacity': 0.22, 'fill-emissive-strength': 1 }
     });
     target.addLayer({
         id: LINE,
         type: 'line',
         source: SOURCE,
-        paint: { 'line-color': '#82d5c8', 'line-width': 2, 'line-emissive-strength': 1 }
+        paint: { 'line-color': palette.mapAccent, 'line-width': 2, 'line-emissive-strength': 1 }
     });
 }
 
@@ -94,7 +96,7 @@ function goto(latitude: number, longitude: number) {
     if (!target) return;
     const zoom = Math.max(target.getZoom(), ZOOM);
     const centre = centerShowing(target, { lat: latitude, lng: longitude }, zoom, insets.value);
-    target.flyTo({ center: [centre.lng, centre.lat], zoom, duration: 800 });
+    target.flyTo({ center: [centre.lng, centre.lat], zoom, duration: motion(duration.extraLong * 1.6) });
 }
 
 watch(

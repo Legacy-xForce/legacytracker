@@ -25,11 +25,13 @@ import '../map_variant.dart';
 import 'map_geometry.dart';
 import '../map_settings.dart';
 import 'map_layers.dart';
+import 'map_contents_semantics.dart';
 import 'map_viewers_row.dart';
 import 'mapbox_map.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_users_drawer.dart';
+import '../../../core/palette.dart';
 
 /// Zoomed out further, checkpoint names would pile up into noise; circles stay.
 const double _checkpointLabelsFromZoom = 13;
@@ -604,6 +606,15 @@ class TrackingMapTabState extends State<TrackingMapTab>
             Positioned(
               top: 0,
               left: 0,
+              child: MapContentsSemantics(
+                selfId: widget.selfProfile.id,
+                people: [widget.selfProfile, ...widget.peers],
+                onSelect: widget.onUserSelected,
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
               right: 0,
               height: topInset + 28,
               child: const IgnorePointer(
@@ -612,7 +623,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
                     gradient: LinearGradient(
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
-                      colors: [Color(0x99000000), Color(0x00000000)],
+                      colors: [AppPalette.scrimTop, AppPalette.transparent],
                     ),
                   ),
                 ),
@@ -1016,10 +1027,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
     return ClusterStyle(
       bubble: scheme.surfaceContainerHighest,
       chip: scheme.brightness == Brightness.light
-          ? const Color(0xFF2B3134)
+          ? AppPalette.chip
           : scheme.onSurface,
       chipText: scheme.brightness == Brightness.light
-          ? Colors.white
+          ? AppPalette.white
           : scheme.surface,
       accent: scheme.primary,
     );

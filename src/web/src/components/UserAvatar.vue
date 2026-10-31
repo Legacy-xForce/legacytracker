@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { DIMMED_COLOR, loadedPicture, profilePicture, userColor, userInitial } from '../lib/avatars';
+import { DIMMED_COLOR, initialColor, loadedPicture, profilePicture, userColor, userInitial } from '../lib/avatars';
 
 const {
     userId,
@@ -22,16 +22,18 @@ const {
     dimmed?: boolean;
 }>();
 
+const background = computed(() => (dimmed ? DIMMED_COLOR : userColor(userId)));
 const picture = computed(() => (pictureUrl ? loadedPicture(pictureUrl) : profilePicture(userId)));
 </script>
 
 <template>
     <span
-        class="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white select-none"
+        class="relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold select-none"
         :style="{
             width: `${size}px`,
             height: `${size}px`,
-            background: dimmed ? DIMMED_COLOR : userColor(userId),
+            background,
+            color: initialColor(background),
             fontSize: `${size * 0.42}px`,
             lineHeight: 1
         }"

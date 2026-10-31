@@ -20,7 +20,7 @@ function inputAttrs() {
 <template>
     <!-- Material's filled text field as the app themes it: no underline, a primary outline on focus. -->
     <div
-        class="group bg-surface-container-high focus-within:outline-primary relative flex h-14 items-center rounded-2xl outline-[1.5px] outline-transparent"
+        class="group bg-surface-container-high focus-within:outline-primary relative flex h-14 items-center rounded-lg outline-[1.5px] outline-transparent"
         :class="attrs.class"
         :style="attrs.style as StyleValue"
     >
@@ -35,7 +35,7 @@ function inputAttrs() {
             />
             <label
                 :for="id"
-                class="text-on-surface-variant type-body-lg peer-focus:text-primary pointer-events-none absolute top-1/2 left-2 origin-left -translate-y-1/2 transition-all duration-150 peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-xs peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-xs"
+                class="text-on-surface-variant type-body-lg peer-focus:text-primary duration-medium pointer-events-none absolute top-1/2 left-2 origin-left -translate-y-1/2 transition-all peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-xs peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-xs"
                 >{{ label }}</label
             >
         </div>

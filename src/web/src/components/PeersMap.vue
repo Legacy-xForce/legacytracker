@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { duration, motion } from '../lib/motionTokens';
 import mapboxgl, { type Map as MapboxMap } from 'mapbox-gl';
 import { onBeforeUnmount, onMounted, provide, ref, shallowRef, toRef, watch } from 'vue';
 import '../lib/mapbox';
@@ -84,6 +85,15 @@ function applyTheme() {
     applyStandardTheme(map, props.lightPreset);
 }
 
+function markerLabel(peer: Peer): string {
+    const name = peer.id === props.selfId ? `${peer.name} (you)` : peer.name;
+    return isStale(peer, props.now) ? `${name}, not heard from in a while` : name;
+}
+
+function groupLabel(members: { name: string }[]): string {
+    return `${members.length} people together: ${members.map((m) => m.name).join(', ')}. Zoom in`;
+}
+
 function markerProps(peer: Peer) {
     return {
         userId: peer.id,
@@ -122,11 +132,13 @@ function sync() {
                 PEER_MARKER_SIZE[1] / 2
             ]);
             view.onClick(() => emit('select', peer.id));
+            view.setLabel(markerLabel(peer));
             entry = { peer, view, motion: new Motion(at) };
             entries.set(peer.id, entry);
         } else {
             entry.peer = peer;
             entry.view.update(markerProps(peer));
+            entry.view.setLabel(markerLabel(peer));
             glideTo(entry, at, now);
         }
         // Whoever is selected draws over everyone else.
@@ -236,6 +248,7 @@ function regroup() {
         const existing = groups.get(key);
         if (existing) {
             existing.view.update(bubble);
+            existing.view.setLabel(groupLabel(bubble.members));
             existing.view.setLatLng(centroid(ids));
             show(existing.view);
             continue;
@@ -249,6 +262,7 @@ function regroup() {
         );
         view.setZIndex(2);
         view.onClick((event) => openGroup(ids, event));
+        view.setLabel(groupLabel(bubble.members));
         show(view);
         groups.set(key, { ids, view });
     }
@@ -267,7 +281,7 @@ function openGroup(ids: string[], event: MouseEvent) {
     map.fitBounds(boundsOf(ids.map((member) => entries.get(member)!.motion.shown)), {
         ...framePadding(props.insets, 90),
         maxZoom: map.getMaxZoom(),
-        duration: 600
+        duration: motion(duration.extraLong)
     });
 }
 
@@ -280,7 +294,7 @@ function focus(id: string) {
     flying = true;
     map.once('moveend', () => (flying = false));
     const centre = centerShowing(map, entry.motion.shown, zoom, props.insets);
-    map.flyTo({ center: [centre.lng, centre.lat], zoom, duration: 800 });
+    map.flyTo({ center: [centre.lng, centre.lat], zoom, duration: motion(duration.extraLong * 1.6) });
 }
 
 /** Frames everyone on the map. */
@@ -290,7 +304,7 @@ function fitEveryone() {
     map.fitBounds(boundsOf([...entries.values()].map((entry) => entry.motion.target)), {
         ...framePadding(props.insets, 60),
         maxZoom: 15,
-        duration: 800
+        duration: motion(duration.extraLong * 1.6)
     });
 }
 

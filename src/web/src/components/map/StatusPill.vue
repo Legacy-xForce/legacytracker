@@ -14,7 +14,7 @@ const look = computed(() => {
 <template>
     <!-- Whether the map is live, at a glance, like the app's sharing pill. -->
     <div
-        class="bg-surface-container-high type-label-lg flex items-center gap-2 rounded-full py-[9px] pr-3.5 pl-3 font-semibold shadow-[0_4px_12px_rgb(0_0_0/0.4)]"
+        class="bg-surface-container-high type-label-lg shadow-level-1 flex items-center gap-2 rounded-full py-[9px] pr-3.5 pl-3 font-semibold"
         role="status"
     >
         <span

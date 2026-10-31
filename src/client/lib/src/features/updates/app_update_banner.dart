@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app_updater.dart';
+import '../../core/tokens.dart';
 
 /// A small "update available" banner for screens shown before sign-in.
 ///
@@ -81,8 +82,8 @@ class _AppUpdateBannerState extends State<AppUpdateBanner>
     final visible =
         AppUpdater.isSupported && status != null && status.updateAvailable;
     return AnimatedSize(
-      duration: const Duration(milliseconds: 250),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.of(context, AppMotion.long),
+      curve: AppMotion.standard,
       alignment: Alignment.bottomCenter,
       child: visible
           ? _buildBanner(context, status)
@@ -103,7 +104,7 @@ class _AppUpdateBannerState extends State<AppUpdateBanner>
         padding: const EdgeInsets.fromLTRB(14, 10, 10, 10),
         decoration: BoxDecoration(
           color: scheme.secondaryContainer,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: AppShape.lg,
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,

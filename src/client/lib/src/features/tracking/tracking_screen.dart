@@ -15,6 +15,7 @@ import 'widgets/selection_back_guard.dart';
 import 'widgets/tracking_map_layer.dart';
 import 'widgets/tracking_map_tab.dart';
 import 'widgets/tracking_profile_tab.dart';
+import '../../core/palette.dart';
 
 class TrackingScreen extends StatefulWidget {
   const TrackingScreen({super.key});
@@ -110,7 +111,7 @@ class _TrackingScreenState extends State<TrackingScreen> {
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
             .copyWith(
-              statusBarColor: Colors.transparent,
+              statusBarColor: AppPalette.transparent,
               systemNavigationBarColor: theme.colorScheme.surface,
               systemNavigationBarIconBrightness: dark
                   ? Brightness.light

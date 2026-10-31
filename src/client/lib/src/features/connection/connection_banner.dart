@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'connection_monitor.dart';
+import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 /// Wraps the whole app so the banner floats over every screen, pushed routes
 /// included, without any of them having to know about it.
@@ -78,11 +80,11 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
 
     return AnimatedSlide(
       offset: widget.visible ? Offset.zero : const Offset(0, -1.5),
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.of(context, AppMotion.long),
+      curve: AppMotion.standard,
       child: AnimatedOpacity(
         opacity: widget.visible ? 1 : 0,
-        duration: const Duration(milliseconds: 200),
+        duration: AppMotion.of(context, AppMotion.medium),
         child: IgnorePointer(
           ignoring: !widget.visible,
           child: Semantics(
@@ -90,9 +92,9 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
             container: true,
             child: Material(
               color: style.background,
-              elevation: 6,
-              shadowColor: Colors.black54,
-              borderRadius: BorderRadius.circular(16),
+              elevation: 2,
+              shadowColor: AppPalette.black.withValues(alpha: 0.54),
+              borderRadius: AppShape.lg,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
                 child: Row(
@@ -110,22 +112,23 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
                         children: [
                           Text(
                             offline ? "You're offline" : 'Poor connection',
-                            style: TextStyle(
-                              color: style.foreground,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: style.foreground,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             offline
                                 ? "The map and other people's positions won't update until you're back online."
                                 : 'The map may load slowly and positions may update late.',
-                            style: TextStyle(
-                              color: style.foreground.withValues(alpha: 0.85),
-                              fontSize: 12.5,
-                              height: 1.25,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: style.foreground.withValues(
+                                    alpha: 0.85,
+                                  ),
+                                ),
                           ),
                         ],
                       ),
@@ -160,5 +163,5 @@ class _BannerStyle {
   final Color foreground;
 }
 
-const _offlineStyle = _BannerStyle(Color(0xFFC62828), Colors.white);
-const _poorStyle = _BannerStyle(Color(0xFFFFC928), Color(0xFF2B2100));
+const _offlineStyle = _BannerStyle(AppPalette.offlineBanner, AppPalette.onOfflineBanner);
+const _poorStyle = _BannerStyle(AppPalette.poorBanner, AppPalette.onPoorBanner);

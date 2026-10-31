@@ -7,6 +7,8 @@ import '../../data/models/user_model.dart';
 import '../../data/network/leaderboard_service.dart';
 import '../tracking/widgets/location_history_screen.dart';
 import '../tracking/widgets/user_avatar.dart';
+import '../../core/tokens.dart';
+import '../../core/palette.dart';
 
 /// The travel leaderboard: who went furthest this week, this month or over
 /// a picked range, with each person's moving time and speeds.
@@ -34,11 +36,7 @@ class TravelTab extends StatefulWidget {
 
 class _TravelTabState extends State<TravelTab> {
   // Gold, silver, bronze for the podium.
-  static const _medals = [
-    Color(0xFFF5C542),
-    Color(0xFFC0C7CC),
-    Color(0xFFD08B54),
-  ];
+  static const _medals = AppPalette.medals;
 
   late final LeaderboardService _service;
   Period _period = Period.containing(PeriodKind.week, DateTime.now());
@@ -219,7 +217,7 @@ class _TravelTabState extends State<TravelTab> {
             else
               AnimatedOpacity(
                 opacity: _loading ? 0.6 : 1,
-                duration: const Duration(milliseconds: 150),
+                duration: AppMotion.of(context, AppMotion.medium),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -356,7 +354,7 @@ class _EntryCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
         side: isSelf
             ? BorderSide(
                 color: scheme.primary.withValues(alpha: 0.7),
@@ -387,7 +385,7 @@ class _EntryCard extends StatelessWidget {
                       style: theme.textTheme.labelLarge?.copyWith(
                         fontWeight: FontWeight.w700,
                         color: medal != null
-                            ? const Color(0xFF1A1300)
+                            ? AppPalette.onMedal
                             : scheme.onSurfaceVariant,
                       ),
                     ),
@@ -434,7 +432,7 @@ class _EntryCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               ClipRRect(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: AppShape.full,
                 child: LinearProgressIndicator(
                   value: share.clamp(0, 1),
                   minHeight: 6,
@@ -479,7 +477,7 @@ class _StatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

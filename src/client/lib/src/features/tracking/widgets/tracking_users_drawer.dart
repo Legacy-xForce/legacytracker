@@ -24,6 +24,8 @@ import 'location_history_screen.dart';
 import 'tracking_issues_banner.dart';
 import 'tracking_location_street_label.dart';
 import 'user_avatar.dart';
+import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// The people sheet over the map: a list of everyone sharing, and a detail
 /// pane for whoever is selected. Collapsed it still shows its header, so it
@@ -307,30 +309,41 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                       .clamp(0.0, 1.0);
               return Material(
                 color: theme.colorScheme.surfaceContainerLow,
-                elevation: 16,
-                shadowColor: Colors.black,
+                elevation: 2,
+                shadowColor: AppPalette.black,
                 shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  borderRadius: AppShape.sheetTop,
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
+                    // The header's own taps (back, checkpoints) are separate
+                    // buttons; this node is the drag handle's equivalent for
+                    // assistive tech: a button that opens or folds the sheet.
+                    Semantics(
+                      container: true,
+                      button: true,
+                      label: _isCollapsed
+                          ? 'Expand people list'
+                          : 'Collapse people list',
                       onTap: _toggle,
-                      onVerticalDragUpdate: (details) {
-                        _dragSheet(
-                          details.primaryDelta ?? 0,
-                          constraints.maxHeight,
-                        );
-                      },
-                      onVerticalDragEnd: _settleSheet,
-                      child: _SheetHeader(
-                        height: _headerHeight,
-                        users: users,
-                        showingDetail: detailUser != null && !_isCollapsed,
-                        onBack: _closeDetail,
-                        onCheckpoints: _openCheckpoints,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggle,
+                        onVerticalDragUpdate: (details) {
+                          _dragSheet(
+                            details.primaryDelta ?? 0,
+                            constraints.maxHeight,
+                          );
+                        },
+                        onVerticalDragEnd: _settleSheet,
+                        child: _SheetHeader(
+                          height: _headerHeight,
+                          users: users,
+                          showingDetail: detailUser != null && !_isCollapsed,
+                          onBack: _closeDetail,
+                          onCheckpoints: _openCheckpoints,
+                        ),
                       ),
                     ),
                     Expanded(
@@ -409,7 +422,7 @@ class _SheetHeader extends StatelessWidget {
             height: 4,
             decoration: BoxDecoration(
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: AppShape.full,
             ),
           ),
           Expanded(
@@ -425,28 +438,33 @@ class _SheetHeader extends StatelessWidget {
                     Tooltip(
                       message: 'All people',
                       child: Material(
-                        color: Colors.transparent,
+                        color: AppPalette.transparent,
                         child: InkWell(
                           onTap: onBack,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: AppShape.full,
                           child: Semantics(
                             button: true,
                             label: 'All people',
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(2, 8, 14, 8),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.arrow_back_rounded,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'All people',
-                                    style: theme.textTheme.titleMedium,
-                                  ),
-                                ],
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minHeight: kMinInteractiveDimension,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(2, 8, 14, 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.arrow_back_rounded,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'All people',
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -468,7 +486,7 @@ class _SheetHeader extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: AppShape.full,
                       ),
                       child: Text(
                         '${users.length}',
@@ -516,35 +534,43 @@ class _CheckpointsButton extends StatelessWidget {
     final scheme = theme.colorScheme;
     return Semantics(
       button: true,
+      label: 'Checkpoints',
+      excludeSemantics: true,
+      onTap: onTap,
       child: Material(
         color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
         child: InkWell(
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: AppShape.full,
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.place_outlined,
-                  size: 16,
-                  color: scheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    'Checkpoints',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.onSecondaryContainer,
-                      fontWeight: FontWeight.w600,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: kMinInteractiveDimension,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.place_outlined,
+                    size: 16,
+                    color: scheme.onSecondaryContainer,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Checkpoints',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.onSecondaryContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -581,23 +607,23 @@ class _DrawerUser {
         _UserStatus(
           'Not sharing with you',
           Icons.visibility_off_outlined,
-          Colors.blueGrey,
+          AppPalette.hidden,
         ),
       );
     }
     if (trackingPaused) {
       result.add(
-        _UserStatus('Sharing paused', Icons.pause_circle, Colors.amber),
+        _UserStatus('Sharing paused', Icons.pause_circle, AppPalette.paused),
       );
     }
     if (missingPermissions) {
       result.add(
-        _UserStatus('Missing permissions', Icons.block, Colors.redAccent),
+        _UserStatus('Missing permissions', Icons.block, AppPalette.missing),
       );
     }
     if (batterySavingEnabled) {
       result.add(
-        _UserStatus('Battery saver', Icons.battery_saver, Colors.tealAccent),
+        _UserStatus('Battery saver', Icons.battery_saver, AppPalette.battery),
       );
     }
     return result;
@@ -735,10 +761,10 @@ class _UserRow extends StatelessWidget {
     return Material(
       color: isSelected
           ? scheme.primary.withValues(alpha: 0.12)
-          : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
+          : AppPalette.transparent,
+      borderRadius: AppShape.lg,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
         onTap: location != null || !user.profile.sharesWithMe ? onSelect : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
@@ -820,10 +846,10 @@ class _PresenceAvatar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final dotColor = user.trackingPaused
-        ? Colors.amber
+        ? AppPalette.paused
         : user.isStale
-        ? Colors.grey.shade500
-        : const Color(0xFF34C759);
+        ? AppPalette.stale
+        : AppPalette.online;
     final dot = size * 0.28;
     return SizedBox(
       width: size,
@@ -874,7 +900,7 @@ class _BatteryPill extends StatelessWidget {
     if (level == null) return const SizedBox.shrink();
     final low = level <= 20 && !charging;
     final color = charging
-        ? const Color(0xFF34C759)
+        ? AppPalette.online
         : low
         ? theme.colorScheme.error
         : theme.colorScheme.onSurfaceVariant;
@@ -918,7 +944,7 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: status.color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -928,7 +954,7 @@ class _StatusChip extends StatelessWidget {
           Text(
             status.label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: status.color,
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),
@@ -975,7 +1001,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
     // `late final` controller used to build it too late (in dispose()).
     _spin = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: AppMotion.spin,
     );
     _todaySessions = _loadTodaySessions();
   }
@@ -1322,7 +1348,7 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

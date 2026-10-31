@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { palette } from '../lib/palette';
 import { Marker } from 'mapbox-gl';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import PeerMarker from './map/PeerMarker.vue';
@@ -147,7 +148,7 @@ function paint() {
         type: 'line',
         source: EDGE_SOURCE,
         layout: { 'line-cap': 'round', 'line-join': 'round' },
-        paint: { 'line-color': '#000', 'line-opacity': 0.35, 'line-width': 8, 'line-emissive-strength': 1 }
+        paint: { 'line-color': palette.black, 'line-opacity': 0.35, 'line-width': 8, 'line-emissive-strength': 1 }
     });
     // One line per run of similar speed: red when slow, green when fast.
     target.addLayer({
@@ -278,7 +279,7 @@ onBeforeUnmount(() => {
     >
         <div
             ref="card"
-            class="bg-surface-container-low pointer-events-auto w-full max-w-[560px] rounded-[28px] px-5 pt-4 pb-4 shadow-[0_8px_32px_rgb(0_0_0/0.45)]"
+            class="bg-surface-container-low shadow-level-3 pointer-events-auto w-full max-w-[560px] rounded-xl px-5 pt-4 pb-4"
         >
             <div class="flex items-center gap-3">
                 <UserAvatar :user-id="userId" :name="userName" :size="36" />
@@ -352,8 +353,8 @@ onBeforeUnmount(() => {
     display: block;
     width: 18px;
     height: 18px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     border: 3px solid #fff;
-    box-shadow: 0 0 4px rgb(0 0 0 / 0.38);
+    box-shadow: var(--shadow-level-1);
 }
 </style>

@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { useModal } from '../../lib/focus';
 import Icon from './Icon.vue';
 import { useAppearanceStore } from '../../stores/appearance';
 import { THEMES } from '../../theme/themes';
@@ -7,6 +8,7 @@ import { THEMES } from '../../theme/themes';
 const open = defineModel<boolean>({ required: true });
 const appearance = useAppearanceStore();
 const dialog = ref<HTMLElement | null>(null);
+useModal(dialog, open);
 
 function close() {
     open.value = false;
@@ -15,12 +17,6 @@ function close() {
 function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape' && open.value) close();
 }
-
-watch(open, async (isOpen) => {
-    if (!isOpen) return;
-    await nextTick();
-    dialog.value?.focus();
-});
 
 onMounted(() => document.addEventListener('keydown', onKey));
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
@@ -31,7 +27,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
     <Teleport to="body">
         <div
             v-if="open"
-            class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 p-6"
+            class="bg-scrim/32 fixed inset-0 z-[2000] flex items-center justify-center p-6"
             @click.self="close"
         >
             <div
@@ -40,7 +36,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 aria-modal="true"
                 aria-labelledby="appearance-title"
                 tabindex="-1"
-                class="bg-surface-container-high w-full max-w-md rounded-[28px] p-6 shadow-[0_8px_24px_rgb(0_0_0/0.5)] outline-none"
+                class="bg-surface-container-high shadow-level-3 w-full max-w-md rounded-xl p-6 outline-none"
             >
                 <div class="flex items-start justify-between gap-4">
                     <div>
@@ -80,7 +76,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             :style="{ backgroundColor: option.preview.canvas }"
                         >
                             <span
-                                class="flex size-4 flex-col items-center justify-center gap-[3px] rounded-[4px]"
+                                class="flex size-4 flex-col items-center justify-center gap-[3px] rounded-xs"
                                 :style="{ backgroundColor: option.preview.raised }"
                             >
                                 <span

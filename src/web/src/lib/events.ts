@@ -1,3 +1,4 @@
+import { palette } from './palette';
 import { config } from '../config';
 import { formatClock, formatElapsed } from './format';
 
@@ -9,7 +10,7 @@ export interface Attendee {
 }
 
 /** The pin colour of an event the calendar gave none, as in the app. */
-export const EVENT_FALLBACK_COLOR = '#7c4dff';
+export const EVENT_FALLBACK_COLOR = palette.eventFallback;
 
 /** An event from Legacy Calendar. `point` is where its free-text location resolved to, once it has. */
 export interface CalendarEvent {

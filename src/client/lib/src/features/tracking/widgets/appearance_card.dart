@@ -3,6 +3,8 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/theme_settings.dart';
+import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// "Appearance" card in the profile tab: the same pill row Legacy Calendar
 /// uses, so the two apps feel like one product.
@@ -97,8 +99,7 @@ class ThemePill extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: selected
                             ? FontWeight.w600
                             : FontWeight.w500,
@@ -161,7 +162,7 @@ class _ThemeSwatch extends StatelessWidget {
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   color: preview.accent,
-                  border: Border.all(color: Colors.white70, width: 1.5),
+                  border: Border.all(color: AppPalette.white.withValues(alpha: 0.7), width: 1.5),
                 ),
               )
             : Column(
@@ -172,7 +173,7 @@ class _ThemeSwatch extends StatelessWidget {
                     height: 2.5,
                     decoration: BoxDecoration(
                       color: preview.accent,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: AppShape.full,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -181,7 +182,7 @@ class _ThemeSwatch extends StatelessWidget {
                     height: 2,
                     decoration: BoxDecoration(
                       color: preview.text.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: AppShape.full,
                     ),
                   ),
                 ],

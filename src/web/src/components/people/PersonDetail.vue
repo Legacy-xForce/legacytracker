@@ -154,7 +154,7 @@ async function changeSharing(enabled: boolean) {
             :href="navigateTo"
             target="_blank"
             rel="noopener noreferrer"
-            class="bg-secondary-container text-on-secondary-container mt-3 inline-flex h-11 items-center gap-2 rounded-full px-4 text-[15px] font-semibold transition hover:brightness-110"
+            class="bg-secondary-container text-on-secondary-container type-label-lg mt-3 inline-flex h-11 items-center gap-2 rounded-full px-4 font-semibold transition hover:brightness-110"
             :aria-label="`Navigate to ${peer.name}${distance ? `, ${distance} away` : ''}`"
         >
             <Icon name="directions" :size="22" />
@@ -211,7 +211,7 @@ async function changeSharing(enabled: boolean) {
                 />
             </div>
             <button
-                class="bg-secondary-container text-on-secondary-container mt-[22px] flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold transition hover:brightness-110"
+                class="bg-secondary-container text-on-secondary-container type-label-lg mt-[22px] flex h-[52px] w-full items-center justify-center gap-2 rounded-lg font-semibold transition hover:brightness-110"
                 @click="emit('history')"
             >
                 <Icon name="calendarMonth" :size="20" />

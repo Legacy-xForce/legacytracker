@@ -87,7 +87,7 @@ function left(index: number): string {
     top: 0;
     z-index: 0;
     overflow: visible;
-    filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.35));
+    filter: drop-shadow(0 1px 3px color-mix(in srgb, var(--color-shadow) 35%, transparent));
 }
 
 /* The bubble is the same colour as the avatar rings on the map (the peer
@@ -100,12 +100,12 @@ function left(index: number): string {
 .peer-cluster__face {
     position: absolute;
     top: 4px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
 }
 
 .peer-cluster__more {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -123,13 +123,13 @@ function left(index: number): string {
     width: 12px;
     height: 12px;
     margin-left: -6px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--color-beam);
     border: 2px solid var(--color-surface-container-highest);
-    box-shadow: 0 1px 4px rgb(0 0 0 / 0.38);
+    box-shadow: var(--shadow-level-1);
 }
 
 .peer-cluster__dot--stale {
-    background: #757575;
+    background: var(--color-outline);
 }
 </style>

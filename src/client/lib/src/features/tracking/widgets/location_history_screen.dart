@@ -6,6 +6,8 @@ import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
 import 'session_replay_screen.dart';
 import 'tracking_location_street_label.dart';
+import '../../../core/tokens.dart';
+import '../../../core/palette.dart';
 
 /// A user's trips: a month calendar marking the days with trips first, then
 /// the selected day's trips, each opening a replay.
@@ -485,7 +487,7 @@ class _DayCell extends StatelessWidget {
       height: 46,
       child: Center(
         child: Material(
-          color: fill ?? Colors.transparent,
+          color: fill ?? AppPalette.transparent,
           // A circle for the usual day, a pill once the km label needs the room.
           shape: StadiumBorder(
             side: isToday && !isSelected
@@ -522,7 +524,6 @@ class _DayCell extends StatelessWidget {
                         style: theme.textTheme.labelSmall?.copyWith(
                           // Quieter than the day number it sits under.
                           color: textColor.withValues(alpha: 0.7),
-                          fontSize: 10,
                           fontWeight: FontWeight.w500,
                           height: 1,
                         ),
@@ -617,7 +618,7 @@ class _OverviewStat extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -784,7 +785,7 @@ class _TripCard extends StatelessWidget {
 
     return Material(
       color: scheme.surfaceContainer,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: AppShape.md,
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
@@ -898,14 +899,14 @@ class _TimelineRail extends StatelessWidget {
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         color: color,
-        border: Border.all(color: Colors.white, width: 2),
+        border: Border.all(color: AppPalette.white, width: 2),
       ),
     );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Column(
         children: [
-          dot(const Color(0xFF34C759)),
+          dot(AppPalette.online),
           Expanded(
             child: Container(
               width: 2,
@@ -913,7 +914,7 @@ class _TimelineRail extends StatelessWidget {
               color: Theme.of(context).colorScheme.outlineVariant,
             ),
           ),
-          dot(const Color(0xFFFF453A)),
+          dot(AppPalette.arrival),
         ],
       ),
     );
@@ -933,7 +934,7 @@ class _StatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

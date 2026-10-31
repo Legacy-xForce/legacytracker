@@ -1,8 +1,10 @@
 <script setup lang="ts">
+import { palette } from '../../lib/palette';
 import { computed, ref, watch } from 'vue';
 import UserAvatar from '../UserAvatar.vue';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
+import { moveFocus } from '../../lib/focus';
 import { formatDistance, formatTripDuration } from '../../lib/format';
 import { formatPeriod, fromDateInput, MAX_PERIOD_DAYS, toDateInput, type PeriodKind } from '../../lib/periods';
 import { addDays } from '../../stores/history';
@@ -18,7 +20,7 @@ const KINDS: { kind: PeriodKind; label: string }[] = [
     { kind: 'custom', label: 'Custom' }
 ];
 // Gold, silver, bronze for the podium.
-const MEDALS = ['#f5c542', '#c0c7cc', '#d08b54'];
+const MEDALS = palette.medals;
 
 // The picked custom range as the date inputs show it (the period's last day, not the midnight after).
 const firstDay = ref('');
@@ -51,22 +53,30 @@ const totals = computed(() => ({
 function kmh(metersPerSecond: number): string {
     return `${Math.round(metersPerSecond * 3.6)} km/h`;
 }
+
+// Arrow keys move between periods and select as they go (automatic activation).
+function onTabKey(event: KeyboardEvent) {
+    moveFocus(event, '[role="tab"]')?.click();
+}
 </script>
 
 <template>
     <div class="px-4 pt-1 pb-8">
-        <div class="bg-surface-container flex rounded-full p-1" role="tablist" aria-label="Period">
+        <div class="bg-surface-container flex rounded-full p-1" role="tablist" aria-label="Period" @keydown="onTabKey">
             <button
                 v-for="option in KINDS"
                 :key="option.kind"
-                class="type-label-lg flex-1 rounded-full py-2 font-semibold transition-colors"
+                class="type-label-lg min-h-11 flex-1 rounded-full py-2 font-semibold transition-colors"
                 :class="
                     board.period.kind === option.kind
                         ? 'bg-secondary-container text-on-secondary-container'
                         : 'text-on-surface-variant hover:bg-on-surface/5'
                 "
                 role="tab"
+                :id="`travel-tab-${option.kind}`"
+                aria-controls="travel-panel"
                 :aria-selected="board.period.kind === option.kind"
+                :tabindex="board.period.kind === option.kind ? 0 : -1"
                 :data-kind="option.kind"
                 @click="board.setKind(option.kind)"
             >
@@ -74,7 +84,12 @@ function kmh(metersPerSecond: number): string {
             </button>
         </div>
 
-        <div class="bg-surface-container mt-3 overflow-hidden rounded-[20px]">
+        <div
+            id="travel-panel"
+            role="tabpanel"
+            :aria-labelledby="`travel-tab-${board.period.kind}`"
+            class="bg-surface-container mt-3 overflow-hidden rounded-md"
+        >
             <div class="h-[3px]">
                 <div v-if="board.loading" class="bg-primary/25 relative h-full overflow-hidden">
                     <div
@@ -103,7 +118,7 @@ function kmh(metersPerSecond: number): string {
                 </button>
             </div>
             <div v-if="board.period.kind === 'custom'" class="grid grid-cols-2 gap-2 px-3 pb-3">
-                <label class="bg-surface-container-high rounded-2xl px-3 py-2">
+                <label class="bg-surface-container-high rounded-lg px-3 py-2">
                     <span class="type-label-sm text-on-surface-variant block">From</span>
                     <input
                         v-model="firstDay"
@@ -114,7 +129,7 @@ function kmh(metersPerSecond: number): string {
                         @change="applyCustom"
                     />
                 </label>
-                <label class="bg-surface-container-high rounded-2xl px-3 py-2">
+                <label class="bg-surface-container-high rounded-lg px-3 py-2">
                     <span class="type-label-sm text-on-surface-variant block">To</span>
                     <input
                         v-model="lastDay"
@@ -158,7 +173,7 @@ function kmh(metersPerSecond: number): string {
                     <li
                         v-for="entry in board.entries"
                         :key="entry.userId"
-                        class="bg-surface-container rounded-[18px] px-3 pt-3 pb-2.5"
+                        class="bg-surface-container rounded-lg px-3 pt-3 pb-2.5"
                         :class="{ 'ring-primary/70 ring-[1.5px]': entry.userId === selfId }"
                         data-entry
                     >
@@ -166,9 +181,7 @@ function kmh(metersPerSecond: number): string {
                             <span
                                 class="type-label-lg flex size-7 shrink-0 items-center justify-center rounded-full font-bold tabular-nums"
                                 :class="
-                                    entry.rank <= 3 && entry.tripCount > 0
-                                        ? 'text-[#1a1300]'
-                                        : 'text-on-surface-variant'
+                                    entry.rank <= 3 && entry.tripCount > 0 ? 'text-on-medal' : 'text-on-surface-variant'
                                 "
                                 :style="
                                     entry.rank <= 3 && entry.tripCount > 0

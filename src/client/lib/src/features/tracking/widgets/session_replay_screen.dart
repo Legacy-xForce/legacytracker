@@ -20,6 +20,7 @@ import 'map_layers.dart';
 import 'mapbox_map.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
+import '../../../core/palette.dart';
 
 /// The route as Mapbox draws it: one dark casing under one coloured line per
 /// run of similar speed, exactly like the web replay layer. The casing is
@@ -35,7 +36,7 @@ List<MapPolyline> buildSpeedRoute({
     MapPolyline(
       id: 'route-casing',
       points: points,
-      color: const Color(0xFF000000),
+      color: AppPalette.black,
       opacity: 0.35,
       width: 8,
       layer: MapPolylineLayer.casing,
@@ -350,11 +351,11 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
         : null;
     final startImage = _imageFor(
       'start',
-      () => _icons.endpointMarker(const Color(0xFF34C759)),
+      () => _icons.endpointMarker(AppPalette.online),
     );
     final endImage = _imageFor(
       'end',
-      () => _icons.endpointMarker(const Color(0xFFFF453A)),
+      () => _icons.endpointMarker(AppPalette.arrival),
     );
 
     final markers = <MapMarker>[

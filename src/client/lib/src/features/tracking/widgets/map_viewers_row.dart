@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../../../data/models/map_viewer.dart';
 import 'user_avatar.dart';
+import '../../../core/palette.dart';
+import '../../../core/tokens.dart';
 
 /// Who has the live map open right now, as overlapping faces in a pill beside
 /// the sharing pill. Nothing shows while nobody does.
@@ -31,7 +33,7 @@ class MapViewersRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
+      duration: AppMotion.of(context, AppMotion.medium),
       transitionBuilder: (child, animation) => FadeTransition(
         opacity: animation,
         child: ScaleTransition(
@@ -94,14 +96,14 @@ class MapViewersRow extends StatelessWidget {
       excludeSemantics: true,
       child: Material(
         color: background,
-        elevation: 4,
-        shadowColor: Colors.black54,
+        elevation: 2,
+        shadowColor: AppPalette.black.withValues(alpha: 0.54),
         shape: const StadiumBorder(),
         child: Padding(
           padding: const EdgeInsets.all(_padding),
           child: AnimatedSize(
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOutCubic,
+            duration: AppMotion.of(context, AppMotion.medium),
+            curve: AppMotion.standard,
             alignment: Alignment.centerLeft,
             child: SizedBox(
               width: faceSize + (circles.length - 1) * (faceSize - _overlap),
@@ -135,8 +137,8 @@ class _PopIn extends StatelessWidget {
   Widget build(BuildContext context) {
     return TweenAnimationBuilder<double>(
       tween: Tween(begin: 0, end: 1),
-      duration: const Duration(milliseconds: 220),
-      curve: Curves.easeOutBack,
+      duration: AppMotion.of(context, AppMotion.medium),
+      curve: AppMotion.emphasizedDecelerate,
       builder: (context, value, child) =>
           Transform.scale(scale: value, child: child),
       child: child,

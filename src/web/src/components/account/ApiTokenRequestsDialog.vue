@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { listApiTokenRequests, type ApiToken, type ApiTokenRequest } from '../../api/apiTokens';
+import { useModal } from '../../lib/focus';
 import { formatClock, formatShortDate } from '../../lib/format';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
@@ -59,20 +60,25 @@ function statusClass(status: number): string {
         : 'bg-secondary-container text-on-secondary-container';
 }
 
+const panel = ref<HTMLElement | null>(null);
+useModal(panel);
+
 onMounted(() => void load());
 </script>
 
 <template>
     <Teleport to="body">
         <div
-            class="fixed inset-0 z-[1950] flex items-stretch justify-center bg-black/60 sm:items-center sm:p-6"
+            class="bg-scrim/32 fixed inset-0 z-[1950] flex items-stretch justify-center sm:items-center sm:p-6"
             @click.self="emit('close')"
         >
             <section
+                ref="panel"
+                tabindex="-1"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="token-requests-title"
-                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_rgb(0_0_0/0.5)] sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
+                class="bg-surface-container scroll-panel shadow-level-3 flex w-full flex-col overflow-y-auto outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-xl"
             >
                 <header class="flex items-center gap-3 px-6 pt-5 pb-2">
                     <span
@@ -113,7 +119,7 @@ onMounted(() => void load());
                     <div v-if="loading && requests === null" class="flex justify-center py-8"><Spinner /></div>
                     <div
                         v-else-if="loadError && requests === null"
-                        class="bg-surface-container-high flex items-center gap-3 rounded-2xl py-2 pr-2 pl-4"
+                        class="bg-surface-container-high flex items-center gap-3 rounded-lg py-2 pr-2 pl-4"
                     >
                         <Icon name="cloudOff" :size="20" class="text-on-surface-variant" />
                         <span class="type-body-md flex-1">{{ loadError }}</span>
@@ -126,7 +132,7 @@ onMounted(() => void load());
                     </div>
                     <p
                         v-else-if="requests && requests.length === 0"
-                        class="bg-surface-container-high type-body-md text-on-surface-variant rounded-2xl px-4 py-4"
+                        class="bg-surface-container-high type-body-md text-on-surface-variant rounded-lg px-4 py-4"
                         data-empty-requests
                     >
                         No requests yet. Anything using this token will show up here.
@@ -134,7 +140,7 @@ onMounted(() => void load());
                     <template v-else>
                         <div
                             v-if="loadError"
-                            class="bg-error-container text-on-error-container type-body-sm flex items-center gap-2 rounded-xl px-3 py-2"
+                            class="bg-error-container text-on-error-container type-body-sm flex items-center gap-2 rounded-md px-3 py-2"
                         >
                             <Icon name="error" :size="16" />
                             <span class="flex-1">{{ loadError }}</span>
@@ -143,16 +149,16 @@ onMounted(() => void load());
                             <li
                                 v-for="request in requests ?? []"
                                 :key="request.id"
-                                class="bg-surface-container-high rounded-2xl px-4 py-3"
+                                class="bg-surface-container-high rounded-lg px-4 py-3"
                                 data-request-row
                             >
                                 <div class="flex items-center gap-2">
                                     <span
-                                        class="bg-surface-container-lowest type-label-sm rounded-md px-1.5 py-0.5 font-mono font-bold"
+                                        class="bg-surface-container-lowest type-label-sm rounded-sm px-1.5 py-0.5 font-mono font-bold"
                                         >{{ request.method }}</span
                                     >
                                     <span
-                                        class="type-label-sm rounded-md px-1.5 py-0.5 font-mono font-bold"
+                                        class="type-label-sm rounded-sm px-1.5 py-0.5 font-mono font-bold"
                                         :class="statusClass(request.statusCode)"
                                         data-request-status
                                         >{{ request.statusCode }}</span
