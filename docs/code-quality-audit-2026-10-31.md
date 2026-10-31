@@ -1,7 +1,8 @@
 # Code Quality Audit — 2026-10-31
 
-A repo-wide sweep for **duplicated, obsolete, redundant and non-optimized code**, written so each
-finding below can be pasted straight into a GitHub issue.
+A repo-wide sweep for **duplicated, obsolete, redundant and non-optimized code**. All 78 findings below
+have been filed as issues **#141 – #218** with labels, issue type, priority and effort — see Appendix 2
+for the ID→issue map and the label scheme.
 
 ## Scope and method
 
@@ -43,10 +44,33 @@ issue gets filed twice.
 
 ## Labels
 
-- **Kind**: `kind/duplicate` · `kind/dead-code` · `kind/redundant` · `kind/perf` · `kind/drift` · `ci` · `docs`
-- **Area**: `area/client` · `area/native` · `area/server` · `area/web` · `area/repo`
-- **Priority**: `priority/high` (user-visible bug, hot path, or shipped weight/risk) · `priority/medium` · `priority/low`
-- **Effort**: `S` (under half a day) · `M` (a day or two) · `L` (multi-day, cross-package)
+Each finding carries inline `**Kind:**` / `**Area:**` / `**Priority:**` / `**Effort:**` tags in this
+document's own shorthand. When the findings were filed as issues (Appendix 2), that shorthand mapped onto
+this repo's flat label names — these are the labels that are actually on the issues:
+
+| Tag in this doc | Label on the issue |
+|---|---|
+| `kind/duplicate` | `duplicate-code` |
+| `kind/dead-code` | `dead-code` |
+| `kind/perf` | `performance` |
+| `kind/redundant` | `tech-debt` |
+| `kind/drift` | `contract-drift` (+ `documentation` where docs are the thing to fix) |
+| `ci` | `ci` |
+| `docs` | `documentation` (already existed) |
+| `area/client` | `flutter` (already existed) |
+| `area/web` | `web` (already existed) |
+| `area/server` | `server` |
+| `area/native` | `native` |
+| `area/repo` | `repo` |
+| priority high / medium / low | `P1` / `P2` / `P3` |
+| effort S / M / L | `effort-S` / `effort-M` / `effort-L` |
+
+Fifteen labels were created (`server`, `native`, `repo`, `ci`, `performance`, `dead-code`,
+`duplicate-code`, `tech-debt`, `contract-drift`, `P1`, `P2`, `P3`, `effort-S`, `effort-M`, `effort-L`);
+the pre-existing `bug`, `documentation`, `flutter`, `web`, `ui`, `a11y` were reused. Two more were added
+by hand where they fit: `ui` on the component/widget consolidations, `a11y` on F-2 (the tokens tablist is
+missing its keyboard wiring). Issue **type** is `Bug` for the seven findings where behaviour is already
+wrong, `Task` for the rest.
 
 ## Tally
 
@@ -1807,55 +1831,54 @@ detector radii, storage caps. Visit monitoring is **not** deprecated, so its use
 `analysis_options.yaml:16`. README, OpenAPI and route status codes agree for `your_ip`, `201` and the
 API-token endpoints.
 
-## Appendix 2 — Turning this into issues
+## Appendix 2 — Filed as issues
 
-Create the label set once (adjust names to whatever the repo already uses):
+All 78 findings were filed on 2026-10-31 as **#141 – #218**, each with the labels from the table in
+*Labels* above, an issue type, and a link back to this file. `D-10` is the reference table rather than a
+finding, so it was skipped and the numbering stays contiguous:
 
-```bash
-cd /home/ubuntu/git_projects/legacytracker
-for l in kind/duplicate:#aaaaaa kind/dead-code:#888888 kind/redundant:#c5c5c5 \
-         kind/perf:#1d76db kind/drift:#d4c5f9 ci:#0e8a16 docs:#0075ca \
-         area/client:#fbca04 area/native:#b60205 area/server:#1d76db area/web:#5319e7 area/repo:#ededed \
-         priority/high:#b60205 priority/medium:#fbca04 priority/low:#0e8a16 \
-         effort/S:#0e8a16 effort/M:#fbca04 effort/L:#b60205; do
-  gh label create "${l%%:*}" --color "$(echo "${l#*:}" | tr -d '#')" --repo Legacy-xForce/legacytracker || true
-done
-```
+| Section | Findings | Issues |
+|---|---|---|
+| A — repo, CI, cross-package | A-1 … A-16 | #141 … #156 |
+| B — server | B-1 … B-14 | #157 … #170 |
+| C — Flutter client | C-1 … C-21 | #171 … #191 |
+| D — native engines | D-1 … D-9 | #192 … #200 |
+| E — web logic | E-1 … E-10 | #201 … #210 |
+| F — web UI | F-1 … F-8 | #211 … #218 |
 
-Each finding is one `### <ID> · <title>` heading followed by a `**Kind:** … **Effort:**` metadata line
-and prose, so issues can be split mechanically. These snippets were run against this file and verified;
-this report does **not** create issues on its own.
+So within a section, subtract from the first issue of that section: `C-1`=#171 so `C-4`=#174,
+`B-1`=#157 so `B-11`=#167, `E-1`=#201 so `E-8`=#208. The full ID→number list is `gh issue list --search
+"code-quality-audit" --json number,title`.
+
+**Filed as type `Bug`** (behaviour is already wrong, not merely untidy):
+#143 (A-3), #146 (A-6), #164 (B-8), #184 (C-14), #193 (D-2), #199 (D-8), #211 (F-1). Everything else is
+type `Task`.
+
+**P1 — the 20 high-priority issues**, in filing order:
+#141 A-1, #142 A-2, #143 A-3, #144 A-4, #152 A-12, #154 A-14, #157 B-1, #158 B-2, #171 C-1, #172 C-2,
+#173 C-3, #174 C-4, #181 C-11, #192 D-1, #193 D-2, #194 D-3, #201 E-1, #202 E-2, #203 E-3, #211 F-1.
+
+**Dependencies between issues.** #162 (B-6, legacy auth cleanup) is set as *blocked by* #153 (A-13, the
+migration doc must list the live sites first) using GitHub's issue relationship. Three more pairs are
+worth doing in the stated order but are not formally linked, because either order works if you prefer:
+`C-1` before `C-11` (the `ApiClient` refactor absorbs `MockBackend`'s seam), `E-1` together with `F-4`
+(one coalescing rule, two surfaces), and every `A-*` cross-package item after `A-1`/`A-2` land (so the
+generated contracts have somewhere to run in CI). Section G groups all 78 into 13 PR-sized bundles, which
+is the better unit of work than 78 separate branches — consider `gh issue edit --add-parent` to hang each
+bundle's issues under one `epic`.
+
+Re-filing or repairing a single finding after editing this document (labels are `--add-label`/
+`--remove-label` on `gh issue edit`; `gh issue create` takes `--label`):
 
 ```bash
 f=docs/code-quality-audit-2026-10-31.md
-id=B-1                      # the finding's ID, e.g. A-14, C-12, D-2, F-8
+id=B-1                                   # finding ID
 start="### $id "
-
-# title, labels, body
 title=$(awk -v s="$start" 'index($0,s){split($0,p,"· "); print p[2]; exit}' "$f")
-meta=$(awk  -v s="$start" 'index($0,s){f=1; next} f && /^\*\*Kind:/{print;exit}' "$f")
-labels=$(printf '%s\n' "$meta" | tr '`' '\n' | grep -E '^(kind/|area/|ci$|docs$)')
-labels="$labels
-priority/$(printf '%s\n' "$meta" | sed -n 's/.*Priority:[^a-z]*\([a-z]*\).*/\1/p')
-effort/$(printf '%s\n'  "$meta" | sed -n 's/.*Effort:[^SML]*\([SML]\).*/\1/p')"
-body=$(awk -v s="$start" 'index($0,s){f=1} f && !index($0,s) && /^(### |## )/{exit} f' "$f")
-
-echo "$title"; echo "$labels" | sed '/^$/d'   # review before publishing
+body=$(awk -v s="$start" 'index($0,s){f=1;next} f && /^(###|## |---$)/{exit} f && /^\*\*Kind:/{next} f' "$f")
+echo "$title"; printf '%s\n' "$body" | head    # review before pushing the edit
 ```
 
-Create it once the labels look right:
-
-```bash
-gh issue create --repo Legacy-xForce/legacytracker \
-  --title "$title" --label "$(echo "$labels" | sed '/^$/d' | paste -sd, -)" --body "$body"
-```
-
-To walk the whole file, list the IDs first and loop over them —
-`awk '/^### [A-F]-/{split($0,a," "); print a[2]}' "$f"` yields all 79 headings; skip `D-10`, which is the
-reference table rather than an issue, leaving the 78 findings. Do **not** bulk-create without reading a
-couple of rendered issues first: several entries depend on others (`A-13` before `B-6`, `C-1` before
-`C-11`, `E-1` together with `F-4`), and one tracking issue per row of the table in section G is usually
-the better unit of work than 78 separate ones.
 
 
 
