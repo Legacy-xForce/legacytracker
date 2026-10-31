@@ -385,7 +385,7 @@ class _SearchBox extends StatelessWidget {
             onChanged: onChanged,
             textInputAction: TextInputAction.search,
             decoration: InputDecoration(
-              hintText: 'Search a street or place',
+              labelText: 'Search a street or place',
               prefixIcon: const Icon(Icons.search_rounded),
               suffixIcon: searching
                   ? const Padding(

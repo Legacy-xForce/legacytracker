@@ -315,22 +315,33 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                 clipBehavior: Clip.antiAlias,
                 child: Column(
                   children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
+                    // The header's own taps (back, checkpoints) are separate
+                    // buttons; this node is the drag handle's equivalent for
+                    // assistive tech: a button that opens or folds the sheet.
+                    Semantics(
+                      container: true,
+                      button: true,
+                      label: _isCollapsed
+                          ? 'Expand people list'
+                          : 'Collapse people list',
                       onTap: _toggle,
-                      onVerticalDragUpdate: (details) {
-                        _dragSheet(
-                          details.primaryDelta ?? 0,
-                          constraints.maxHeight,
-                        );
-                      },
-                      onVerticalDragEnd: _settleSheet,
-                      child: _SheetHeader(
-                        height: _headerHeight,
-                        users: users,
-                        showingDetail: detailUser != null && !_isCollapsed,
-                        onBack: _closeDetail,
-                        onCheckpoints: _openCheckpoints,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: _toggle,
+                        onVerticalDragUpdate: (details) {
+                          _dragSheet(
+                            details.primaryDelta ?? 0,
+                            constraints.maxHeight,
+                          );
+                        },
+                        onVerticalDragEnd: _settleSheet,
+                        child: _SheetHeader(
+                          height: _headerHeight,
+                          users: users,
+                          showingDetail: detailUser != null && !_isCollapsed,
+                          onBack: _closeDetail,
+                          onCheckpoints: _openCheckpoints,
+                        ),
                       ),
                     ),
                     Expanded(
@@ -432,21 +443,26 @@ class _SheetHeader extends StatelessWidget {
                           child: Semantics(
                             button: true,
                             label: 'All people',
-                            child: Padding(
-                              padding: const EdgeInsets.fromLTRB(2, 8, 14, 8),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.arrow_back_rounded,
-                                    color: theme.colorScheme.onSurface,
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Text(
-                                    'All people',
-                                    style: theme.textTheme.titleMedium,
-                                  ),
-                                ],
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                minHeight: kMinInteractiveDimension,
+                              ),
+                              child: Padding(
+                                padding: const EdgeInsets.fromLTRB(2, 8, 14, 8),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      Icons.arrow_back_rounded,
+                                      color: theme.colorScheme.onSurface,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      'All people',
+                                      style: theme.textTheme.titleMedium,
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
@@ -516,35 +532,43 @@ class _CheckpointsButton extends StatelessWidget {
     final scheme = theme.colorScheme;
     return Semantics(
       button: true,
+      label: 'Checkpoints',
+      excludeSemantics: true,
+      onTap: onTap,
       child: Material(
         color: scheme.secondaryContainer,
         borderRadius: BorderRadius.circular(999),
         child: InkWell(
           borderRadius: BorderRadius.circular(999),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.place_outlined,
-                  size: 16,
-                  color: scheme.onSecondaryContainer,
-                ),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    'Checkpoints',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: theme.textTheme.labelMedium?.copyWith(
-                      color: scheme.onSecondaryContainer,
-                      fontWeight: FontWeight.w600,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(
+              minHeight: kMinInteractiveDimension,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(10, 8, 12, 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.place_outlined,
+                    size: 16,
+                    color: scheme.onSecondaryContainer,
+                  ),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      'Checkpoints',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.labelMedium?.copyWith(
+                        color: scheme.onSecondaryContainer,
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

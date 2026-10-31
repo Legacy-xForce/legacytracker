@@ -25,6 +25,7 @@ import '../map_variant.dart';
 import 'map_geometry.dart';
 import '../map_settings.dart';
 import 'map_layers.dart';
+import 'map_contents_semantics.dart';
 import 'map_viewers_row.dart';
 import 'mapbox_map.dart';
 import 'marker_icons.dart';
@@ -599,6 +600,15 @@ class TrackingMapTabState extends State<TrackingMapTab>
                 service: widget.mapboxTokenService,
                 devToken: const String.fromEnvironment('MAPBOX_TOKEN'),
                 builder: (context, session) => _mapWidget(context, session),
+              ),
+            ),
+            Positioned(
+              top: 0,
+              left: 0,
+              child: MapContentsSemantics(
+                selfId: widget.selfProfile.id,
+                people: [widget.selfProfile, ...widget.peers],
+                onSelect: widget.onUserSelected,
               ),
             ),
             Positioned(
