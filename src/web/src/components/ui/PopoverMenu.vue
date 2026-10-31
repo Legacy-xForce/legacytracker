@@ -40,7 +40,7 @@ onBeforeUnmount(() => {
             <div
                 v-if="open"
                 role="menu"
-                class="bg-surface-container-high absolute top-0 right-full z-10 mr-2 min-w-[200px] origin-top-right rounded-2xl py-2 shadow-[0_8px_24px_rgb(0_0_0/0.5)]"
+                class="bg-surface-container-high absolute top-0 right-full z-10 mr-2 min-w-[200px] origin-top-right rounded-2xl py-2 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)]"
             >
                 <slot />
             </div>

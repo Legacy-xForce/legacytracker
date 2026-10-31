@@ -278,7 +278,7 @@ onBeforeUnmount(() => {
     >
         <div
             ref="card"
-            class="bg-surface-container-low pointer-events-auto w-full max-w-[560px] rounded-[28px] px-5 pt-4 pb-4 shadow-[0_8px_32px_rgb(0_0_0/0.45)]"
+            class="bg-surface-container-low pointer-events-auto w-full max-w-[560px] rounded-[28px] px-5 pt-4 pb-4 shadow-[0_8px_32px_color-mix(in_srgb,var(--color-shadow)_45%,transparent)]"
         >
             <div class="flex items-center gap-3">
                 <UserAvatar :user-id="userId" :name="userName" :size="36" />

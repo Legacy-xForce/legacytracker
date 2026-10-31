@@ -50,7 +50,7 @@ function onPointerUp() {
 <template>
     <section
         v-if="wide"
-        class="bg-surface-container-low absolute top-3 bottom-3 left-3 z-[1000] flex w-[380px] flex-col overflow-hidden rounded-[28px] shadow-[0_8px_32px_rgb(0_0_0/0.45)]"
+        class="bg-surface-container-low absolute top-3 bottom-3 left-3 z-[1000] flex w-[380px] flex-col overflow-hidden rounded-[28px] shadow-[0_8px_32px_color-mix(in_srgb,var(--color-shadow)_45%,transparent)]"
     >
         <header class="flex h-[68px] shrink-0 items-center px-5">
             <slot name="header" />
@@ -61,7 +61,7 @@ function onPointerUp() {
     </section>
     <section
         v-else
-        class="bg-surface-container-low absolute inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-[28px] shadow-[0_-8px_32px_rgb(0_0_0/0.5)]"
+        class="bg-surface-container-low absolute inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-[28px] shadow-[0_-8px_32px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)]"
         :class="{ 'transition-[height] duration-[240ms] ease-out': dragHeight === null }"
         :style="{ height: `${height}px` }"
     >

@@ -32,7 +32,7 @@ const names = computed(() =>
         <!-- Who has the map open right now, us included. Faces only, like the app. -->
         <div
             v-if="ordered.length > 0"
-            class="bg-surface-container-high origin-left rounded-full p-[3px] shadow-[0_4px_12px_rgb(0_0_0/0.4)]"
+            class="bg-surface-container-high origin-left rounded-full p-[3px] shadow-[0_4px_12px_color-mix(in_srgb,var(--color-shadow)_40%,transparent)]"
             role="img"
             :aria-label="`Viewing the map: ${names}`"
             :title="`Viewing the map: ${names}`"

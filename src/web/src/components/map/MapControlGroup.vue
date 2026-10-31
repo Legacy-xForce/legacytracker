@@ -2,7 +2,7 @@
     <!-- A floating card holding a column of map buttons separated by hairlines, so related controls
          read as one group instead of a stack of buttons. -->
     <div
-        class="map-control-group bg-surface-container-high flex flex-col items-center rounded-2xl shadow-[0_4px_12px_rgb(0_0_0/0.4)]"
+        class="map-control-group bg-surface-container-high flex flex-col items-center rounded-2xl shadow-[0_4px_12px_color-mix(in_srgb,var(--color-shadow)_40%,transparent)]"
     >
         <slot />
     </div>

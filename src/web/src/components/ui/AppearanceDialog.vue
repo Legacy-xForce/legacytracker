@@ -31,7 +31,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
     <Teleport to="body">
         <div
             v-if="open"
-            class="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 p-6"
+            class="bg-scrim/32 fixed inset-0 z-[2000] flex items-center justify-center p-6"
             @click.self="close"
         >
             <div
@@ -40,7 +40,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 aria-modal="true"
                 aria-labelledby="appearance-title"
                 tabindex="-1"
-                class="bg-surface-container-high w-full max-w-md rounded-[28px] p-6 shadow-[0_8px_24px_rgb(0_0_0/0.5)] outline-none"
+                class="bg-surface-container-high w-full max-w-md rounded-[28px] p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
             >
                 <div class="flex items-start justify-between gap-4">
                     <div>

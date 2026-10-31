@@ -349,7 +349,7 @@ watch(replaying, (isReplaying) => {
             <PopoverMenu v-model="accountMenu">
                 <template #trigger>
                     <button
-                        class="bg-surface-container-high flex size-12 items-center justify-center rounded-full shadow-[0_4px_12px_rgb(0_0_0/0.4)]"
+                        class="bg-surface-container-high flex size-12 items-center justify-center rounded-full shadow-[0_4px_12px_color-mix(in_srgb,var(--color-shadow)_40%,transparent)]"
                         :aria-label="`Account: ${session.username}`"
                         :title="session.username"
                         @click="accountMenu = !accountMenu"

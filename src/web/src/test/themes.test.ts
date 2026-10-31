@@ -1,4 +1,7 @@
+/// <reference types="node" />
 import { beforeEach, describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
     DEFAULT_THEME_ID,
     THEMES,
@@ -67,4 +70,87 @@ describe('themes', () => {
         expect(isThemeId('adaptive')).toBe(false);
         expect(getStoredTheme()).toBe(DEFAULT_THEME_ID);
     });
+});
+
+const css = readFileSync(resolve(process.cwd(), 'src/style.css'), 'utf8');
+
+/** Colour tokens declared for a theme: teal lives in `@theme`, every other theme in its own block. */
+function themeTokens(id: string): Record<string, string> {
+    const header = id === 'teal' ? '@theme static {' : `html[data-theme='${id}'] {`;
+    const start = css.indexOf(header);
+    const body = css.slice(start, css.indexOf('\n}', start));
+    const tokens: Record<string, string> = {};
+    for (const [, name, value] of body.matchAll(/--color-([a-z-]+): (#[0-9a-f]{6});/g)) tokens[name] = value;
+    return tokens;
+}
+
+function luminance(hex: string): number {
+    const channel = (offset: number) => {
+        const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
+        return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(1) + 0.7152 * channel(3) + 0.0722 * channel(5);
+}
+
+function contrast(a: string, b: string): number {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi + 0.05) / (lo + 0.05);
+}
+
+describe('colour role tokens', () => {
+    const roles = [
+        'secondary',
+        'on-secondary',
+        'secondary-container',
+        'on-secondary-container',
+        'tertiary',
+        'on-tertiary',
+        'tertiary-container',
+        'on-tertiary-container',
+        'surface-dim',
+        'surface-bright',
+        'inverse-surface',
+        'inverse-on-surface',
+        'inverse-primary',
+        'surface-tint',
+        'scrim',
+        'shadow'
+    ];
+    const pairs: [string, string][] = [
+        ['on-secondary', 'secondary'],
+        ['on-secondary-container', 'secondary-container'],
+        ['on-tertiary', 'tertiary'],
+        ['on-tertiary-container', 'tertiary-container'],
+        ['inverse-on-surface', 'inverse-surface'],
+        ['inverse-primary', 'inverse-surface'],
+        ['on-surface', 'surface-dim'],
+        ['on-surface', 'surface-bright']
+    ];
+
+    for (const theme of THEMES) {
+        describe(theme.id, () => {
+            const tokens = themeTokens(theme.id);
+
+            it('declares every colour role', () => {
+                for (const role of roles) expect(tokens[role], role).toBeDefined();
+            });
+
+            it('keeps text pairs readable', () => {
+                for (const [fg, bg] of pairs) {
+                    expect(contrast(tokens[fg], tokens[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(
+                        fg === 'inverse-primary' ? 3 : 4.5
+                    );
+                }
+            });
+
+            it('tints the surface with the primary and brackets the surface between dim and bright', () => {
+                expect(tokens['surface-tint']).toBe(tokens['primary']);
+                const [dim, surface, bright] = ['surface-dim', 'surface', 'surface-bright'].map((t) =>
+                    luminance(tokens[t])
+                );
+                expect(dim).toBeLessThanOrEqual(surface);
+                expect(bright).toBeGreaterThanOrEqual(surface);
+            });
+        });
+    }
 });

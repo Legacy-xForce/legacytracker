@@ -65,14 +65,14 @@ onMounted(() => void load());
 <template>
     <Teleport to="body">
         <div
-            class="fixed inset-0 z-[1950] flex items-stretch justify-center bg-black/60 sm:items-center sm:p-6"
+            class="bg-scrim/32 fixed inset-0 z-[1950] flex items-stretch justify-center sm:items-center sm:p-6"
             @click.self="emit('close')"
         >
             <section
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="token-requests-title"
-                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_rgb(0_0_0/0.5)] sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
+                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
             >
                 <header class="flex items-center gap-3 px-6 pt-5 pb-2">
                     <span
