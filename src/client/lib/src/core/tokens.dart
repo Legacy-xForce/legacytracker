@@ -31,6 +31,28 @@ abstract final class AppShape {
   static const BorderRadius sheetTop = BorderRadius.vertical(top: xlRadius);
 }
 
+/// Material 3 motion: four durations and the standard/emphasized easings. A
+/// transition asks for its duration through [AppMotion.of] so it collapses to
+/// nothing when the system asks to reduce motion.
+abstract final class AppMotion {
+  static const short = Duration(milliseconds: 100);
+  static const medium = Duration(milliseconds: 200);
+  static const long = Duration(milliseconds: 300);
+  static const extraLong = Duration(milliseconds: 500);
+
+  /// A loading spinner's revolution; it is not a transition, so it is the one
+  /// duration that does not collapse.
+  static const spin = Duration(milliseconds: 900);
+
+  static const standard = Cubic(0.2, 0, 0, 1);
+  static const emphasized = Curves.easeInOutCubicEmphasized;
+  static const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1);
+
+  /// [duration], or zero when the user turned animations off.
+  static Duration of(BuildContext context, Duration duration) =>
+      MediaQuery.disableAnimationsOf(context) ? Duration.zero : duration;
+}
+
 /// Material 3 label sizes for text painted onto map bitmaps, where there is no
 /// [Theme] to read a [TextTheme] from.
 abstract final class AppType {

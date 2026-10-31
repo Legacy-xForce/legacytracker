@@ -25,8 +25,8 @@ const names = computed(() =>
 <template>
     <Transition
         enter-from-class="opacity-0 scale-75"
-        enter-active-class="transition duration-200 ease-out"
-        leave-active-class="transition duration-150 ease-in"
+        enter-active-class="transition duration-medium ease-standard"
+        leave-active-class="transition duration-medium ease-standard"
         leave-to-class="opacity-0 scale-75"
     >
         <!-- Who has the map open right now, us included. Faces only, like the app. -->
@@ -38,14 +38,14 @@ const names = computed(() =>
             :title="`Viewing the map: ${names}`"
         >
             <div
-                class="relative transition-[width] duration-200 ease-out"
+                class="duration-medium ease-standard relative transition-[width]"
                 :style="{ width: `${FACE + (circles - 1) * STEP}px`, height: `${FACE}px` }"
             >
                 <TransitionGroup enter-from-class="opacity-0 scale-0" leave-to-class="opacity-0 scale-0">
                     <span
                         v-for="(viewer, i) in faces"
                         :key="viewer.id"
-                        class="absolute top-0 transition-all duration-200 ease-out"
+                        class="duration-medium ease-standard absolute top-0 transition-all"
                         :style="{ left: `${i * STEP}px` }"
                         :data-viewer="viewer.id"
                     >
@@ -60,7 +60,7 @@ const names = computed(() =>
                     <span
                         v-if="more > 0"
                         key="more"
-                        class="bg-surface-container-highest type-label-md absolute top-0 flex items-center justify-center rounded-full font-bold transition-all duration-200 ease-out"
+                        class="bg-surface-container-highest type-label-md duration-medium ease-standard absolute top-0 flex items-center justify-center rounded-full font-bold transition-all"
                         :style="{
                             left: `${faces.length * STEP}px`,
                             width: `${FACE}px`,

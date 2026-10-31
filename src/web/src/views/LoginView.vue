@@ -36,8 +36,8 @@ async function signIn() {
                 <Transition
                     enter-from-class="opacity-0 -translate-y-1"
                     leave-to-class="opacity-0"
-                    enter-active-class="transition duration-200"
-                    leave-active-class="transition duration-150"
+                    enter-active-class="transition duration-medium"
+                    leave-active-class="transition duration-medium"
                 >
                     <div
                         v-if="error"

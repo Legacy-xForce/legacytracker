@@ -1001,7 +1001,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
     // `late final` controller used to build it too late (in dispose()).
     _spin = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: AppMotion.spin,
     );
     _todaySessions = _loadTodaySessions();
   }

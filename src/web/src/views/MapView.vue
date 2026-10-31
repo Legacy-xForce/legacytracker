@@ -426,7 +426,7 @@ watch(replaying, (isReplaying) => {
 
         <!-- Bottom right, clear of the Mapbox attribution: under the zoom buttons on wide screens, above the sheet on phones. -->
         <div
-            class="absolute right-3 z-[1000] flex flex-col items-end gap-3 transition-[bottom] duration-200"
+            class="duration-medium absolute right-3 z-[1000] flex flex-col items-end gap-3 transition-[bottom]"
             :class="wide ? 'bottom-8' : undefined"
             :style="wide ? undefined : { bottom: `${(sheetExpanded ? expandedHeight : SHEET_HEADER) + 12}px` }"
         >

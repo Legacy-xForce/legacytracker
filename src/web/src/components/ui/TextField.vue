@@ -35,7 +35,7 @@ function inputAttrs() {
             />
             <label
                 :for="id"
-                class="text-on-surface-variant type-body-lg peer-focus:text-primary pointer-events-none absolute top-1/2 left-2 origin-left -translate-y-1/2 transition-all duration-150 peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-xs peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-xs"
+                class="text-on-surface-variant type-body-lg peer-focus:text-primary duration-medium pointer-events-none absolute top-1/2 left-2 origin-left -translate-y-1/2 transition-all peer-focus:top-2.5 peer-focus:translate-y-0 peer-focus:text-xs peer-[:not(:placeholder-shown)]:top-2.5 peer-[:not(:placeholder-shown)]:translate-y-0 peer-[:not(:placeholder-shown)]:text-xs"
                 >{{ label }}</label
             >
         </div>

@@ -217,7 +217,7 @@ class _TravelTabState extends State<TravelTab> {
             else
               AnimatedOpacity(
                 opacity: _loading ? 0.6 : 1,
-                duration: const Duration(milliseconds: 150),
+                duration: AppMotion.of(context, AppMotion.medium),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [

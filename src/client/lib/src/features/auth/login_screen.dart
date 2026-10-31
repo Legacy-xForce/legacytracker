@@ -81,8 +81,8 @@ class LoginScreen extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             AnimatedSize(
-                              duration: const Duration(milliseconds: 200),
-                              curve: Curves.easeOutCubic,
+                              duration: AppMotion.of(context, AppMotion.medium),
+                              curve: AppMotion.standard,
                               alignment: Alignment.topCenter,
                               child: error == null
                                   ? const SizedBox(width: double.infinity)

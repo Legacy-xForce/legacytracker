@@ -9,6 +9,18 @@
     /* Elevation is mostly tone (surface-container-*); a shadow is kept only
        where something floats over the map (level 1) or over the page
        (level 3: dialogs, menus, sheets, toasts). */
+    /* Material 3 motion. */
+    --duration-short: 100ms;
+    --duration-medium: 200ms;
+    --duration-long: 300ms;
+    --duration-extra-long: 500ms;
+    --default-transition-duration: var(--duration-medium);
+    --default-transition-timing-function: var(--ease-standard);
+    --ease-*: initial;
+    --ease-standard: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+    --ease-emphasized-decelerate: cubic-bezier(0.05, 0.7, 0.1, 1);
+
     --shadow-*: initial;
     --shadow-level-1:
         0 1px 3px color-mix(in srgb, var(--color-shadow) 35%, transparent),
@@ -523,4 +535,34 @@ html[data-theme='catppuccin-latte'] {
     border-radius: var(--radius-full);
     background: var(--color-primary);
     border: none;
+}
+
+@utility duration-short {
+    transition-duration: var(--duration-short);
+}
+@utility duration-medium {
+    transition-duration: var(--duration-medium);
+}
+@utility duration-long {
+    transition-duration: var(--duration-long);
+}
+@utility duration-extra-long {
+    transition-duration: var(--duration-extra-long);
+}
+
+/* Reduced motion: transitions and animations finish at once. Spinners keep
+   turning, since a frozen one reads as a hang. */
+@media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important;
+        scroll-behavior: auto !important;
+    }
+    .animate-spin {
+        animation-duration: 1s !important;
+        animation-iteration-count: infinite !important;
+    }
 }

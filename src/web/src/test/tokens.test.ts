@@ -77,3 +77,29 @@ describe('elevation', () => {
         expect([...css.matchAll(/--shadow-level-[0-9]+:/g)].length).toBeLessThanOrEqual(5);
     });
 });
+
+describe('motion', () => {
+    it('has the Material 3 durations, the same as the phone app', () => {
+        const durations = Object.fromEntries(
+            [...css.matchAll(/--duration-([a-z-]+): (\d+)ms;/g)].map((m) => [m[1], Number(m[2])])
+        );
+        expect(durations).toEqual({ short: 100, medium: 200, long: 300, 'extra-long': 500 });
+    });
+
+    it('turns transitions and animations off for reduced motion', () => {
+        expect(css).toMatch(/@media \(prefers-reduced-motion: reduce\)[\s\S]*transition-duration: 0\.01ms !important/);
+    });
+
+    it('writes no millisecond duration outside the tokens', () => {
+        const offenders: string[] = [];
+        for (const file of sources(root)) {
+            if (file.endsWith('style.css') || file.endsWith('motionTokens.ts')) continue;
+            for (const [index, line] of readFileSync(file, 'utf8').split('\n').entries()) {
+                if (/duration-\d+|transition[^;]*\d+m?s\b|duration: \d{2,}/.test(line)) {
+                    offenders.push(`${file}:${index + 1} ${line.trim()}`);
+                }
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
+});

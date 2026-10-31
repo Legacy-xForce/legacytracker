@@ -62,7 +62,7 @@ function onPointerUp() {
     <section
         v-else
         class="bg-surface-container-low shadow-level-3 absolute inset-x-0 bottom-0 z-[1000] flex flex-col overflow-hidden rounded-t-xl"
-        :class="{ 'transition-[height] duration-[240ms] ease-out': dragHeight === null }"
+        :class="{ 'ease-standard duration-long transition-[height]': dragHeight === null }"
         :style="{ height: `${height}px` }"
     >
         <header

@@ -52,6 +52,57 @@ void main() {
     expect(offenders, isEmpty);
   });
 
+  testWidgets('motion collapses when the system turns animations off', (
+    tester,
+  ) async {
+    late Duration normal;
+    late Duration reduced;
+    await tester.pumpWidget(
+      MediaQuery(
+        data: const MediaQueryData(),
+        child: Builder(
+          builder: (context) {
+            normal = AppMotion.of(context, AppMotion.long);
+            return MediaQuery(
+              data: const MediaQueryData(disableAnimations: true),
+              child: Builder(
+                builder: (context) {
+                  reduced = AppMotion.of(context, AppMotion.long);
+                  return const SizedBox();
+                },
+              ),
+            );
+          },
+        ),
+      ),
+    );
+    expect(normal, AppMotion.long);
+    expect(reduced, Duration.zero);
+  });
+
+  test('the four durations are 100, 200, 300 and 500 ms', () {
+    expect(
+      [AppMotion.short, AppMotion.medium, AppMotion.long, AppMotion.extraLong]
+          .map((d) => d.inMilliseconds),
+      [100, 200, 300, 500],
+    );
+  });
+
+  test('animations take their duration from AppMotion', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/tokens.dart')) continue;
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'duration: const Duration\(milliseconds').hasMatch(lines[i])) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
   test('no text size is written outside the theme and token files', () {
     final offenders = <String>[];
     for (final file in Directory('lib').listSync(recursive: true)) {

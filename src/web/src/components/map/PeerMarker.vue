@@ -76,7 +76,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     position: relative;
     width: 152px;
     height: 168px;
-    transition: transform 220ms ease-out;
+    transition: transform var(--duration-medium) var(--ease-standard);
 }
 
 .peer-marker--self {
@@ -97,7 +97,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     position: absolute;
     inset: 0;
     pointer-events: none;
-    transition: transform 260ms cubic-bezier(0.33, 1, 0.68, 1);
+    transition: transform var(--duration-long) var(--ease-emphasized-decelerate);
 }
 
 .peer-marker__beam::before,
@@ -127,7 +127,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--beam) 22%, transparent);
     pointer-events: none;
-    animation: peer-marker-pulse 1.2s ease-out infinite alternate;
+    animation: peer-marker-pulse 1.2s ease-standard infinite alternate;
 }
 
 @keyframes peer-marker-pulse {

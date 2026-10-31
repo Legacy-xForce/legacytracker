@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { duration, motion } from '../../lib/motionTokens';
 import { palette } from '../../lib/palette';
 import type { GeoJSONSource } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
@@ -95,7 +96,7 @@ function goto(latitude: number, longitude: number) {
     if (!target) return;
     const zoom = Math.max(target.getZoom(), ZOOM);
     const centre = centerShowing(target, { lat: latitude, lng: longitude }, zoom, insets.value);
-    target.flyTo({ center: [centre.lng, centre.lat], zoom, duration: 800 });
+    target.flyTo({ center: [centre.lng, centre.lat], zoom, duration: motion(duration.extraLong * 1.6) });
 }
 
 watch(

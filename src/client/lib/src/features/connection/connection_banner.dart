@@ -80,11 +80,11 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
 
     return AnimatedSlide(
       offset: widget.visible ? Offset.zero : const Offset(0, -1.5),
-      duration: const Duration(milliseconds: 280),
-      curve: Curves.easeOutCubic,
+      duration: AppMotion.of(context, AppMotion.long),
+      curve: AppMotion.standard,
       child: AnimatedOpacity(
         opacity: widget.visible ? 1 : 0,
-        duration: const Duration(milliseconds: 200),
+        duration: AppMotion.of(context, AppMotion.medium),
         child: IgnorePointer(
           ignoring: !widget.visible,
           child: Semantics(

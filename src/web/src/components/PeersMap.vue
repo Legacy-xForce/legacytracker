@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { duration, motion } from '../lib/motionTokens';
 import mapboxgl, { type Map as MapboxMap } from 'mapbox-gl';
 import { onBeforeUnmount, onMounted, provide, ref, shallowRef, toRef, watch } from 'vue';
 import '../lib/mapbox';
@@ -280,7 +281,7 @@ function openGroup(ids: string[], event: MouseEvent) {
     map.fitBounds(boundsOf(ids.map((member) => entries.get(member)!.motion.shown)), {
         ...framePadding(props.insets, 90),
         maxZoom: map.getMaxZoom(),
-        duration: 600
+        duration: motion(duration.extraLong)
     });
 }
 
@@ -293,7 +294,7 @@ function focus(id: string) {
     flying = true;
     map.once('moveend', () => (flying = false));
     const centre = centerShowing(map, entry.motion.shown, zoom, props.insets);
-    map.flyTo({ center: [centre.lng, centre.lat], zoom, duration: 800 });
+    map.flyTo({ center: [centre.lng, centre.lat], zoom, duration: motion(duration.extraLong * 1.6) });
 }
 
 /** Frames everyone on the map. */
@@ -303,7 +304,7 @@ function fitEveryone() {
     map.fitBounds(boundsOf([...entries.values()].map((entry) => entry.motion.target)), {
         ...framePadding(props.insets, 60),
         maxZoom: 15,
-        duration: 800
+        duration: motion(duration.extraLong * 1.6)
     });
 }
 

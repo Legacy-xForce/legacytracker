@@ -77,8 +77,8 @@ onBeforeUnmount(() => {
         <Transition
             enter-from-class="opacity-0 scale-95"
             leave-to-class="opacity-0 scale-95"
-            enter-active-class="transition duration-150 ease-out"
-            leave-active-class="transition duration-100 ease-in"
+            enter-active-class="transition duration-medium ease-standard"
+            leave-active-class="transition duration-short ease-standard"
         >
             <div
                 v-if="open"
