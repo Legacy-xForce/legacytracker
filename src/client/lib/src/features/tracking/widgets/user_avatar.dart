@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+
+import '../avatar_pictures.dart';
 
 /// Saturated enough to read on light map tiles and the dark UI alike, and
 /// all dark enough for a white initial.
@@ -53,32 +56,115 @@ String? profilePictureUrl(String userId) => _accountId.hasMatch(userId)
     ? 'https://auth.legacy-group.tech/auth/profile-picture/$userId'
     : null;
 
-/// Picture URLs to try for a person, in order. The tracker still carries a
-/// legacy `avatar_url` for accounts that set one before Legacy Auth took over,
-/// and those old paths answer with the sign-in page instead of an image, so
-/// every candidate has to be able to fall through to the next one.
+/// Picture URLs to try for a person, in order.
+///
+/// Legacy Auth is the source of truth now, so its picture comes first. The
+/// tracker still carries an older `avatar_url` for accounts that set one
+/// before Legacy Auth took over, but those paths can be dead or slow — trying
+/// them first is what left some people with only their initial, because
+/// `Image.network` had no timeout to fall through on. The stored URL is kept
+/// as a fallback for accounts that never set a picture in Legacy Auth.
 List<String> avatarCandidateUrls(String userId, {String avatarUrl = ''}) {
   final auth = profilePictureUrl(userId);
   return <String>[
-    if (avatarUrl.isNotEmpty) avatarUrl,
-    if (auth != null && auth != avatarUrl) auth,
+    ?auth,
+    if (avatarUrl.isNotEmpty && avatarUrl != auth) avatarUrl,
   ];
 }
 
-/// The first URL that decodes, or nothing, so the initial underneath stays.
-class _FallbackNetworkImage extends StatelessWidget {
-  const _FallbackNetworkImage({required this.urls});
+/// A person's photo, once [AvatarPictures] has it.
+///
+/// The picture is cached for the session, so rebuilding or remounting this
+/// widget (opening the details and going back, switching people) does not
+/// fetch it again. A temporary failure retries on its own instead of waiting
+/// for the list to be reopened.
+class _AvatarPhoto extends StatefulWidget {
+  const _AvatarPhoto({
+    required this.userId,
+    required this.avatarUrl,
+    required this.pictures,
+  });
 
-  final List<String> urls;
+  final String userId;
+  final String avatarUrl;
+  final AvatarPictures pictures;
+
+  @override
+  State<_AvatarPhoto> createState() => _AvatarPhotoState();
+}
+
+class _AvatarPhotoState extends State<_AvatarPhoto> {
+  /// Long enough not to hammer a phone that is offline, short enough that a
+  /// photo that failed on a bad connection still appears without a tap.
+  static const _retryDelay = Duration(seconds: 30);
+
+  /// Stop after a few tries. A legacy URL blocked by the platform (cleartext
+  /// HTTP in a release build) would otherwise be retried for as long as the
+  /// list stays open; reopening it starts over.
+  static const _maxRetries = 5;
+
+  AvatarPicture? _picture;
+  Timer? _retry;
+  int _generation = 0;
+  int _retries = 0;
+
+  List<String> get _urls =>
+      avatarCandidateUrls(widget.userId, avatarUrl: widget.avatarUrl);
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant _AvatarPhoto oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.userId != oldWidget.userId ||
+        widget.avatarUrl != oldWidget.avatarUrl ||
+        widget.pictures != oldWidget.pictures) {
+      _retry?.cancel();
+      _picture = null;
+      _retries = 0;
+      _load();
+    }
+  }
+
+  @override
+  void dispose() {
+    _retry?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final generation = ++_generation;
+    final urls = _urls;
+    if (urls.isEmpty) return;
+
+    final picture = await widget.pictures.load(urls.join('|'), urls);
+    if (!mounted || generation != _generation) return;
+    setState(() => _picture = picture);
+    if (!picture.retryable) {
+      _retries = 0;
+    } else if (_retries < _maxRetries) {
+      _retries++;
+      _retry?.cancel();
+      _retry = Timer(_retryDelay, _load);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (urls.isEmpty) return const SizedBox.shrink();
-    return Image.network(
-      urls.first,
+    final bytes = _picture?.bytes;
+    if (bytes == null) return const SizedBox.shrink();
+    return Image.memory(
+      bytes,
       fit: BoxFit.cover,
-      errorBuilder: (context, error, stack) =>
-          _FallbackNetworkImage(urls: urls.sublist(1)),
+      // Avatars are a few dozen pixels. A legacy URL can point at a huge
+      // photo, and decoding it at full size for every face made a quick walk
+      // through the list feel slow.
+      cacheWidth: 256,
+      gaplessPlayback: true,
     );
   }
 }
@@ -95,6 +181,7 @@ class UserAvatar extends StatelessWidget {
     this.ringColor,
     this.ringWidth = 0,
     this.dimmed = false,
+    this.pictures,
   });
 
   final String userId;
@@ -103,6 +190,10 @@ class UserAvatar extends StatelessWidget {
 
   /// A local photo (our own picked avatar) takes precedence over [avatarUrl].
   final Uint8List? imageBytes;
+
+  /// Where remote photos are cached. Defaults to the app's session cache;
+  /// tests pass their own with a fake client.
+  final AvatarPictures? pictures;
   final double size;
   final Color? ringColor;
   final double ringWidth;
@@ -118,8 +209,10 @@ class UserAvatar extends StatelessWidget {
     // and stays when there is none (Legacy Auth answers 404).
     final photo = imageBytes != null
         ? Image.memory(imageBytes!, fit: BoxFit.cover)
-        : _FallbackNetworkImage(
-            urls: avatarCandidateUrls(userId, avatarUrl: avatarUrl),
+        : _AvatarPhoto(
+            userId: userId,
+            avatarUrl: avatarUrl,
+            pictures: pictures ?? AvatarPictures.instance,
           );
 
     Widget avatar = Container(
