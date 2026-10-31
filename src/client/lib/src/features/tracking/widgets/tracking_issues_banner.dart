@@ -62,7 +62,7 @@ class _TrackingIssuesBannerState extends State<TrackingIssuesBanner> {
                         ? issues.first.title
                         : 'Location updates are being blocked',
                     style: theme.textTheme.titleSmall?.copyWith(
-                      color: accent,
+                      color: theme.colorScheme.onSurface,
                       fontWeight: FontWeight.w700,
                     ),
                   ),

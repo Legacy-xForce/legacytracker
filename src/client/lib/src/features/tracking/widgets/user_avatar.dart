@@ -2,13 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-/// Saturated enough to read on light map tiles and the dark UI alike, and
-/// all dark enough for a white initial.
-const _palette = <Color>[
+/// Saturated enough to read on light map tiles and the dark UI alike. The
+/// initial is white or near-black, whichever contrasts more ([initialColorFor]).
+const avatarPalette = <Color>[
   Color(0xFF1E88E5), // blue
   Color(0xFF8E24AA), // purple
   Color(0xFFF4511E), // deep orange
-  Color(0xFF00897B), // teal
+  Color(0xFF00796B), // teal
   Color(0xFFD81B60), // pink
   Color(0xFF43A047), // green
   Color(0xFF3949AB), // indigo
@@ -16,6 +16,21 @@ const _palette = <Color>[
   Color(0xFF6D4C41), // brown
   Color(0xFF00838F), // cyan
 ];
+
+const _darkInitial = Color(0xFF1B1B1B);
+
+double _contrast(Color a, Color b) {
+  final hi = a.computeLuminance();
+  final lo = b.computeLuminance();
+  return (hi > lo ? hi + 0.05 : lo + 0.05) / (hi > lo ? lo + 0.05 : hi + 0.05);
+}
+
+/// The initial's color on an avatar background: white or near-black,
+/// whichever reads better (at least 4.5:1 for every palette color).
+Color initialColorFor(Color background) =>
+    _contrast(Colors.white, background) >= _contrast(_darkInitial, background)
+        ? Colors.white
+        : _darkInitial;
 
 /// A stable color per user, so the same person reads the same on their
 /// marker, inside a group bubble and in the people list.
@@ -25,7 +40,7 @@ Color userColor(String userId) {
   for (final unit in userId.codeUnits) {
     hash = ((hash ^ unit) * 0x01000193) & 0xffffffff;
   }
-  return _palette[hash % _palette.length];
+  return avatarPalette[hash % avatarPalette.length];
 }
 
 String userInitial(String name) {
@@ -142,7 +157,7 @@ class UserAvatar extends StatelessWidget {
             child: Text(
               userInitial(name),
               style: TextStyle(
-                color: Colors.white,
+                color: initialColorFor(color),
                 fontSize: size * 0.42,
                 fontWeight: FontWeight.w700,
                 height: 1,

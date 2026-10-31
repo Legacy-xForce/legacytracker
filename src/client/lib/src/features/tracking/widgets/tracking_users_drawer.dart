@@ -928,7 +928,7 @@ class _StatusChip extends StatelessWidget {
           Text(
             status.label,
             style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: status.color,
+              color: Theme.of(context).colorScheme.onSurface,
               fontWeight: FontWeight.w600,
             ),
           ),

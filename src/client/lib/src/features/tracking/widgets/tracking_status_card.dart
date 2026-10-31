@@ -217,15 +217,15 @@ class _LiveBadge extends StatelessWidget {
         color: color.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
       ),
-      child: const Row(
+      child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.circle, size: 7, color: color),
-          SizedBox(width: 4),
+          const Icon(Icons.circle, size: 7, color: color),
+          const SizedBox(width: 4),
           Text(
             'LIVE',
             style: TextStyle(
-              color: color,
+              color: Theme.of(context).colorScheme.onSurface,
               fontSize: 10,
               fontWeight: FontWeight.w800,
               letterSpacing: 0.6,

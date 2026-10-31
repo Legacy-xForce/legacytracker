@@ -754,7 +754,7 @@ class MarkerIconFactory extends ChangeNotifier {
         userInitial(person.name),
         center,
         TextStyle(
-          color: Colors.white,
+          color: initialColorFor(saturated),
           fontSize: size * 0.42,
           fontWeight: FontWeight.w700,
         ),
@@ -779,6 +779,8 @@ class MarkerIconFactory extends ChangeNotifier {
     required double size,
   }) {
     final radius = size / 2;
+    final initialBackground =
+        person.isStale ? Colors.grey.shade600 : userColor(person.id);
     final circle = Rect.fromCircle(center: center, radius: radius);
     canvas.save();
     canvas.clipPath(Path()..addOval(circle));
@@ -788,17 +790,14 @@ class MarkerIconFactory extends ChangeNotifier {
       canvas.drawCircle(
         center,
         radius,
-        Paint()
-          ..color = person.isStale
-              ? Colors.grey.shade600
-              : userColor(person.id),
+        Paint()..color = initialBackground,
       );
       _drawText(
         canvas,
         userInitial(person.name),
         center,
         TextStyle(
-          color: Colors.white,
+          color: initialColorFor(initialBackground),
           fontSize: size * 0.42,
           fontWeight: FontWeight.w700,
           height: 1,
