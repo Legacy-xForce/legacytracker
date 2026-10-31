@@ -60,6 +60,24 @@ export class VueMarker<P extends object> {
         this.element.addEventListener('click', handler);
     }
 
+    /**
+     * Makes the marker reachable from the keyboard: a focusable button that Enter or Space
+     * "clicks", named for screen readers. Call again to rename it.
+     */
+    setLabel(label: string): void {
+        const el = this.element;
+        el.setAttribute('role', 'button');
+        el.setAttribute('aria-label', label);
+        if (el.tabIndex < 0 || !el.hasAttribute('tabindex')) {
+            el.tabIndex = 0;
+            el.addEventListener('keydown', (event) => {
+                if (event.key !== 'Enter' && event.key !== ' ') return;
+                event.preventDefault();
+                el.click();
+            });
+        }
+    }
+
     update(props: P): void {
         render(h(this.component, props as Record<string, unknown>), this.element);
     }

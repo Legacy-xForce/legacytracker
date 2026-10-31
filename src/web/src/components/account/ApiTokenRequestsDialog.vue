@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { listApiTokenRequests, type ApiToken, type ApiTokenRequest } from '../../api/apiTokens';
+import { useModal } from '../../lib/focus';
 import { formatClock, formatShortDate } from '../../lib/format';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
@@ -59,6 +60,9 @@ function statusClass(status: number): string {
         : 'bg-secondary-container text-on-secondary-container';
 }
 
+const panel = ref<HTMLElement | null>(null);
+useModal(panel);
+
 onMounted(() => void load());
 </script>
 
@@ -69,10 +73,12 @@ onMounted(() => void load());
             @click.self="emit('close')"
         >
             <section
+                ref="panel"
+                tabindex="-1"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="token-requests-title"
-                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
+                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
             >
                 <header class="flex items-center gap-3 px-6 pt-5 pb-2">
                     <span

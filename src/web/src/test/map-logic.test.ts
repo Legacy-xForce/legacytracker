@@ -70,15 +70,15 @@ describe('groupByDistance real-world limit', () => {
 
 describe('group bubble', () => {
     it('grows a face at a time and folds the rest into "+N"', () => {
-        expect(clusterWidth(2)).toBe(73);
-        expect(clusterWidth(3)).toBe(100);
+        expect(clusterWidth(2)).toBe(85);
+        expect(clusterWidth(3)).toBe(118);
         // Four or more: three faces plus the "+N" face.
-        expect(clusterWidth(4)).toBe(127);
-        expect(clusterWidth(9)).toBe(127);
+        expect(clusterWidth(4)).toBe(151);
+        expect(clusterWidth(9)).toBe(151);
     });
 
     it('sits on the location by the dot at the tip of its tail', () => {
-        expect(clusterAnchor(2)).toEqual([36.5, 58]);
+        expect(clusterAnchor(2)).toEqual([42.5, 64]);
     });
 });
 

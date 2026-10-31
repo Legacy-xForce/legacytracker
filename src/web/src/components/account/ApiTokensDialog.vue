@@ -13,6 +13,7 @@ import {
     type IssuedApiToken
 } from '../../api/apiTokens';
 import { formatShortDate, formatUpdatedAgo } from '../../lib/format';
+import { useModal } from '../../lib/focus';
 import { showToast } from '../../lib/toast';
 import ApiTokenRequestsDialog from './ApiTokenRequestsDialog.vue';
 import ConfirmDialog from '../ui/ConfirmDialog.vue';
@@ -213,6 +214,9 @@ function usage(token: ApiToken): string {
     return `${created} · Used ${formatUpdatedAgo(Date.now() - token.lastUsedAt)}`;
 }
 
+const panel = ref<HTMLElement | null>(null);
+useModal(panel);
+
 function onKey(event: KeyboardEvent) {
     if (event.key !== 'Escape' || pending.value) return;
     // Escape backs out one level at a time: the activity popup, the open panel,
@@ -237,10 +241,12 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
             @click.self="emit('close')"
         >
             <section
+                ref="panel"
+                tabindex="-1"
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="api-tokens-title"
-                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
+                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
             >
                 <header class="flex items-center gap-3 px-6 pt-5 pb-2">
                     <span

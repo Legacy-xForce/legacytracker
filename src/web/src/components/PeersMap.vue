@@ -84,6 +84,15 @@ function applyTheme() {
     applyStandardTheme(map, props.lightPreset);
 }
 
+function markerLabel(peer: Peer): string {
+    const name = peer.id === props.selfId ? `${peer.name} (you)` : peer.name;
+    return isStale(peer, props.now) ? `${name}, not heard from in a while` : name;
+}
+
+function groupLabel(members: { name: string }[]): string {
+    return `${members.length} people together: ${members.map((m) => m.name).join(', ')}. Zoom in`;
+}
+
 function markerProps(peer: Peer) {
     return {
         userId: peer.id,
@@ -122,11 +131,13 @@ function sync() {
                 PEER_MARKER_SIZE[1] / 2
             ]);
             view.onClick(() => emit('select', peer.id));
+            view.setLabel(markerLabel(peer));
             entry = { peer, view, motion: new Motion(at) };
             entries.set(peer.id, entry);
         } else {
             entry.peer = peer;
             entry.view.update(markerProps(peer));
+            entry.view.setLabel(markerLabel(peer));
             glideTo(entry, at, now);
         }
         // Whoever is selected draws over everyone else.
@@ -236,6 +247,7 @@ function regroup() {
         const existing = groups.get(key);
         if (existing) {
             existing.view.update(bubble);
+            existing.view.setLabel(groupLabel(bubble.members));
             existing.view.setLatLng(centroid(ids));
             show(existing.view);
             continue;
@@ -249,6 +261,7 @@ function regroup() {
         );
         view.setZIndex(2);
         view.onClick((event) => openGroup(ids, event));
+        view.setLabel(groupLabel(bubble.members));
         show(view);
         groups.set(key, { ids, view });
     }

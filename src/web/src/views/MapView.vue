@@ -28,6 +28,7 @@ import { useMediaQuery } from '../composables/useMediaQuery';
 import { useNow } from '../composables/useNow';
 import { config } from '../config';
 import type { Insets } from '../lib/camera';
+import { moveFocus } from '../lib/focus';
 import { decodeJwt } from '../lib/jwt';
 import { hasPosition } from '../lib/peers';
 import { storage } from '../lib/storage';
@@ -144,6 +145,11 @@ function tabActive(id: 'people' | 'travel' | 'places'): boolean {
         : id === 'places'
           ? view.value === 'places'
           : view.value !== 'travel' && view.value !== 'places';
+}
+
+// Arrow keys move between the panel's tabs and select as they go (automatic activation).
+function onTabKey(event: KeyboardEvent) {
+    moveFocus(event, '[role="tab"]')?.click();
 }
 
 function onCrosshair(latitude: number, longitude: number) {
@@ -463,7 +469,12 @@ watch(replaying, (isReplaying) => {
                         >
                     </template>
                     <!-- Switches the panel between the people list and the travel leaderboard. -->
-                    <span class="bg-surface-container-high ml-auto flex rounded-full p-1" role="tablist">
+                    <span
+                        class="bg-surface-container-high ml-auto flex rounded-full p-1"
+                        role="tablist"
+                        aria-label="Panel"
+                        @keydown="onTabKey"
+                    >
                         <button
                             v-for="option in [
                                 { id: 'people', icon: 'group', label: 'People' },
@@ -471,14 +482,17 @@ watch(replaying, (isReplaying) => {
                                 { id: 'places', icon: 'place', label: 'Checkpoints' }
                             ] as const"
                             :key="option.id"
-                            class="flex h-8 w-11 items-center justify-center rounded-full transition-colors"
+                            class="flex h-11 w-12 items-center justify-center rounded-full transition-colors"
                             :class="
                                 tabActive(option.id)
                                     ? 'bg-secondary-container text-on-secondary-container'
                                     : 'text-on-surface-variant hover:bg-on-surface/6'
                             "
                             role="tab"
+                            :id="`panel-tab-${option.id}`"
+                            aria-controls="panel-tabpanel"
                             :aria-selected="tabActive(option.id)"
+                            :tabindex="tabActive(option.id) ? 0 : -1"
                             :aria-label="option.label"
                             :title="option.label"
                             :data-view="option.id"
@@ -510,38 +524,49 @@ watch(replaying, (isReplaying) => {
                 </template>
             </template>
 
-            <TripHistory v-if="view === 'history'" />
-            <TravelLeaderboard v-else-if="view === 'travel'" :self-id="selfId" />
-            <PlacesPanel
-                v-else-if="view === 'places'"
-                :cursor="crosshair"
-                @draft="placeDraft = $event"
-                @goto="(lat, lng) => draftLayer?.goto(lat, lng)"
-            />
-            <PersonDetail
-                v-else-if="view === 'person' && selected"
-                :key="selected.id"
-                :peer="selected"
-                :self="selected.id === selfId"
-                :now="now"
-                :viewer="self && hasPosition(self) ? { lat: self.latitude!, lng: self.longitude! } : null"
-                @history="openHistory"
-            />
-            <div v-else class="px-3 pb-4">
-                <div v-if="!peers.loaded" class="text-primary flex justify-center p-6"><Spinner :size="28" /></div>
-                <p v-else-if="people.length === 0" class="type-body-md text-on-surface-variant p-4 text-center">
-                    Nobody is sharing yet.
-                </p>
-                <div v-else class="space-y-1">
-                    <PersonRow
-                        v-for="peer in people"
-                        :key="peer.id"
-                        :peer="peer"
-                        :self="peer.id === selfId"
-                        :selected="peer.id === selectedId"
-                        :now="now"
-                        @select="select(peer.id)"
-                    />
+            <div
+                id="panel-tabpanel"
+                class="contents"
+                :role="view === 'history' ? undefined : 'tabpanel'"
+                :aria-labelledby="
+                    view === 'history'
+                        ? undefined
+                        : `panel-tab-${tabActive('travel') ? 'travel' : tabActive('places') ? 'places' : 'people'}`
+                "
+            >
+                <TripHistory v-if="view === 'history'" />
+                <TravelLeaderboard v-else-if="view === 'travel'" :self-id="selfId" />
+                <PlacesPanel
+                    v-else-if="view === 'places'"
+                    :cursor="crosshair"
+                    @draft="placeDraft = $event"
+                    @goto="(lat, lng) => draftLayer?.goto(lat, lng)"
+                />
+                <PersonDetail
+                    v-else-if="view === 'person' && selected"
+                    :key="selected.id"
+                    :peer="selected"
+                    :self="selected.id === selfId"
+                    :now="now"
+                    :viewer="self && hasPosition(self) ? { lat: self.latitude!, lng: self.longitude! } : null"
+                    @history="openHistory"
+                />
+                <div v-else class="px-3 pb-4">
+                    <div v-if="!peers.loaded" class="text-primary flex justify-center p-6"><Spinner :size="28" /></div>
+                    <p v-else-if="people.length === 0" class="type-body-md text-on-surface-variant p-4 text-center">
+                        Nobody is sharing yet.
+                    </p>
+                    <div v-else class="space-y-1">
+                        <PersonRow
+                            v-for="peer in people"
+                            :key="peer.id"
+                            :peer="peer"
+                            :self="peer.id === selfId"
+                            :selected="peer.id === selectedId"
+                            :now="now"
+                            @select="select(peer.id)"
+                        />
+                    </div>
                 </div>
             </div>
         </PeopleSheet>

@@ -104,8 +104,8 @@ function left(index: number): string {
 }
 
 .peer-cluster__more {
-    width: 38px;
-    height: 38px;
+    width: 44px;
+    height: 44px;
     display: flex;
     align-items: center;
     justify-content: center;

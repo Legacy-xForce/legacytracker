@@ -3,6 +3,7 @@ import { computed, ref, watch } from 'vue';
 import UserAvatar from '../UserAvatar.vue';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
+import { moveFocus } from '../../lib/focus';
 import { formatDistance, formatTripDuration } from '../../lib/format';
 import { formatPeriod, fromDateInput, MAX_PERIOD_DAYS, toDateInput, type PeriodKind } from '../../lib/periods';
 import { addDays } from '../../stores/history';
@@ -51,22 +52,30 @@ const totals = computed(() => ({
 function kmh(metersPerSecond: number): string {
     return `${Math.round(metersPerSecond * 3.6)} km/h`;
 }
+
+// Arrow keys move between periods and select as they go (automatic activation).
+function onTabKey(event: KeyboardEvent) {
+    moveFocus(event, '[role="tab"]')?.click();
+}
 </script>
 
 <template>
     <div class="px-4 pt-1 pb-8">
-        <div class="bg-surface-container flex rounded-full p-1" role="tablist" aria-label="Period">
+        <div class="bg-surface-container flex rounded-full p-1" role="tablist" aria-label="Period" @keydown="onTabKey">
             <button
                 v-for="option in KINDS"
                 :key="option.kind"
-                class="type-label-lg flex-1 rounded-full py-2 font-semibold transition-colors"
+                class="type-label-lg min-h-11 flex-1 rounded-full py-2 font-semibold transition-colors"
                 :class="
                     board.period.kind === option.kind
                         ? 'bg-secondary-container text-on-secondary-container'
                         : 'text-on-surface-variant hover:bg-on-surface/5'
                 "
                 role="tab"
+                :id="`travel-tab-${option.kind}`"
+                aria-controls="travel-panel"
                 :aria-selected="board.period.kind === option.kind"
+                :tabindex="board.period.kind === option.kind ? 0 : -1"
                 :data-kind="option.kind"
                 @click="board.setKind(option.kind)"
             >
@@ -74,7 +83,12 @@ function kmh(metersPerSecond: number): string {
             </button>
         </div>
 
-        <div class="bg-surface-container mt-3 overflow-hidden rounded-[20px]">
+        <div
+            id="travel-panel"
+            role="tabpanel"
+            :aria-labelledby="`travel-tab-${board.period.kind}`"
+            class="bg-surface-container mt-3 overflow-hidden rounded-[20px]"
+        >
             <div class="h-[3px]">
                 <div v-if="board.loading" class="bg-primary/25 relative h-full overflow-hidden">
                     <div

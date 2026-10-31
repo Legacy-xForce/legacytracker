@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { useModal } from '../../lib/focus';
 import Icon from './Icon.vue';
 import { useAppearanceStore } from '../../stores/appearance';
 import { THEMES } from '../../theme/themes';
@@ -7,6 +8,7 @@ import { THEMES } from '../../theme/themes';
 const open = defineModel<boolean>({ required: true });
 const appearance = useAppearanceStore();
 const dialog = ref<HTMLElement | null>(null);
+useModal(dialog, open);
 
 function close() {
     open.value = false;
@@ -15,12 +17,6 @@ function close() {
 function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape' && open.value) close();
 }
-
-watch(open, async (isOpen) => {
-    if (!isOpen) return;
-    await nextTick();
-    dialog.value?.focus();
-});
 
 onMounted(() => document.addEventListener('keydown', onKey));
 onBeforeUnmount(() => document.removeEventListener('keydown', onKey));

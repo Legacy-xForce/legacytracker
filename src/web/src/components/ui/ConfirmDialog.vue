@@ -1,9 +1,13 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted } from 'vue';
+import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { useModal } from '../../lib/focus';
 import Spinner from './Spinner.vue';
 
 const props = defineProps<{ title: string; message: string; confirmLabel: string; busy?: boolean }>();
 const emit = defineEmits<{ confirm: []; cancel: [] }>();
+
+const panel = ref<HTMLElement | null>(null);
+useModal(panel);
 
 function onKey(event: KeyboardEvent) {
     if (event.key === 'Escape' && !props.busy) emit('cancel');
@@ -21,11 +25,13 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
             @click.self="!busy && emit('cancel')"
         >
             <div
+                ref="panel"
+                tabindex="-1"
                 role="alertdialog"
                 aria-modal="true"
                 aria-labelledby="confirm-title"
                 aria-describedby="confirm-message"
-                class="bg-surface-container-high w-full max-w-sm rounded-[28px] p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)]"
+                class="bg-surface-container-high w-full max-w-sm rounded-[28px] p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
             >
                 <h2 id="confirm-title" class="type-title-lg font-bold">{{ title }}</h2>
                 <p id="confirm-message" class="type-body-md text-on-surface-variant mt-3">{{ message }}</p>
@@ -33,6 +39,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                     <button
                         class="text-primary type-label-lg hover:bg-on-surface/5 rounded-full px-4 py-2.5 disabled:opacity-50"
                         :disabled="busy"
+                        data-autofocus
                         @click="emit('cancel')"
                     >
                         Cancel
