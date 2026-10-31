@@ -111,22 +111,23 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
                         children: [
                           Text(
                             offline ? "You're offline" : 'Poor connection',
-                            style: TextStyle(
-                              color: style.foreground,
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
+                            style: Theme.of(context).textTheme.titleSmall
+                                ?.copyWith(
+                                  color: style.foreground,
+                                  fontWeight: FontWeight.w700,
+                                ),
                           ),
                           const SizedBox(height: 2),
                           Text(
                             offline
                                 ? "The map and other people's positions won't update until you're back online."
                                 : 'The map may load slowly and positions may update late.',
-                            style: TextStyle(
-                              color: style.foreground.withValues(alpha: 0.85),
-                              fontSize: 12.5,
-                              height: 1.25,
-                            ),
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(
+                                  color: style.foreground.withValues(
+                                    alpha: 0.85,
+                                  ),
+                                ),
                           ),
                         ],
                       ),

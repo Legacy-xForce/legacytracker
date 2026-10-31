@@ -31,6 +31,13 @@ abstract final class AppShape {
   static const BorderRadius sheetTop = BorderRadius.vertical(top: xlRadius);
 }
 
+/// Material 3 label sizes for text painted onto map bitmaps, where there is no
+/// [Theme] to read a [TextTheme] from.
+abstract final class AppType {
+  static const double labelMd = 12;
+  static const double labelSm = 11;
+}
+
 /// The design tokens a [ThemeData] carries, for component themes and widgets
 /// that read them from the context.
 @immutable

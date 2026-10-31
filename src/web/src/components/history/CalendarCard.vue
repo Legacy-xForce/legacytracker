@@ -116,7 +116,7 @@ function ariaLabel(cell: Cell): string {
                             cell.day
                         }}</span>
                         <!-- Only days with trips lead anywhere: their total, in whole km. -->
-                        <span v-if="cell.trips" class="type-label-sm mt-0.5 text-[10px] leading-none opacity-70">{{
+                        <span v-if="cell.trips" class="type-label-sm mt-0.5 leading-none opacity-70">{{
                             cell.km
                         }}</span>
                     </button>

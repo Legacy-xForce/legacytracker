@@ -432,9 +432,9 @@ class MarkerIconFactory extends ChangeNotifier {
         text: name,
         style: const TextStyle(
           color: Colors.white,
-          fontSize: 12,
+          fontSize: AppType.labelMd,
           fontWeight: FontWeight.w600,
-          height: 16 / 12,
+          height: 16 / AppType.labelMd,
         ),
       ),
       textDirection: TextDirection.ltr,
@@ -732,7 +732,7 @@ class MarkerIconFactory extends ChangeNotifier {
         center,
         TextStyle(
           color: style.chipText,
-          fontSize: 11,
+          fontSize: AppType.labelSm,
           fontWeight: FontWeight.w700,
         ),
       );

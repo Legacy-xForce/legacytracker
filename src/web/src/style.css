@@ -254,6 +254,27 @@ html[data-theme='catppuccin-latte'] {
 }
 
 /* Material 3 type scale, as Flutter applies it. */
+@utility type-display-lg {
+    font-size: 57px;
+    line-height: 64px;
+    letter-spacing: -0.25px;
+}
+@utility type-display-md {
+    font-size: 45px;
+    line-height: 52px;
+}
+@utility type-display-sm {
+    font-size: 36px;
+    line-height: 44px;
+}
+@utility type-headline-lg {
+    font-size: 32px;
+    line-height: 40px;
+}
+@utility type-headline-md {
+    font-size: 28px;
+    line-height: 36px;
+}
 @utility type-headline-sm {
     font-size: 24px;
     line-height: 32px;

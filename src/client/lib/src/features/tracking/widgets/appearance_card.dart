@@ -98,8 +98,7 @@ class ThemePill extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 13,
+                      style: Theme.of(context).textTheme.labelLarge?.copyWith(
                         fontWeight: selected
                             ? FontWeight.w600
                             : FontWeight.w500,

@@ -225,11 +225,9 @@ class _LiveBadge extends StatelessWidget {
           const SizedBox(width: 4),
           Text(
             'LIVE',
-            style: TextStyle(
+            style: Theme.of(context).textTheme.labelSmall?.copyWith(
               color: Theme.of(context).colorScheme.onSurface,
-              fontSize: 10,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.6,
             ),
           ),
         ],

@@ -523,7 +523,6 @@ class _DayCell extends StatelessWidget {
                         style: theme.textTheme.labelSmall?.copyWith(
                           // Quieter than the day number it sits under.
                           color: textColor.withValues(alpha: 0.7),
-                          fontSize: 10,
                           fontWeight: FontWeight.w500,
                           height: 1,
                         ),

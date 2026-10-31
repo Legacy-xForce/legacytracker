@@ -43,4 +43,19 @@ describe('shape tokens', () => {
         }
         expect(offenders).toEqual([]);
     });
+
+    it('has every Material 3 type role and no hand-sized text', () => {
+        for (const role of ['display', 'headline', 'title', 'body', 'label']) {
+            for (const size of ['lg', 'md', 'sm']) {
+                expect(css, `${role}-${size}`).toMatch(new RegExp(`@utility type-${role}-${size} \\{`));
+            }
+        }
+        const offenders: string[] = [];
+        for (const file of sources(root)) {
+            for (const [index, line] of readFileSync(file, 'utf8').split('\n').entries()) {
+                if (/text-\[[0-9.]+px\]/.test(line)) offenders.push(`${file}:${index + 1}`);
+            }
+        }
+        expect(offenders).toEqual([]);
+    });
 });

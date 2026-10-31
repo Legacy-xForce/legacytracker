@@ -245,8 +245,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       scrolledUnderElevation: 0,
       centerTitle: false,
       systemOverlayStyle: overlayStyle,
+      // M3 titleLarge: 22/28.
       titleTextStyle: TextStyle(
-        fontSize: 20,
+        fontSize: 22,
+        height: 28 / 22,
         fontWeight: FontWeight.w600,
         color: scheme.onSurface,
       ),
@@ -313,15 +315,17 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       style: FilledButton.styleFrom(
         minimumSize: const Size.fromHeight(52),
         shape: rounded16,
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+        textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
       ),
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       shape: RoundedRectangleBorder(borderRadius: AppShape.xl),
+      // M3 headlineSmall: 24/32.
       titleTextStyle: TextStyle(
-        fontSize: 20,
+        fontSize: 24,
+        height: 32 / 24,
         fontWeight: FontWeight.w600,
         color: scheme.onSurface,
       ),

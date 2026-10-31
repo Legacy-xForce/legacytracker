@@ -52,7 +52,7 @@ async function signIn() {
                 <button
                     type="button"
                     :disabled="busy"
-                    class="bg-primary text-on-primary flex h-[52px] w-full items-center justify-center rounded-lg text-[15px] font-semibold transition hover:brightness-110 disabled:opacity-60"
+                    class="bg-primary text-on-primary type-label-lg flex h-[52px] w-full items-center justify-center rounded-lg font-semibold transition hover:brightness-110 disabled:opacity-60"
                     @click="signIn"
                 >
                     <Spinner v-if="busy" />

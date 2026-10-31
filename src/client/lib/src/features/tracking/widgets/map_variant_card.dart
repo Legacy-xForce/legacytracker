@@ -107,8 +107,7 @@ class _VariantPill extends StatelessWidget {
                   const SizedBox(width: 8),
                   Text(
                     label,
-                    style: TextStyle(
-                      fontSize: 13,
+                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
                       fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
                       color: selected ? scheme.onPrimaryContainer : scheme.onSurface,
                     ),

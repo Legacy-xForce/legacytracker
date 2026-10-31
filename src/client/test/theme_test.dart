@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +11,30 @@ import 'package:legacytracker/src/core/theme_settings.dart';
 import 'package:legacytracker/src/features/tracking/widgets/appearance_card.dart';
 
 void main() {
+  test('the app bar title is the M3 titleLarge', () {
+    final title = buildThemeFor(appThemes.first.id).appBarTheme.titleTextStyle!;
+    expect(title.fontSize, 22);
+    expect(title.height, closeTo(28 / 22, 1e-9));
+  });
+
+  test('no text size is written outside the theme and token files', () {
+    final offenders = <String>[];
+    for (final file in Directory('lib').listSync(recursive: true)) {
+      if (file is! File || !file.path.endsWith('.dart')) continue;
+      if (file.path.endsWith('core/theme.dart') ||
+          file.path.endsWith('core/tokens.dart')) {
+        continue;
+      }
+      final lines = file.readAsLinesSync();
+      for (var i = 0; i < lines.length; i++) {
+        if (RegExp(r'fontSize:\s*[0-9]').hasMatch(lines[i])) {
+          offenders.add('${file.path}:${i + 1}');
+        }
+      }
+    }
+    expect(offenders, isEmpty);
+  });
+
   test('the shape scale follows Material 3', () {
     expect(
       [
