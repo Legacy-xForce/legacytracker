@@ -661,13 +661,13 @@ class TrackingMapTabState extends State<TrackingMapTab>
                 ],
               ),
             ),
-            // Bottom left like Google Maps, riding on top of the people sheet
-            // and clear of the Mapbox logo that sits just above it.
+            // Bottom right, riding on top of the people sheet and clear of
+            // the Mapbox logo and attribution, which sit on the left.
             ValueListenableBuilder<double>(
               valueListenable: _sheetExtent,
               builder: (context, _, _) {
                 return Positioned(
-                  left: 16,
+                  right: 16,
                   bottom: _coveredSheetHeight + 48,
                   child: MapControlGroup(
                     children: [
