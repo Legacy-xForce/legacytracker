@@ -32,7 +32,7 @@ async function signIn() {
             <h1 class="type-headline-sm mt-5 text-center font-bold">Legacy Tracker</h1>
             <p class="type-body-md text-on-surface-variant mt-1.5 text-center">Sign in to see where everyone is.</p>
 
-            <div class="bg-surface-container relative mt-8 rounded-[20px] p-4">
+            <div class="bg-surface-container relative mt-8 rounded-md p-4">
                 <Transition
                     enter-from-class="opacity-0 -translate-y-1"
                     leave-to-class="opacity-0"
@@ -42,7 +42,7 @@ async function signIn() {
                     <div
                         v-if="error"
                         role="alert"
-                        class="bg-error-container text-on-error-container type-body-md mb-4 flex gap-2.5 rounded-[14px] py-2.5 pr-3.5 pl-3"
+                        class="bg-error-container text-on-error-container type-body-md mb-4 flex gap-2.5 rounded-md py-2.5 pr-3.5 pl-3"
                     >
                         <Icon name="error" :size="20" />
                         <span>{{ error }}</span>
@@ -52,7 +52,7 @@ async function signIn() {
                 <button
                     type="button"
                     :disabled="busy"
-                    class="bg-primary text-on-primary flex h-[52px] w-full items-center justify-center rounded-2xl text-[15px] font-semibold transition hover:brightness-110 disabled:opacity-60"
+                    class="bg-primary text-on-primary flex h-[52px] w-full items-center justify-center rounded-lg text-[15px] font-semibold transition hover:brightness-110 disabled:opacity-60"
                     @click="signIn"
                 >
                     <Spinner v-if="busy" />

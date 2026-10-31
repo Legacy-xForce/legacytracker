@@ -100,7 +100,7 @@ function left(index: number): string {
 .peer-cluster__face {
     position: absolute;
     top: 4px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
 }
 
 .peer-cluster__more {
@@ -123,7 +123,7 @@ function left(index: number): string {
     width: 12px;
     height: 12px;
     margin-left: -6px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--color-beam);
     border: 2px solid var(--color-surface-container-highest);
     box-shadow: 0 1px 4px rgb(0 0 0 / 0.38);

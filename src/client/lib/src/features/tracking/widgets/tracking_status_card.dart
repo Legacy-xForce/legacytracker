@@ -6,6 +6,7 @@ import 'package:permission_handler/permission_handler.dart';
 import '../../location/tracking_engine.dart';
 import '../../location/tracking_permissions.dart';
 import '../tracking_controller.dart';
+import '../../../core/tokens.dart';
 
 /// What location sharing is doing right now, plus anything that silently
 /// degrades it in the background — each with a one-tap fix.
@@ -215,7 +216,7 @@ class _LiveBadge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.16),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

@@ -9,6 +9,7 @@ import '../../core/formatters.dart';
 import '../../core/navigation.dart';
 import '../../data/models/calendar_event.dart';
 import '../tracking/widgets/user_avatar.dart';
+import '../../core/tokens.dart';
 
 /// Fallback when the calendar gives an event no color.
 const eventFallbackColor = Color(0xFF7C4DFF);
@@ -119,7 +120,7 @@ class _EventDetailsSheetState extends State<EventDetailsSheet> {
                   height: 14,
                   decoration: BoxDecoration(
                     color: event.color ?? eventFallbackColor,
-                    borderRadius: BorderRadius.circular(4),
+                    borderRadius: AppShape.xs,
                   ),
                 ),
                 const SizedBox(width: 10),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'tokens.dart';
 
 /// Themes shipped with the app. The teal one is the original look; the
 /// Catppuccin flavours and OLED match Legacy Calendar's palette, and the two
@@ -214,7 +215,7 @@ ThemeData buildThemeFor(AppThemeId id) {
 ThemeData buildAppTheme(ColorScheme scheme) {
   final dark = scheme.brightness == Brightness.dark;
   final rounded16 = RoundedRectangleBorder(
-    borderRadius: BorderRadius.circular(16),
+    borderRadius: AppShape.lg,
   );
   final overlayStyle =
       (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
@@ -227,6 +228,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
 
   return ThemeData(
     useMaterial3: true,
+    extensions: const [AppTokens()],
     brightness: scheme.brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: scheme.surface,
@@ -254,10 +256,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       margin: EdgeInsets.zero,
       color: scheme.surfaceContainer,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.md),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      height: 68,
+      height: const AppTokens().navigationBarHeight,
       backgroundColor: scheme.surfaceContainer,
       indicatorColor: scheme.secondaryContainer,
       surfaceTintColor: Colors.transparent,
@@ -295,15 +297,15 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       hintStyle: TextStyle(color: scheme.onSurfaceVariant),
       labelStyle: TextStyle(color: scheme.onSurfaceVariant),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppShape.lg,
         borderSide: BorderSide.none,
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppShape.lg,
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
       ),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppShape.lg,
         borderSide: BorderSide(color: scheme.error),
       ),
     ),
@@ -317,7 +319,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.xl),
       titleTextStyle: TextStyle(
         fontSize: 20,
         fontWeight: FontWeight.w600,
@@ -340,6 +342,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       surfaceTintColor: Colors.transparent,
       modalBackgroundColor: scheme.surfaceContainerLow,
       modalBarrierColor: Colors.black.withValues(alpha: dark ? 0.55 : 0.3),
+      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetTop),
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
     ),

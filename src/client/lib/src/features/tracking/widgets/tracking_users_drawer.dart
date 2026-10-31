@@ -24,6 +24,7 @@ import 'location_history_screen.dart';
 import 'tracking_issues_banner.dart';
 import 'tracking_location_street_label.dart';
 import 'user_avatar.dart';
+import '../../../core/tokens.dart';
 
 /// The people sheet over the map: a list of everyone sharing, and a detail
 /// pane for whoever is selected. Collapsed it still shows its header, so it
@@ -310,7 +311,7 @@ class TrackingUsersDrawerState extends State<TrackingUsersDrawer> {
                 elevation: 16,
                 shadowColor: Colors.black,
                 shape: const RoundedRectangleBorder(
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+                  borderRadius: AppShape.sheetTop,
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Column(
@@ -420,7 +421,7 @@ class _SheetHeader extends StatelessWidget {
             height: 4,
             decoration: BoxDecoration(
               color: theme.colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-              borderRadius: BorderRadius.circular(999),
+              borderRadius: AppShape.full,
             ),
           ),
           Expanded(
@@ -439,7 +440,7 @@ class _SheetHeader extends StatelessWidget {
                         color: Colors.transparent,
                         child: InkWell(
                           onTap: onBack,
-                          borderRadius: BorderRadius.circular(999),
+                          borderRadius: AppShape.full,
                           child: Semantics(
                             button: true,
                             label: 'All people',
@@ -484,7 +485,7 @@ class _SheetHeader extends StatelessWidget {
                       ),
                       decoration: BoxDecoration(
                         color: theme.colorScheme.secondaryContainer,
-                        borderRadius: BorderRadius.circular(999),
+                        borderRadius: AppShape.full,
                       ),
                       child: Text(
                         '${users.length}',
@@ -537,9 +538,9 @@ class _CheckpointsButton extends StatelessWidget {
       onTap: onTap,
       child: Material(
         color: scheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
         child: InkWell(
-          borderRadius: BorderRadius.circular(999),
+          borderRadius: AppShape.full,
           onTap: onTap,
           child: ConstrainedBox(
             constraints: const BoxConstraints(
@@ -760,9 +761,9 @@ class _UserRow extends StatelessWidget {
       color: isSelected
           ? scheme.primary.withValues(alpha: 0.12)
           : Colors.transparent,
-      borderRadius: BorderRadius.circular(18),
+      borderRadius: AppShape.lg,
       child: InkWell(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
         onTap: location != null || !user.profile.sharesWithMe ? onSelect : null,
         child: Padding(
           padding: const EdgeInsets.fromLTRB(8, 10, 8, 10),
@@ -942,7 +943,7 @@ class _StatusChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
         color: status.color.withValues(alpha: 0.14),
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -1346,7 +1347,7 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHigh,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

@@ -7,6 +7,7 @@ import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
 import 'api_token_requests_screen.dart';
 import 'auth_provider.dart';
+import '../../core/tokens.dart';
 
 /// Every live token on the tracker, grouped by owner, with each one's request
 /// history a tap away. Any signed-in user can open it: auditing what
@@ -308,7 +309,7 @@ class _Badge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: AppShape.sm,
       ),
       child: Text(
         text,

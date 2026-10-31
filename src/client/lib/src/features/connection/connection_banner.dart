@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import 'connection_monitor.dart';
+import '../../core/tokens.dart';
 
 /// Wraps the whole app so the banner floats over every screen, pushed routes
 /// included, without any of them having to know about it.
@@ -92,7 +93,7 @@ class _ConnectionBannerState extends State<ConnectionBanner> {
               color: style.background,
               elevation: 6,
               shadowColor: Colors.black54,
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: AppShape.lg,
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(14, 10, 4, 10),
                 child: Row(

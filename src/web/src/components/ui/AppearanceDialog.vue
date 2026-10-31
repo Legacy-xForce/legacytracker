@@ -36,7 +36,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 aria-modal="true"
                 aria-labelledby="appearance-title"
                 tabindex="-1"
-                class="bg-surface-container-high w-full max-w-md rounded-[28px] p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
+                class="bg-surface-container-high w-full max-w-md rounded-xl p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
             >
                 <div class="flex items-start justify-between gap-4">
                     <div>
@@ -76,7 +76,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             :style="{ backgroundColor: option.preview.canvas }"
                         >
                             <span
-                                class="flex size-4 flex-col items-center justify-center gap-[3px] rounded-[4px]"
+                                class="flex size-4 flex-col items-center justify-center gap-[3px] rounded-xs"
                                 :style="{ backgroundColor: option.preview.raised }"
                             >
                                 <span

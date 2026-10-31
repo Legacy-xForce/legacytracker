@@ -5,6 +5,16 @@
  * values were read off the app's screens, so both clients look like one product.
  */
 @theme static {
+    /* Material 3 shape scale; the same values as the phone's AppShape. */
+    --radius-*: initial;
+    --radius-none: 0;
+    --radius-xs: 4px;
+    --radius-sm: 8px;
+    --radius-md: 12px;
+    --radius-lg: 16px;
+    --radius-xl: 28px;
+    --radius-full: 9999px;
+
     --font-sans: 'Roboto Variable', Roboto, system-ui, sans-serif;
 
     --color-surface: #0e1513;
@@ -352,7 +362,7 @@ html[data-theme='catppuccin-latte'] {
 .mapboxgl-ctrl-attrib {
     background: color-mix(in srgb, var(--color-surface) 70%, transparent) !important;
     color: var(--color-on-surface-variant) !important;
-    border-radius: 8px 0 0 0;
+    border-radius: var(--radius-sm) 0 0 0;
     font-size: 10px;
 }
 
@@ -373,7 +383,7 @@ html[data-theme='catppuccin-latte'] {
 .mapboxgl-popup-content {
     background: var(--color-surface-container-high);
     color: var(--color-on-surface);
-    border-radius: 20px;
+    border-radius: var(--radius-md);
     margin: 0;
     padding: 16px 18px;
     box-shadow: 0 12px 32px rgb(0 0 0 / 0.45);
@@ -445,7 +455,7 @@ html[data-theme='catppuccin-latte'] {
 
 .m3-slider::-webkit-slider-runnable-track {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: linear-gradient(
         to right,
         var(--color-primary) var(--progress, 0%),
@@ -455,13 +465,13 @@ html[data-theme='catppuccin-latte'] {
 
 .m3-slider::-moz-range-track {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-secondary-container);
 }
 
 .m3-slider::-moz-range-progress {
     height: 4px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-primary);
 }
 
@@ -470,7 +480,7 @@ html[data-theme='catppuccin-latte'] {
     width: 20px;
     height: 20px;
     margin-top: -8px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-primary);
     border: none;
 }
@@ -478,7 +488,7 @@ html[data-theme='catppuccin-latte'] {
 .m3-slider::-moz-range-thumb {
     width: 20px;
     height: 20px;
-    border-radius: 999px;
+    border-radius: var(--radius-full);
     background: var(--color-primary);
     border: none;
 }

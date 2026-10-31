@@ -18,7 +18,7 @@ const expanded = ref(false);
         v-if="issues.length > 0"
         role="status"
         data-testid="tracking-issues"
-        class="text-on-surface mb-3 rounded-2xl border px-4 py-3.5"
+        class="text-on-surface mb-3 rounded-lg border px-4 py-3.5"
         :style="{
             borderColor: 'color-mix(in srgb, var(--color-paused) 45%, transparent)',
             background: 'color-mix(in srgb, var(--color-paused) 12%, transparent)'

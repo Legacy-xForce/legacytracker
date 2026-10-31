@@ -87,7 +87,7 @@ function onTabKey(event: KeyboardEvent) {
             id="travel-panel"
             role="tabpanel"
             :aria-labelledby="`travel-tab-${board.period.kind}`"
-            class="bg-surface-container mt-3 overflow-hidden rounded-[20px]"
+            class="bg-surface-container mt-3 overflow-hidden rounded-md"
         >
             <div class="h-[3px]">
                 <div v-if="board.loading" class="bg-primary/25 relative h-full overflow-hidden">
@@ -117,7 +117,7 @@ function onTabKey(event: KeyboardEvent) {
                 </button>
             </div>
             <div v-if="board.period.kind === 'custom'" class="grid grid-cols-2 gap-2 px-3 pb-3">
-                <label class="bg-surface-container-high rounded-2xl px-3 py-2">
+                <label class="bg-surface-container-high rounded-lg px-3 py-2">
                     <span class="type-label-sm text-on-surface-variant block">From</span>
                     <input
                         v-model="firstDay"
@@ -128,7 +128,7 @@ function onTabKey(event: KeyboardEvent) {
                         @change="applyCustom"
                     />
                 </label>
-                <label class="bg-surface-container-high rounded-2xl px-3 py-2">
+                <label class="bg-surface-container-high rounded-lg px-3 py-2">
                     <span class="type-label-sm text-on-surface-variant block">To</span>
                     <input
                         v-model="lastDay"
@@ -172,7 +172,7 @@ function onTabKey(event: KeyboardEvent) {
                     <li
                         v-for="entry in board.entries"
                         :key="entry.userId"
-                        class="bg-surface-container rounded-[18px] px-3 pt-3 pb-2.5"
+                        class="bg-surface-container rounded-lg px-3 pt-3 pb-2.5"
                         :class="{ 'ring-primary/70 ring-[1.5px]': entry.userId === selfId }"
                         data-entry
                     >

@@ -7,6 +7,7 @@ import '../../data/models/user_model.dart';
 import '../../data/network/leaderboard_service.dart';
 import '../tracking/widgets/location_history_screen.dart';
 import '../tracking/widgets/user_avatar.dart';
+import '../../core/tokens.dart';
 
 /// The travel leaderboard: who went furthest this week, this month or over
 /// a picked range, with each person's moving time and speeds.
@@ -356,7 +357,7 @@ class _EntryCard extends StatelessWidget {
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: AppShape.lg,
         side: isSelf
             ? BorderSide(
                 color: scheme.primary.withValues(alpha: 0.7),
@@ -434,7 +435,7 @@ class _EntryCard extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               ClipRRect(
-                borderRadius: BorderRadius.circular(999),
+                borderRadius: AppShape.full,
                 child: LinearProgressIndicator(
                   value: share.clamp(0, 1),
                   minHeight: 6,
@@ -479,7 +480,7 @@ class _StatChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
       decoration: BoxDecoration(
         color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,

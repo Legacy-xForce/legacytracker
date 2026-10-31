@@ -31,7 +31,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 aria-modal="true"
                 aria-labelledby="confirm-title"
                 aria-describedby="confirm-message"
-                class="bg-surface-container-high w-full max-w-sm rounded-[28px] p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
+                class="bg-surface-container-high w-full max-w-sm rounded-xl p-6 shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none"
             >
                 <h2 id="confirm-title" class="type-title-lg font-bold">{{ title }}</h2>
                 <p id="confirm-message" class="type-body-md text-on-surface-variant mt-3">{{ message }}</p>

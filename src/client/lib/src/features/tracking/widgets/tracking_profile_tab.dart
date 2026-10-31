@@ -19,6 +19,7 @@ import 'map_variant_card.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_status_card.dart';
 import 'user_avatar.dart';
+import '../../../core/tokens.dart';
 
 class TrackingProfileTab extends StatelessWidget {
   const TrackingProfileTab({super.key, required this.controller});
@@ -258,7 +259,7 @@ class _RoleChip extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       decoration: BoxDecoration(
         color: theme.colorScheme.secondaryContainer,
-        borderRadius: BorderRadius.circular(999),
+        borderRadius: AppShape.full,
       ),
       child: Text(
         label,

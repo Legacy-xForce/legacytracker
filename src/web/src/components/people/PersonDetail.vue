@@ -211,7 +211,7 @@ async function changeSharing(enabled: boolean) {
                 />
             </div>
             <button
-                class="bg-secondary-container text-on-secondary-container mt-[22px] flex h-[52px] w-full items-center justify-center gap-2 rounded-2xl text-[15px] font-semibold transition hover:brightness-110"
+                class="bg-secondary-container text-on-secondary-container mt-[22px] flex h-[52px] w-full items-center justify-center gap-2 rounded-lg text-[15px] font-semibold transition hover:brightness-110"
                 @click="emit('history')"
             >
                 <Icon name="calendarMonth" :size="20" />

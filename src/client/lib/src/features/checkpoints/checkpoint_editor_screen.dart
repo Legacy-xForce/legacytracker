@@ -17,6 +17,7 @@ import '../tracking/map_variant.dart';
 import '../tracking/widgets/mapbox_map.dart';
 import '../tracking/widgets/tracking_map_layer.dart';
 import 'checkpoints_provider.dart';
+import '../../core/tokens.dart';
 
 /// Creates or edits a checkpoint. The point is whatever sits under the
 /// crosshair: pan the map, or search for a street and the camera jumps there.
@@ -375,7 +376,7 @@ class _SearchBox extends StatelessWidget {
     return Material(
       color: scheme.surfaceContainerHigh,
       elevation: 4,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.lg,
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,

@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 
 import 'user_avatar.dart';
+import '../../../core/tokens.dart';
 
 /// Accent used by the map markers, matching the app's teal/blue accents.
 const markerAccentColor = Color(0xFF0985FB);
@@ -481,7 +482,7 @@ class MarkerIconFactory extends ChangeNotifier {
     return _render(44, 44, (canvas) {
       final rect = RRect.fromRectAndRadius(
         Rect.fromLTWH(4, 4, 36, 36),
-        const Radius.circular(12),
+        AppShape.mdRadius,
       );
       canvas.drawRRect(
         rect.shift(const Offset(0, 2)),
@@ -851,7 +852,7 @@ class MarkerIconFactory extends ChangeNotifier {
     final width = contentWidth + _badgePadX * 2;
     final left = right != null ? right - width : (centerX ?? 0) - width / 2;
     final rect = Rect.fromLTWH(left, top, width, _badgeHeight);
-    final pill = RRect.fromRectAndRadius(rect, const Radius.circular(999));
+    final pill = RRect.fromRectAndRadius(rect, AppShape.fullRadius);
     canvas.drawShadow(Path()..addRRect(pill), Colors.black, 3, false);
     canvas.drawRRect(pill, Paint()..color = background);
     iconPainter.paint(
@@ -944,7 +945,7 @@ class MarkerIconFactory extends ChangeNotifier {
       ..strokeCap = StrokeCap.round;
     final body = RRect.fromRectAndRadius(
       Rect.fromLTWH(rect.left, rect.top + 3, rect.width, rect.height - 3),
-      const Radius.circular(2.5),
+      AppShape.fullRadius,
     );
     canvas.drawRRect(body, stroke);
     canvas.drawLine(

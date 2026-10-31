@@ -4,10 +4,42 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legacytracker/src/core/theme.dart';
+import 'package:legacytracker/src/core/tokens.dart';
 import 'package:legacytracker/src/core/theme_settings.dart';
 import 'package:legacytracker/src/features/tracking/widgets/appearance_card.dart';
 
 void main() {
+  test('the shape scale follows Material 3', () {
+    expect(
+      [
+        AppShape.noneDp,
+        AppShape.xsDp,
+        AppShape.smDp,
+        AppShape.mdDp,
+        AppShape.lgDp,
+        AppShape.xlDp,
+        AppShape.fullDp,
+      ],
+      [0, 4, 8, 12, 16, 28, 999],
+    );
+  });
+
+  test('component themes take their corners and heights from the tokens', () {
+    for (final option in appThemes) {
+      final data = buildThemeFor(option.id);
+      expect(data.extension<AppTokens>(), isNotNull);
+      expect(
+        (data.cardTheme.shape as RoundedRectangleBorder).borderRadius,
+        AppShape.md,
+      );
+      expect(
+        (data.dialogTheme.shape as RoundedRectangleBorder).borderRadius,
+        AppShape.xl,
+      );
+      expect(data.navigationBarTheme.height, 80);
+    }
+  });
+
   test('every shipped theme builds with its own brightness', () {
     for (final option in appThemes) {
       final data = buildThemeFor(option.id);

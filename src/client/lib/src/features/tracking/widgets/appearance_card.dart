@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import '../../../core/theme.dart';
 import '../../../core/theme_settings.dart';
+import '../../../core/tokens.dart';
 
 /// "Appearance" card in the profile tab: the same pill row Legacy Calendar
 /// uses, so the two apps feel like one product.
@@ -172,7 +173,7 @@ class _ThemeSwatch extends StatelessWidget {
                     height: 2.5,
                     decoration: BoxDecoration(
                       color: preview.accent,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: AppShape.full,
                     ),
                   ),
                   const SizedBox(height: 3),
@@ -181,7 +182,7 @@ class _ThemeSwatch extends StatelessWidget {
                     height: 2,
                     decoration: BoxDecoration(
                       color: preview.text.withValues(alpha: 0.8),
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: AppShape.full,
                     ),
                   ),
                 ],

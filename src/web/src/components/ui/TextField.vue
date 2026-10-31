@@ -20,7 +20,7 @@ function inputAttrs() {
 <template>
     <!-- Material's filled text field as the app themes it: no underline, a primary outline on focus. -->
     <div
-        class="group bg-surface-container-high focus-within:outline-primary relative flex h-14 items-center rounded-2xl outline-[1.5px] outline-transparent"
+        class="group bg-surface-container-high focus-within:outline-primary relative flex h-14 items-center rounded-lg outline-[1.5px] outline-transparent"
         :class="attrs.class"
         :style="attrs.style as StyleValue"
     >

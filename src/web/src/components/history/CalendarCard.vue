@@ -61,7 +61,7 @@ function ariaLabel(cell: Cell): string {
 </script>
 
 <template>
-    <div class="bg-surface-container overflow-hidden rounded-[20px]">
+    <div class="bg-surface-container overflow-hidden rounded-md">
         <div class="h-[3px]">
             <div v-if="loading" class="bg-primary/25 relative h-full overflow-hidden">
                 <div

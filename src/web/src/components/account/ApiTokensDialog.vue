@@ -246,7 +246,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                 role="dialog"
                 aria-modal="true"
                 aria-labelledby="api-tokens-title"
-                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-[28px]"
+                class="bg-surface-container scroll-panel flex w-full flex-col overflow-y-auto shadow-[0_8px_24px_color-mix(in_srgb,var(--color-shadow)_50%,transparent)] outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-xl"
             >
                 <header class="flex items-center gap-3 px-6 pt-5 pb-2">
                     <span
@@ -317,7 +317,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 
                         <div
                             v-if="issued"
-                            class="bg-primary-container/40 border-primary/40 rounded-2xl border p-4"
+                            class="bg-primary-container/40 border-primary/40 rounded-lg border p-4"
                             data-issued
                         >
                             <p class="type-title-sm">Copy “{{ issued.name }}” now</p>
@@ -325,7 +325,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 You won't be able to see this token again.
                             </p>
                             <div
-                                class="bg-surface-container-lowest mt-3 flex items-center gap-2 rounded-xl py-1 pr-1 pl-3"
+                                class="bg-surface-container-lowest mt-3 flex items-center gap-2 rounded-md py-1 pr-1 pl-3"
                             >
                                 <code class="type-body-sm min-w-0 flex-1 font-mono break-all select-all" data-token>{{
                                     issued.token
@@ -359,7 +359,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                     type="button"
                                     role="radio"
                                     :aria-checked="scope === option.id"
-                                    class="rounded-2xl border p-3 text-left transition-colors"
+                                    class="rounded-lg border p-3 text-left transition-colors"
                                     :class="
                                         scope === option.id
                                             ? 'border-primary bg-secondary-container'
@@ -394,7 +394,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             <div v-if="tokens === null && !loadError" class="flex justify-center py-6"><Spinner /></div>
                             <div
                                 v-else-if="loadError"
-                                class="bg-surface-container-high flex items-center gap-3 rounded-2xl py-2 pr-2 pl-4"
+                                class="bg-surface-container-high flex items-center gap-3 rounded-lg py-2 pr-2 pl-4"
                             >
                                 <Icon name="cloudOff" :size="20" class="text-on-surface-variant" />
                                 <span class="type-body-md flex-1">{{ loadError }}</span>
@@ -407,7 +407,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             </div>
                             <p
                                 v-else-if="tokens && tokens.length === 0"
-                                class="bg-surface-container-high type-body-md text-on-surface-variant rounded-2xl px-4 py-4"
+                                class="bg-surface-container-high type-body-md text-on-surface-variant rounded-lg px-4 py-4"
                             >
                                 No tokens yet.
                             </p>
@@ -415,7 +415,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                 <li
                                     v-for="token in tokens"
                                     :key="token.id"
-                                    class="bg-surface-container-high rounded-2xl"
+                                    class="bg-surface-container-high rounded-lg"
                                     data-token-row
                                 >
                                     <div class="flex items-center gap-3 py-3 pr-2 pl-4">
@@ -423,7 +423,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                             <p class="flex items-center gap-2">
                                                 <span class="type-title-sm truncate">{{ token.name }}</span>
                                                 <span
-                                                    class="type-label-sm shrink-0 rounded-md px-1.5 py-0.5 uppercase"
+                                                    class="type-label-sm shrink-0 rounded-sm px-1.5 py-0.5 uppercase"
                                                     :class="
                                                         token.scope === 'write'
                                                             ? 'bg-error-container text-on-error-container'
@@ -472,7 +472,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
 
                                     <div
                                         v-if="editingId === token.id"
-                                        class="bg-surface-container-lowest border-outline-variant mx-2 mb-2 rounded-xl border p-3"
+                                        class="bg-surface-container-lowest border-outline-variant mx-2 mb-2 rounded-md border p-3"
                                     >
                                         <p class="type-label-md text-on-surface-variant tracking-[0.8px] uppercase">
                                             Allowed addresses
@@ -486,7 +486,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                             <li
                                                 v-for="entry in draft"
                                                 :key="entry"
-                                                class="bg-surface-container-high type-body-sm flex items-center gap-1 rounded-lg py-1 pr-1 pl-2 font-mono"
+                                                class="bg-surface-container-high type-body-sm flex items-center gap-1 rounded-sm py-1 pr-1 pl-2 font-mono"
                                             >
                                                 {{ entry }}
                                                 <button
@@ -579,7 +579,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         </div>
                         <div
                             v-else-if="allError && allTokens === null"
-                            class="bg-surface-container-high flex items-center gap-3 rounded-2xl py-2 pr-2 pl-4"
+                            class="bg-surface-container-high flex items-center gap-3 rounded-lg py-2 pr-2 pl-4"
                         >
                             <Icon name="cloudOff" :size="20" class="text-on-surface-variant" />
                             <span class="type-body-md flex-1">{{ allError }}</span>
@@ -592,14 +592,14 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                         </div>
                         <p
                             v-else-if="allTokens && allTokens.length === 0"
-                            class="bg-surface-container-high type-body-md text-on-surface-variant rounded-2xl px-4 py-4"
+                            class="bg-surface-container-high type-body-md text-on-surface-variant rounded-lg px-4 py-4"
                         >
                             No tokens on the tracker yet.
                         </p>
                         <template v-else>
                             <div
                                 v-if="allError"
-                                class="bg-error-container text-on-error-container type-body-sm flex items-center gap-2 rounded-xl px-3 py-2"
+                                class="bg-error-container text-on-error-container type-body-sm flex items-center gap-2 rounded-md px-3 py-2"
                             >
                                 <Icon name="error" :size="16" />
                                 <span class="flex-1">{{ allError }}</span>
@@ -612,7 +612,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                     <li
                                         v-for="token in group.tokens"
                                         :key="token.id"
-                                        class="bg-surface-container-high rounded-2xl px-4 py-3"
+                                        class="bg-surface-container-high rounded-lg px-4 py-3"
                                         data-audit-token-row
                                     >
                                         <div class="flex items-center gap-3">
@@ -620,7 +620,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                                                 <p class="flex flex-wrap items-center gap-2">
                                                     <span class="type-title-sm truncate">{{ token.name }}</span>
                                                     <span
-                                                        class="type-label-sm shrink-0 rounded-md px-1.5 py-0.5 uppercase"
+                                                        class="type-label-sm shrink-0 rounded-sm px-1.5 py-0.5 uppercase"
                                                         :class="
                                                             token.scope === 'write'
                                                                 ? 'bg-error-container text-on-error-container'

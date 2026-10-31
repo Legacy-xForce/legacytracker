@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../tracking/widgets/user_avatar.dart';
 import '../updates/app_update_banner.dart';
 import 'auth_provider.dart';
+import '../../core/tokens.dart';
 
 class LoginScreen extends StatelessWidget {
   const LoginScreen({super.key});
@@ -259,7 +260,7 @@ class _ErrorBanner extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(12, 10, 14, 10),
         decoration: BoxDecoration(
           color: scheme.errorContainer,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: AppShape.md,
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

@@ -125,7 +125,7 @@ onBeforeUnmount(() => {
     align-items: center;
     gap: 4px;
     padding: 3px 10px 3px 6px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: rgb(37 43 42 / 0.92);
     color: var(--color-on-surface);
     font-size: 12px;

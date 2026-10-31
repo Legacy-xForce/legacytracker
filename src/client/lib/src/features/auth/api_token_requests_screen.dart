@@ -6,6 +6,7 @@ import '../../core/formatters.dart';
 import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
 import 'auth_provider.dart';
+import '../../core/tokens.dart';
 
 /// The requests made with one API token, newest first. A page of its own
 /// because the list can grow and the row that opens it is already crowded.
@@ -322,7 +323,7 @@ class _Badge extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(6),
+        borderRadius: AppShape.sm,
       ),
       child: Text(
         text,

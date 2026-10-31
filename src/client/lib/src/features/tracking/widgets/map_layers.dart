@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'tracking_map_layer.dart';
+import '../../../core/tokens.dart';
 
 /// Shared map chrome. Mapbox styles live on the map widget itself (see
 /// [MapboxStyles]); this file only holds the floating controls every map
@@ -20,7 +21,7 @@ class MapControlGroup extends StatelessWidget {
       color: scheme.surfaceContainerHigh,
       elevation: 4,
       shadowColor: Colors.black54,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.lg,
       clipBehavior: Clip.antiAlias,
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -287,7 +288,7 @@ class _LayerChoice extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     return InkWell(
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: AppShape.lg,
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 4),
@@ -301,7 +302,7 @@ class _LayerChoice extends StatelessWidget {
                 color: selected
                     ? scheme.secondaryContainer
                     : scheme.surfaceContainerHighest,
-                borderRadius: BorderRadius.circular(16),
+                borderRadius: AppShape.lg,
                 border: Border.all(
                   color: selected ? scheme.primary : Colors.transparent,
                   width: 2,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../data/models/tracking_issue.dart';
+import '../../../core/tokens.dart';
 
 /// Warns that phone settings are stopping or delaying someone's location
 /// updates, with an expandable "how to fix this". Renders nothing when there
@@ -42,7 +43,7 @@ class _TrackingIssuesBannerState extends State<TrackingIssuesBanner> {
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         decoration: BoxDecoration(
           color: accent.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: AppShape.lg,
           border: Border.all(color: accent.withValues(alpha: 0.45)),
         ),
         child: Row(

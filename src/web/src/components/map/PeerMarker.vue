@@ -124,7 +124,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     top: 44px;
     width: 80px;
     height: 80px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: color-mix(in srgb, var(--beam) 22%, transparent);
     pointer-events: none;
     animation: peer-marker-pulse 1.2s ease-out infinite alternate;
@@ -150,7 +150,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     width: 57px;
     height: 57px;
     padding: 2px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--ring);
     box-shadow: 0 4px 10px rgb(0 0 0 / 0.28);
 }
@@ -166,7 +166,7 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
     align-items: center;
     gap: 4px;
     padding: 4px 8px;
-    border-radius: 9999px;
+    border-radius: var(--radius-full);
     background: var(--badge);
     color: var(--badge-text);
     font-size: 10px;
