@@ -389,7 +389,6 @@ class _CatppuccinPalette {
     required this.red,
     required this.peach,
     required this.green,
-    required this.teal,
     required this.lavender,
   });
 
@@ -407,7 +406,6 @@ class _CatppuccinPalette {
   final Color red;
   final Color peach;
   final Color green;
-  final Color teal;
   final Color lavender;
 
   Brightness get brightness => isLight ? Brightness.light : Brightness.dark;
@@ -427,7 +425,6 @@ class _CatppuccinPalette {
     red: Color(0xFFF38BA8),
     peach: Color(0xFFFAB387),
     green: Color(0xFFA6E3A1),
-    teal: Color(0xFF94E2D5),
     lavender: Color(0xFFB4BEFE),
   );
 
@@ -446,7 +443,6 @@ class _CatppuccinPalette {
     red: Color(0xFFED8796),
     peach: Color(0xFFF5A97F),
     green: Color(0xFFA6DA95),
-    teal: Color(0xFF8BD5CA),
     lavender: Color(0xFFB7BDF8),
   );
 
@@ -465,7 +461,6 @@ class _CatppuccinPalette {
     red: Color(0xFFE78284),
     peach: Color(0xFFEF9F76),
     green: Color(0xFFA6D189),
-    teal: Color(0xFF81C8BE),
     lavender: Color(0xFFBABBF1),
   );
 
@@ -484,7 +479,6 @@ class _CatppuccinPalette {
     red: Color(0xFFD20F39),
     peach: Color(0xFFFE640B),
     green: Color(0xFF40A02B),
-    teal: Color(0xFF179299),
     lavender: Color(0xFF7287FD),
   );
 }
@@ -493,7 +487,13 @@ ColorScheme _catppuccinScheme(_CatppuccinPalette p) {
   final dark = !p.isLight;
   final onAccent = p.isLight ? p.base : p.crust;
   final primaryContainer = _blend(p.mauve, p.base, dark ? 0.24 : 0.16);
-  final secondaryContainer = _blend(p.teal, p.base, dark ? 0.22 : 0.18);
+  // Secondary stays in the theme's own violet family (mauve softened toward
+  // the muted overlay grey) instead of Catppuccin's teal, so counters, the
+  // tab switchers and the pills built on it follow the theme like the primary
+  // does. Latte's is pulled toward text to keep 4.5:1 under onSecondary.
+  final softened = Color.lerp(p.mauve, p.overlay2, 0.5)!;
+  final secondary = p.isLight ? Color.lerp(softened, p.text, 0.2)! : softened;
+  final secondaryContainer = _blend(softened, p.base, dark ? 0.26 : 0.22);
   final tertiaryContainer = _blend(p.peach, p.base, dark ? 0.20 : 0.18);
   final errorContainer = _blend(p.red, p.base, dark ? 0.24 : 0.16);
   final bright = p.isLight ? const Color(0xFFF8F9FB) : p.surface1;
@@ -504,7 +504,7 @@ ColorScheme _catppuccinScheme(_CatppuccinPalette p) {
     onPrimary: onAccent,
     primaryContainer: primaryContainer,
     onPrimaryContainer: p.text,
-    secondary: p.teal,
+    secondary: secondary,
     onSecondary: onAccent,
     secondaryContainer: secondaryContainer,
     onSecondaryContainer: p.text,

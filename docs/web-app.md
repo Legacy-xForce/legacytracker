@@ -83,9 +83,13 @@ reload its tiles.
   request per 1.1 s, and each person or trip end keeps at most one lookup
   waiting, for its newest position.
 - **Saved places** (checkpoints): their names replace the street of anyone
-  inside them, as on the phone, and the map draws them as light teal circles
-  with a name pill (names are hidden zoomed out). Read-only; they are edited in
-  the phone app. The toggle is remembered.
+  inside them, as on the phone, and the map draws them as circles in the
+  current theme's primary colour (Mapbox paint cannot read CSS variables, so the
+  circles are redrawn when the theme changes) with an opaque name pill in the
+  theme's surface colour (names are hidden zoomed out). The pill and the circle
+  are both clickable: either one opens the place in the Checkpoints tab's
+  editor, which flies to it. The editor is read-only for places you did not
+  create. The toggle is remembered.
 - **Trip history**: a month calendar marking the days with trips (a year
   back), the picked day's trips with where they started and ended, and a
   replay at constant on-screen speed (1x/2x/4x) with a scrubber. Someone who

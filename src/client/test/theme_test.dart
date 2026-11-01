@@ -82,8 +82,12 @@ void main() {
 
   test('the four durations are 100, 200, 300 and 500 ms', () {
     expect(
-      [AppMotion.short, AppMotion.medium, AppMotion.long, AppMotion.extraLong]
-          .map((d) => d.inMilliseconds),
+      [
+        AppMotion.short,
+        AppMotion.medium,
+        AppMotion.long,
+        AppMotion.extraLong,
+      ].map((d) => d.inMilliseconds),
       [100, 200, 300, 500],
     );
   });
@@ -95,7 +99,9 @@ void main() {
       if (file.path.endsWith('core/tokens.dart')) continue;
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
-        if (RegExp(r'duration: const Duration\(milliseconds').hasMatch(lines[i])) {
+        if (RegExp(
+          r'duration: const Duration\(milliseconds',
+        ).hasMatch(lines[i])) {
           offenders.add('${file.path}:${i + 1}');
         }
       }
@@ -176,6 +182,47 @@ void main() {
     expect(scheme.primary, phone.primary);
     expect(scheme.secondaryContainer, phone.secondaryContainer);
     expect(scheme.error, phone.error);
+  });
+
+  group('secondary roles follow the theme', () {
+    // Counters, tab switchers, segmented buttons and pills are built on the
+    // secondary container; Catppuccin's used to be teal in every variant.
+    final themes = [
+      AppThemeId.catppuccinMocha,
+      AppThemeId.catppuccinMacchiato,
+      AppThemeId.catppuccinFrappe,
+      AppThemeId.catppuccinLatte,
+    ];
+    for (final id in themes) {
+      test('${id.name} keeps them in the primary\'s hue family', () {
+        final scheme = buildThemeFor(id).colorScheme;
+        for (final role in [scheme.secondary, scheme.secondaryContainer]) {
+          final distance =
+              (HSLColor.fromColor(role).hue -
+                      HSLColor.fromColor(scheme.primary).hue)
+                  .abs();
+          expect(distance < 180 ? distance : 360 - distance, lessThan(40));
+        }
+      });
+
+      test('${id.name} keeps their text readable', () {
+        final scheme = buildThemeFor(id).colorScheme;
+        double ratio(Color a, Color b) {
+          final hi = a.computeLuminance();
+          final lo = b.computeLuminance();
+          return ((hi > lo ? hi : lo) + 0.05) / ((hi > lo ? lo : hi) + 0.05);
+        }
+
+        expect(
+          ratio(scheme.onSecondary, scheme.secondary),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          ratio(scheme.onSecondaryContainer, scheme.secondaryContainer),
+          greaterThanOrEqualTo(4.5),
+        );
+      });
+    }
   });
 
   test('teal is the default', () {

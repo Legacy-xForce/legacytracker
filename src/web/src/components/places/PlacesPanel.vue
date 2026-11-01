@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDialog from '../ui/ConfirmDialog.vue';
 import Icon from '../ui/Icon.vue';
+import Slider from '../ui/Slider.vue';
 import Spinner from '../ui/Spinner.vue';
 import TextField from '../ui/TextField.vue';
 import { searchPlaces, type PlaceResult } from '../../lib/places';
@@ -21,11 +22,15 @@ const DEFAULT_RADIUS_M = 100;
 const props = defineProps<{
     /** What is under the crosshair: where a new place starts, and where an edited one moves to. */
     cursor: { latitude: number; longitude: number } | null;
+    /** A place picked elsewhere (on the map) that should open in the editor. */
+    request?: string | null;
 }>();
 const emit = defineEmits<{
     /** The place being drawn changed, or null when no editor is open. */
     draft: [draft: PlaceDraft | null];
     goto: [latitude: number, longitude: number];
+    /** The requested place was taken up (or does not exist), so the request can be dropped. */
+    handled: [];
 }>();
 
 const store = useCheckpointsStore();
@@ -166,6 +171,18 @@ function pick(place: PlaceResult) {
     emit('goto', place.latitude, place.longitude);
 }
 
+// A place tapped on the map opens at once; if the list is still loading it opens as soon as it has.
+watch(
+    () => [props.request, store.checkpoints] as const,
+    ([id]) => {
+        if (!id) return;
+        const target = store.checkpoints.find((checkpoint) => checkpoint.id === id);
+        if (target) open(target);
+        if (target || store.loaded) emit('handled');
+    },
+    { immediate: true }
+);
+
 onBeforeUnmount(() => {
     clearTimeout(debounce);
     // Leaving the tab with an editor open must not leave its circle on the map.
@@ -228,15 +245,14 @@ onBeforeUnmount(() => {
 
             <label class="type-label-lg block px-2">
                 Radius: {{ Math.round(radius) }} m
-                <input
-                    v-model.number="radius"
-                    type="range"
+                <Slider
+                    v-model="radius"
                     :min="MIN_RADIUS_M"
                     :max="MAX_RADIUS_M"
-                    step="1"
                     :disabled="readOnly"
-                    class="accent-primary mt-2 w-full"
-                    aria-label="Radius in metres"
+                    :value-label="`${Math.round(radius)} m`"
+                    label="Radius in metres"
+                    class="mt-1"
                 />
             </label>
 

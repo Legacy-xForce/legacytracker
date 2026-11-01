@@ -173,7 +173,12 @@ class _MapCheckScreenState extends State<_MapCheckScreen> {
       ),
     ];
     _scene.checkpoints = const [
-      MapCheckpointOverlay(id: 'home', center: _start, radiusMeters: 120),
+      MapCheckpointOverlay(
+        id: 'home',
+        center: _start,
+        radiusMeters: 120,
+        color: Color(0xFF82D5C8),
+      ),
     ];
     _labelHome();
     _timer = Timer.periodic(const Duration(milliseconds: 250), (_) {
@@ -534,8 +539,14 @@ class _SpikeStatus extends StatelessWidget {
                     layer == MapLayer.standard ? 'Satellite' : 'Standard',
                   ),
                 ),
-                OutlinedButton(onPressed: onZoomIn, child: const Text('Zoom +')),
-                OutlinedButton(onPressed: onZoomOut, child: const Text('Zoom −')),
+                OutlinedButton(
+                  onPressed: onZoomIn,
+                  child: const Text('Zoom +'),
+                ),
+                OutlinedButton(
+                  onPressed: onZoomOut,
+                  child: const Text('Zoom −'),
+                ),
               ],
             ),
           ],

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:legacytracker/src/features/updates/app_update_banner.dart';
+import 'package:legacytracker/src/core/wavy_progress_indicator.dart';
 import 'package:legacytracker/src/features/updates/app_updater.dart';
 import 'package:legacytracker/src/features/updates/update_required_gate.dart';
 
@@ -100,7 +101,7 @@ void main() {
   testWidgets('downloading: progress instead of the button', (tester) async {
     await pumpBanner(tester, status(available: 12, progress: 0.42));
     expect(find.text('Downloading… 42%'), findsOneWidget);
-    expect(find.byType(LinearProgressIndicator), findsOneWidget);
+    expect(find.byType(WavyLinearProgressIndicator), findsOneWidget);
     expect(find.text('Install'), findsNothing);
   });
 

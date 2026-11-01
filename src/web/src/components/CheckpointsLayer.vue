@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { palette } from '../lib/palette';
-import { Marker } from 'mapbox-gl';
+import { themeColor } from '../lib/palette';
+import { Marker, type MapMouseEvent } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
+import { useAppearanceStore } from '../stores/appearance';
 import { circlePolygon } from '../lib/geo';
 import { escapeHtml } from '../lib/format';
 import { icons } from '../lib/icons';
@@ -10,7 +11,9 @@ import { useMap } from '../lib/mapContext';
 import type { Checkpoint } from '../stores/checkpoints';
 
 const props = defineProps<{ checkpoints: Checkpoint[] }>();
+const emit = defineEmits<{ select: [id: string] }>();
 const map = useMap();
+const appearance = useAppearanceStore();
 // Names sit under people and events, so a place never hides who is in it.
 const Z_INDEX = 0;
 // Zoomed out further, the names would pile up into noise; the circles stay.
@@ -26,9 +29,29 @@ function updateLabels() {
     for (const marker of labels.values()) marker.getElement().style.display = visible ? '' : 'none';
 }
 
+// A circle is as clickable as its name: either one opens the place.
+function onCircleClick(event: MapMouseEvent) {
+    const feature = event.features?.[0] as { properties?: { id?: unknown } | null } | undefined;
+    const id = feature?.properties?.id;
+    if (typeof id === 'string') emit('select', id);
+}
+
+function onCircleEnter() {
+    const canvas = map.value?.getCanvas();
+    if (canvas) canvas.style.cursor = 'pointer';
+}
+
+function onCircleLeave() {
+    const canvas = map.value?.getCanvas();
+    if (canvas) canvas.style.cursor = '';
+}
+
 function clearLayers() {
     const target = map.value;
     if (!target) return;
+    target.off('click', FILL, onCircleClick);
+    target.off('mouseenter', FILL, onCircleEnter);
+    target.off('mouseleave', FILL, onCircleLeave);
     if (target.getLayer(LINE)) target.removeLayer(LINE);
     if (target.getLayer(FILL)) target.removeLayer(FILL);
     if (target.getSource(SOURCE)) target.removeSource(SOURCE);
@@ -54,6 +77,8 @@ function paint() {
     if (!target) return;
     clearLayers();
     clearLabels();
+    // The circles follow the theme's accent, like the rest of the page.
+    const accent = themeColor('primary');
     if (props.checkpoints.length > 0) {
         target.addSource(SOURCE, {
             type: 'geojson',
@@ -75,14 +100,17 @@ function paint() {
             id: FILL,
             type: 'fill',
             source: SOURCE,
-            paint: { 'fill-color': palette.mapAccent, 'fill-opacity': 0.14, 'fill-emissive-strength': 1 }
+            paint: { 'fill-color': accent, 'fill-opacity': 0.14, 'fill-emissive-strength': 1 }
         });
+        target.on('click', FILL, onCircleClick);
+        target.on('mouseenter', FILL, onCircleEnter);
+        target.on('mouseleave', FILL, onCircleLeave);
         target.addLayer({
             id: LINE,
             type: 'line',
             source: SOURCE,
             paint: {
-                'line-color': palette.mapAccent,
+                'line-color': accent,
                 'line-width': 1.5,
                 'line-opacity': 0.9,
                 'line-emissive-strength': 1
@@ -91,9 +119,13 @@ function paint() {
         for (const checkpoint of props.checkpoints) {
             const el = document.createElement('div');
             el.className = 'checkpoint-label lt-marker';
-            el.style.pointerEvents = 'none';
             el.style.zIndex = `${Z_INDEX}`;
-            el.innerHTML = `${icons.place}<span>${escapeHtml(checkpoint.name)}</span>`;
+            // The whole pill takes the click (see .lt-hit): a button, so the keyboard reaches it too.
+            el.innerHTML = `<button type="button" class="lt-hit" aria-label="${escapeHtml(checkpoint.name)}">${icons.place}<span>${escapeHtml(checkpoint.name)}</span></button>`;
+            el.querySelector('button')!.addEventListener('click', (event) => {
+                event.stopPropagation();
+                emit('select', checkpoint.id);
+            });
             const marker = new Marker({ element: el, anchor: 'center' })
                 .setLngLat([checkpoint.longitude, checkpoint.latitude])
                 .addTo(target);
@@ -115,9 +147,12 @@ watch(
     { immediate: true }
 );
 watch(() => props.checkpoints, draw);
+// Paint cannot read CSS variables, so a new theme redraws the circles with its own accent.
+watch(() => appearance.theme, draw, { flush: 'post' });
 onBeforeUnmount(() => {
     map.value?.off('style.load', draw);
     map.value?.off('zoom', updateLabels);
+    onCircleLeave();
     clearLabels();
     clearLayers();
 });
@@ -126,19 +161,32 @@ onBeforeUnmount(() => {
 <template><span hidden /></template>
 
 <style>
-.checkpoint-label {
+.checkpoint-label button {
     display: flex;
     align-items: center;
     gap: 4px;
     padding: 3px 10px 3px 6px;
+    border: none;
     border-radius: var(--radius-full);
-    background: v-bind('palette.nameChip');
+    /* Opaque, from the theme: the map shows through nothing, and every theme reads. */
+    background: var(--color-surface-container-high);
     color: var(--color-on-surface);
+    font: inherit;
     font-size: 12px;
     font-weight: 600;
     line-height: 16px;
     box-shadow: var(--shadow-level-1);
     white-space: nowrap;
+    transition: background-color var(--duration-short);
+}
+
+.checkpoint-label button:hover {
+    background: var(--color-surface-container-highest);
+}
+
+.checkpoint-label button:focus-visible {
+    outline: 2px solid var(--color-primary);
+    outline-offset: 2px;
 }
 
 .checkpoint-label svg {

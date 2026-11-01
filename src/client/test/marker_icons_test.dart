@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legacytracker/src/features/tracking/widgets/marker_icons.dart';
@@ -81,24 +85,18 @@ void main() {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);
 
-    final cluster = await factory.clusterMarker(
-      const [
-        MarkerPerson(id: 'a', name: 'Ada'),
-        MarkerPerson(id: 'b', name: 'Bo'),
-        MarkerPerson(id: 'c', name: 'Cy'),
-      ],
-      style: ClusterStyle.light,
-    );
-    final overflow = await factory.clusterMarker(
-      const [
-        MarkerPerson(id: 'a', name: 'Ada'),
-        MarkerPerson(id: 'b', name: 'Bo'),
-        MarkerPerson(id: 'c', name: 'Cy'),
-        MarkerPerson(id: 'd', name: 'Di'),
-        MarkerPerson(id: 'e', name: 'Ed'),
-      ],
-      style: ClusterStyle.light,
-    );
+    final cluster = await factory.clusterMarker(const [
+      MarkerPerson(id: 'a', name: 'Ada'),
+      MarkerPerson(id: 'b', name: 'Bo'),
+      MarkerPerson(id: 'c', name: 'Cy'),
+    ], style: ClusterStyle.light);
+    final overflow = await factory.clusterMarker(const [
+      MarkerPerson(id: 'a', name: 'Ada'),
+      MarkerPerson(id: 'b', name: 'Bo'),
+      MarkerPerson(id: 'c', name: 'Cy'),
+      MarkerPerson(id: 'd', name: 'Di'),
+      MarkerPerson(id: 'e', name: 'Ed'),
+    ], style: ClusterStyle.light);
 
     // Max three faces plus one "+N" slot.
     expect(overflow.width, greaterThan(cluster.width));
@@ -188,6 +186,109 @@ void main() {
     for (final image in [event, beam]) {
       expectPng(image);
     }
+  });
+
+  group('animated pictures', () {
+    // Two 2x2 frames, red then blue, 200 ms each.
+    final gif = base64Decode(
+      'R0lGODlhAgACAPAAAP8AAAAA/yH/C05FVFNDQVBFMi4wAwEAAAAh+QQAFAAAACwAAAAA'
+      'AgACAAACAwQIFAAh+QQAFAAAACwAAAAAAgACAAACA0yYFAA7',
+    );
+
+    Future<void> loaded(MarkerIconFactory factory, MarkerPerson person) {
+      final done = Completer<void>();
+      void listener() {
+        if (!done.isCompleted) done.complete();
+      }
+
+      factory.addListener(listener);
+      // The first request starts the load; the marker is the initial until then.
+      unawaited(factory.personMarker(person));
+      return done.future.whenComplete(() => factory.removeListener(listener));
+    }
+
+    test('the map marker moves with the picture', () async {
+      var now = DateTime(2026, 1, 1);
+      final factory = MarkerIconFactory(clock: () => now);
+      addTearDown(factory.dispose);
+      final person = MarkerPerson(id: 'ada', name: 'Ada', avatarBytes: gif);
+
+      expect(factory.avatarFrame(person), -1);
+      expect(factory.hasAnimatedAvatars, isFalse);
+      expect(factory.untilNextAvatarFrame, isNull);
+      await loaded(factory, person);
+      expect(factory.hasAnimatedAvatars, isTrue);
+      expect(factory.untilNextAvatarFrame, const Duration(milliseconds: 200));
+
+      expect(factory.avatarFrame(person), 0);
+      final first = await factory.personMarker(person);
+      now = now.add(const Duration(milliseconds: 250));
+      expect(factory.avatarFrame(person), 1);
+      final second = await factory.personMarker(person);
+      // A frame is its own bitmap (so the map re-registers it) with other pixels.
+      expect(second.id, isNot(first.id));
+      expect(second.png, isNot(first.png));
+
+      // ...and the loop comes round again to the first frame, already cached.
+      now = now.add(const Duration(milliseconds: 150));
+      expect(factory.avatarFrame(person), 0);
+      expect((await factory.personMarker(person)).id, first.id);
+    });
+
+    test(
+      'a still picture is one bitmap however long it is on screen',
+      () async {
+        var now = DateTime(2026, 1, 1);
+        final factory = MarkerIconFactory(clock: () => now);
+        addTearDown(factory.dispose);
+        final still = (await factory.personMarker(
+          const MarkerPerson(id: 'bob', name: 'Bob'),
+        )).png;
+        final person = MarkerPerson(id: 'bob', name: 'Bob', avatarBytes: still);
+
+        await loaded(factory, person);
+        expect(factory.hasAnimatedAvatars, isFalse);
+        expect(factory.untilNextAvatarFrame, isNull);
+        expect(factory.avatarFrame(person), -1);
+        final first = await factory.personMarker(person);
+        now = now.add(const Duration(seconds: 5));
+        expect((await factory.personMarker(person)).id, first.id);
+      },
+    );
+
+    test('the clock picks the frame, 10 ms delays play at 100 ms', () async {
+      final start = DateTime(2026, 1, 1);
+      Future<ui.Image> pixel() async {
+        final recorder = ui.PictureRecorder();
+        Canvas(recorder).drawRect(
+          const Rect.fromLTWH(0, 0, 1, 1),
+          Paint()..color = Colors.red,
+        );
+        return recorder.endRecording().toImage(1, 1);
+      }
+
+      final art = AvatarArt(
+        [await pixel(), await pixel()],
+        const [Duration(milliseconds: 10), Duration(milliseconds: 300)],
+        start,
+      );
+      addTearDown(art.dispose);
+      expect(art.frameAt(start), 0);
+      expect(art.frameAt(start.add(const Duration(milliseconds: 99))), 0);
+      expect(art.frameAt(start.add(const Duration(milliseconds: 100))), 1);
+      expect(art.frameAt(start.add(const Duration(milliseconds: 399))), 1);
+      expect(art.frameAt(start.add(const Duration(milliseconds: 400))), 0);
+      // The caller sleeps exactly until the frame changes.
+      expect(art.untilNextFrame(start), const Duration(milliseconds: 100));
+      expect(
+        art.untilNextFrame(start.add(const Duration(milliseconds: 250))),
+        const Duration(milliseconds: 150),
+      );
+      expect(
+        art.untilNextFrame(start.add(const Duration(milliseconds: 400))),
+        const Duration(milliseconds: 100),
+      );
+    });
   });
 }
 

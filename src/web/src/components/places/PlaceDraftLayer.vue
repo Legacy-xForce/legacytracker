@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { duration, motion } from '../../lib/motionTokens';
-import { palette } from '../../lib/palette';
+import { themeColor } from '../../lib/palette';
+import { useAppearanceStore } from '../../stores/appearance';
 import type { GeoJSONSource } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
 import { centerShowing, visibleCenter } from '../../lib/camera';
@@ -56,18 +57,19 @@ function paint() {
         source.setData(ring(draft));
         return;
     }
+    const accent = themeColor('primary');
     target.addSource(SOURCE, { type: 'geojson', data: ring(draft) });
     target.addLayer({
         id: FILL,
         type: 'fill',
         source: SOURCE,
-        paint: { 'fill-color': palette.mapAccent, 'fill-opacity': 0.22, 'fill-emissive-strength': 1 }
+        paint: { 'fill-color': accent, 'fill-opacity': 0.22, 'fill-emissive-strength': 1 }
     });
     target.addLayer({
         id: LINE,
         type: 'line',
         source: SOURCE,
-        paint: { 'line-color': palette.mapAccent, 'line-width': 2, 'line-emissive-strength': 1 }
+        paint: { 'line-color': accent, 'line-width': 2, 'line-emissive-strength': 1 }
     });
 }
 
@@ -131,6 +133,16 @@ watch(
         reportCentre();
     },
     { immediate: true }
+);
+const appearance = useAppearanceStore();
+// Paint cannot read CSS variables, so a new theme redraws the ring with its own accent.
+watch(
+    () => appearance.theme,
+    () => {
+        clear();
+        draw();
+    },
+    { flush: 'post' }
 );
 watch(() => [props.draft?.latitude, props.draft?.longitude, props.draft?.radius, props.draft === null], draw);
 onBeforeUnmount(() => {

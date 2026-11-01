@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app_updater.dart';
 import '../../core/dialogs.dart';
+import '../../core/wavy_progress_indicator.dart';
 
 /// Installed version, update state, and the one setting that makes updates
 /// silent. Renders nothing where the app can't update itself (iOS).
@@ -125,7 +126,10 @@ class _AppUpdatesCardState extends State<AppUpdatesCard>
           if (status.downloading)
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: LinearProgressIndicator(value: status.progress),
+              child: WavyLinearProgressIndicator(
+                value: status.progress ?? 0,
+                semanticsLabel: 'Download progress',
+              ),
             ),
           if (status.updateAvailable && (status.notes ?? '').isNotEmpty)
             Padding(

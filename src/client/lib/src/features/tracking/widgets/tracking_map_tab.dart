@@ -104,6 +104,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
     with TickerProviderStateMixin {
   final MarkerIconFactory _icons = MarkerIconFactory();
   final Map<String, MarkerImage> _images = {};
+  static const _maxCachedImages = 160;
 
   /// The last rendered bitmap per marker slot, kept while the next one (a
   /// new speed bucket, battery level, avatar) renders asynchronously -
@@ -174,6 +175,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
 
   @override
   void dispose() {
+    _avatarAnimation?.cancel();
     _icons
       ..removeListener(_handleIconsChanged)
       ..dispose();
@@ -193,7 +195,44 @@ class TrackingMapTabState extends State<TrackingMapTab>
     _images.clear();
     _pendingImages.clear();
     _iconEpoch++;
+    _syncAvatarAnimation();
     _publishScene();
+  }
+
+  /// The map draws markers as bitmaps, so an animated picture only moves if a
+  /// new bitmap is made for each frame. A one-shot timer sleeps until the next
+  /// picture changes frame and only exists while some loaded picture is
+  /// animated; a map of still pictures costs nothing.
+  Timer? _avatarAnimation;
+
+  void _syncAvatarAnimation() {
+    _avatarAnimation?.cancel();
+    _avatarAnimation = null;
+    final wait = _icons.untilNextAvatarFrame;
+    if (wait == null) return;
+    // Never faster than 20 fps: each frame is a 300x340 PNG that goes through
+    // the platform channel to Mapbox.
+    _avatarAnimation = Timer(
+      wait < _minFrameGap ? _minFrameGap : wait,
+      _advanceAvatars,
+    );
+  }
+
+  static const _minFrameGap = Duration(milliseconds: 50);
+
+  void _advanceAvatars() {
+    _avatarAnimation = null;
+    if (!mounted) return;
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    final visible =
+        TickerMode.valuesOf(context).enabled &&
+        (lifecycle == null || lifecycle == AppLifecycleState.resumed);
+    // Keep the clock running while hidden (so the loop is in step when it
+    // returns) but make no bitmaps nobody can see. Don't queue frames behind
+    // renders that haven't finished either: the marker keeps its last bitmap
+    // (see _slotImages) and the animation slows down instead of the phone.
+    if (visible && _pendingImages.isEmpty) _publishScene();
+    _syncAvatarAnimation();
   }
 
   void _jumpToInitialFixIfNeeded(TrackingMapTab oldWidget) {
@@ -868,7 +907,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
               '${identityHashCode(person.avatarBytes)}|'
               '${person.isStale}|${person.isSelf}|${person.isMoving}|'
               '${(person.speedKmh / 5).round() * 5}|${person.batteryLevel}|'
-              '${person.isCharging}',
+              '${person.isCharging}|${_icons.avatarFrame(person)}',
       ].join(',');
       final colors = _markerColors;
       final slotId = single
@@ -1082,8 +1121,12 @@ class TrackingMapTabState extends State<TrackingMapTab>
   }
 
   MarkerImage? _imageFor(String key, Future<MarkerImage> Function() build) {
-    final cached = _images[key];
-    if (cached != null) return cached;
+    final cached = _images.remove(key);
+    if (cached != null) {
+      // Least recently used goes first when an animation fills the cache.
+      _images[key] = cached;
+      return cached;
+    }
     if (_pendingImages.add(key)) {
       final epoch = _iconEpoch;
       unawaited(
@@ -1095,6 +1138,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
               // it here is how a photo stayed missing after it had loaded.
               if (!mounted || epoch != _iconEpoch) return;
               _images[key] = image;
+              // An animation makes a bitmap per frame: keep the recent ones.
+              while (_images.length > _maxCachedImages) {
+                _images.remove(_images.keys.first);
+              }
               // Only the annotations need to know a finished icon exists.
               _publishScene();
             })

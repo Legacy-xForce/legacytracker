@@ -17,7 +17,6 @@ abstract final class AppPalette {
   static const paused = Color(0xFFFFC107);
   static const hidden = Color(0xFF607D8B);
   static const missing = Color(0xFFFF5252);
-  static const battery = Color(0xFF64FFDA);
 
   // People who haven't been heard from in a while.
   static const stale = Color(0xFF9E9E9E);
@@ -67,11 +66,9 @@ abstract final class AppPalette {
   static const onPoorBanner = Color(0xFF2B2100);
 
   // Map bitmaps, which have no theme to read.
-  static const selfPill = Color(0xFF00695C);
-  static const peerPill = Color(0xFF212121);
   static const chip = Color(0xFF2B3134);
   static const nameChip = Color(0xEB252B2A);
+
   /// Top-of-map scrim behind the status bar.
   static const scrimTop = Color(0x99000000);
-  static const mapAccent = Color(0xFF82D5C8);
 }

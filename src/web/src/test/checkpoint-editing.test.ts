@@ -131,6 +131,42 @@ describe('places panel', () => {
         wrapper.unmount();
     });
 
+    it('opens a place picked on the map, once, and drops the request', async () => {
+        const wrapper = await mountPanel();
+        await wrapper.setProps({ request: '2' });
+        expect(wrapper.find('[data-place-editor]').exists()).toBe(true);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 45, longitude: 9, radius: 80 }]);
+        expect(wrapper.emitted('handled')).toHaveLength(1);
+        wrapper.unmount();
+    });
+
+    it('waits for the list when the place is picked before it has loaded', async () => {
+        const wrapper = mount(PlacesPanel, {
+            props: { cursor: null, request: '1' },
+            attachTo: document.body
+        });
+        expect(wrapper.find('[data-place-editor]').exists()).toBe(false);
+        expect(wrapper.emitted('handled')).toBeUndefined();
+        await useCheckpointsStore().load();
+        await flushPromises();
+        expect(wrapper.find('[data-place-editor]').exists()).toBe(true);
+        expect(wrapper.emitted('handled')).toHaveLength(1);
+        wrapper.unmount();
+    });
+
+    it('draws the radius slider as the themed M3 one, filled to the chosen radius', async () => {
+        const wrapper = await mountPanel();
+        await wrapper.findAll('[data-checkpoint] button')[0].trigger('click');
+        const slider = wrapper.find('.m3-slider input[type="range"]');
+        expect(slider.exists()).toBe(true);
+        const fill = () => (wrapper.find('.m3-slider').element as HTMLElement).style.getPropertyValue('--fill');
+        const before = fill();
+        await slider.setValue('300');
+        const after = fill();
+        expect(parseFloat(after)).toBeGreaterThan(parseFloat(before));
+        wrapper.unmount();
+    });
+
     it('follows the crosshair while editing', async () => {
         const wrapper = await mountPanel();
         await wrapper.find('[data-add]').trigger('click');
