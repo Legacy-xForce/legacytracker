@@ -1,0 +1,44 @@
+{
+  "formatElapsed": [
+    { "seconds": 0, "expected": "0s" },
+    { "seconds": 42, "expected": "42s" },
+    { "seconds": 725, "expected": "12m 5s" },
+    { "seconds": 720, "expected": "12m" },
+    { "seconds": 12000, "expected": "3h 20m" },
+    { "seconds": 7200, "expected": "2h" },
+    { "seconds": 3632400, "expected": "42d 1h" }
+  ],
+  "formatUpdatedAgo": [
+    { "seconds": 0, "expected": "just now" },
+    { "seconds": 59, "expected": "just now" },
+    { "seconds": 300, "expected": "5 min ago" },
+    { "seconds": 3600, "expected": "1 hour ago" },
+    { "seconds": 10800, "expected": "3 hours ago" },
+    { "seconds": 86400, "expected": "1 day ago" },
+    { "seconds": 172800, "expected": "2 days ago" }
+  ],
+  "formatTripDuration": [
+    { "seconds": 20, "expected": "1m" },
+    { "seconds": 41, "expected": "1m" },
+    { "seconds": 119, "expected": "1m" },
+    { "seconds": 480, "expected": "8m" },
+    { "seconds": 3900, "expected": "1h 5m" },
+    { "seconds": 7200, "expected": "2h" }
+  ],
+  "formatDistance": [
+    { "meters": 0, "expected": "0 m" },
+    { "meters": 999, "expected": "999 m" },
+    { "meters": 1000, "expected": "1.0 km" },
+    { "meters": 9940, "expected": "9.9 km" },
+    { "meters": 12400, "expected": "12 km" }
+  ],
+  "formatDayKilometers": [
+    { "meters": 100, "expected": "1km" },
+    { "meters": 12400, "expected": "12km" }
+  ],
+  "formatSpeed": [
+    { "mps": 0, "expected": "0 km/h" },
+    { "mps": 10, "expected": "36 km/h" },
+    { "mps": 27.8, "expected": "100 km/h" }
+  ]
+}

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
+import '../../../core/constants.dart';
 import '../../../core/palette.dart';
 
 import '../avatar_pictures.dart';
@@ -21,9 +22,10 @@ double _contrast(Color a, Color b) {
 /// The initial's color on an avatar background: white or near-black,
 /// whichever reads better (at least 4.5:1 for every palette color).
 Color initialColorFor(Color background) =>
-    _contrast(AppPalette.white, background) >= _contrast(_darkInitial, background)
-        ? AppPalette.white
-        : _darkInitial;
+    _contrast(AppPalette.white, background) >=
+        _contrast(_darkInitial, background)
+    ? AppPalette.white
+    : _darkInitial;
 
 /// A stable color per user, so the same person reads the same on their
 /// marker, inside a group bubble and in the people list.
@@ -58,7 +60,7 @@ final _accountId = RegExp(
 /// Legacy Auth keeps profile pictures by account id, which is also the
 /// tracker's user id. Ids that aren't accounts can't have one.
 String? profilePictureUrl(String userId) => _accountId.hasMatch(userId)
-    ? 'https://auth.legacy-group.tech/auth/profile-picture/$userId'
+    ? '${AppConstants.authBaseUrl}/auth/profile-picture/$userId'
     : null;
 
 /// Picture URLs to try for a person, in order.

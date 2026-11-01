@@ -1,3 +1,4 @@
+import { metersBetween } from './geo';
 /** A person's marker box (beam, badges and all), centred on their position. */
 export const PEER_MARKER_SIZE: [number, number] = [152, 168];
 
@@ -46,15 +47,6 @@ interface GroupPoint {
     /** Real position; when both points have one, they must also be within `maxMeters`. */
     lat?: number;
     lng?: number;
-}
-
-/** Great-circle distance in metres (haversine). */
-export function metersBetween(a: { lat: number; lng: number }, b: { lat: number; lng: number }): number {
-    const rad = Math.PI / 180;
-    const dLat = (b.lat - a.lat) * rad;
-    const dLng = (b.lng - a.lng) * rad;
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
-    return 2 * 6371008.8 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 function withinMeters(a: GroupPoint, b: GroupPoint, maxMeters: number): boolean {

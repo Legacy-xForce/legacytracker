@@ -1,4 +1,5 @@
 import { msToKmh } from './format';
+import { metersBetween } from './geo';
 /** One recorded fix of a travel session. */
 export interface ReplayPoint {
     latitude: number;
@@ -79,15 +80,9 @@ export function speedSegments(points: ReplayPoint[]): ReplaySegment[] {
     return segments;
 }
 
-const EARTH_RADIUS_M = 6_371_000;
-
 /** Great-circle distance in metres. */
 export function haversine(aLat: number, aLon: number, bLat: number, bLon: number): number {
-    const rad = Math.PI / 180;
-    const dLat = (bLat - aLat) * rad;
-    const dLon = (bLon - aLon) * rad;
-    const h = Math.sin(dLat / 2) ** 2 + Math.cos(aLat * rad) * Math.cos(bLat * rad) * Math.sin(dLon / 2) ** 2;
-    return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
+    return metersBetween({ lat: aLat, lng: aLon }, { lat: bLat, lng: bLon });
 }
 
 interface ReplayPosition {
