@@ -89,12 +89,6 @@ CREATE INDEX IF NOT EXISTS api_token_requests_token_id_idx
 CREATE INDEX IF NOT EXISTS api_token_requests_user_created_idx
   ON api_token_requests (user_id, created_at DESC);
 
-CREATE TABLE IF NOT EXISTS viewer_state (
-  id text PRIMARY KEY,
-  active_viewers integer NOT NULL DEFAULT 0,
-  updated_at timestamptz NOT NULL DEFAULT now()
-);
-
 CREATE TABLE IF NOT EXISTS location_history (
   id bigserial PRIMARY KEY,
   user_id text NOT NULL REFERENCES users(id),
