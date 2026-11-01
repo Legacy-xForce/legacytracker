@@ -26,6 +26,7 @@ describe('EventGeocoder', () => {
         expect(await geocoder.resolve('  piazza   DUOMO ')).toEqual([45.46, 9.19]);
         expect(fetchMock).toHaveBeenCalledTimes(1);
         expect(String(fetchMock.mock.calls[0][0])).toContain('q=Piazza+Duomo');
+        geocoder.flush();
 
         const again = make(fetchMock);
         expect(again.peek('piazza duomo')).toEqual({ known: true, point: [45.46, 9.19] });

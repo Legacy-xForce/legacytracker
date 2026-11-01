@@ -1,8 +1,11 @@
+import { trimOldest } from './lru';
 import { storage } from './storage';
 import { nominatim, Throttle, type ThrottleOptions } from './throttle';
 
 const CACHE_KEY = 'legacytracker.eventGeocode.v1';
 const SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
+const MAX_ENTRIES = 500;
+const SAVE_DELAY_MS = 2000;
 
 export type Point = [number, number];
 
@@ -18,6 +21,7 @@ function normalizeLocation(location: string): string {
 export class EventGeocoder {
     private readonly cache = new Map<string, Point | null>();
     private readonly throttle: Throttle;
+    private saveTimer: ReturnType<typeof setTimeout> | null = null;
 
     constructor(private readonly options: ThrottleOptions & { fetch?: typeof fetch } = {}) {
         const { spacingMs, now, sleep } = options;
@@ -64,8 +68,23 @@ export class EventGeocoder {
             first && Number.isFinite(Number(first.lat)) && Number.isFinite(Number(first.lon))
                 ? [Number(first.lat), Number(first.lon)]
                 : null;
+        this.cache.delete(key);
         this.cache.set(key, point);
-        storage.set(CACHE_KEY, JSON.stringify(Object.fromEntries(this.cache)));
+        trimOldest(this.cache, MAX_ENTRIES);
+        this.scheduleSave();
         return point;
+    }
+
+    // A run of answers is written once, not once per answer.
+    private scheduleSave(): void {
+        this.saveTimer ??= setTimeout(() => this.flush(), SAVE_DELAY_MS);
+    }
+
+    /** Writes any answers not yet saved. */
+    flush(): void {
+        if (this.saveTimer === null) return;
+        clearTimeout(this.saveTimer);
+        this.saveTimer = null;
+        storage.set(CACHE_KEY, JSON.stringify(Object.fromEntries(this.cache)));
     }
 }

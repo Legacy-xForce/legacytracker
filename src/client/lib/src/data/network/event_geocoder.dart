@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:latlong2/latlong.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'nominatim.dart';
 import 'place_search_service.dart';
 
 /// Turns an event's free-text location into a map point, remembering every
@@ -14,8 +15,10 @@ class EventGeocoder {
   EventGeocoder({
     required this._search,
     required Future<SharedPreferences> prefs,
-    this.spacing = const Duration(milliseconds: 1100),
-  }) {
+    Duration? spacing,
+  }) : _throttle = spacing == null
+           ? nominatimThrottle
+           : NominatimThrottle(spacing) {
     ready = prefs.then((loaded) {
       _prefs = loaded;
       _load();
@@ -26,16 +29,18 @@ class EventGeocoder {
 
   final PlaceSearchService _search;
   late final SharedPreferences _prefs;
-  final Duration spacing;
+  final NominatimThrottle _throttle;
+  Timer? _saveTimer;
 
   /// Completes once the remembered answers are loaded; [peek] is only
   /// meaningful after that.
   late final Future<void> ready;
 
   // Normalized text -> point, or null when nothing was found.
-  final Map<String, LatLng?> _cache = {};
+  // Oldest answers are forgotten beyond a few hundred.
+  static const _capacity = 500;
+  final LruMap<String, LatLng?> _cache = LruMap(_capacity);
   Future<void> _queue = Future.value();
-  DateTime? _lastRequest;
 
   static String normalize(String location) =>
       location.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
@@ -66,16 +71,11 @@ class EventGeocoder {
     final key = normalize(location);
     if (_cache.containsKey(key)) return _cache[key];
 
-    final last = _lastRequest;
-    if (last != null) {
-      final wait = spacing - DateTime.now().difference(last);
-      if (!wait.isNegative) await Future<void>.delayed(wait);
-    }
-    _lastRequest = DateTime.now();
+    await _throttle.acquire();
     final results = await _search.search(location);
     final point = results.isEmpty ? null : results.first.point;
     _cache[key] = point;
-    await _save();
+    _scheduleSave();
     return point;
   }
 
@@ -92,6 +92,22 @@ class EventGeocoder {
     } catch (_) {
       _cache.clear();
     }
+  }
+
+  // A burst of answers is written once, not once per answer.
+  void _scheduleSave() {
+    _saveTimer ??= Timer(const Duration(seconds: 2), () {
+      _saveTimer = null;
+      unawaited(_save());
+    });
+  }
+
+  /// Writes any answers not yet saved; call when the app goes to background.
+  Future<void> flush() async {
+    if (_saveTimer == null) return;
+    _saveTimer!.cancel();
+    _saveTimer = null;
+    await _save();
   }
 
   Future<void> _save() => _prefs.setString(
