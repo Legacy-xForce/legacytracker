@@ -23,9 +23,11 @@ import Icon from '../components/ui/Icon.vue';
 import MenuItem from '../components/ui/MenuItem.vue';
 import MapVariantPicker from '../components/ui/MapVariantPicker.vue';
 import PopoverMenu from '../components/ui/PopoverMenu.vue';
+import ScreensaverOverlay from '../components/ui/ScreensaverOverlay.vue';
 import Spinner from '../components/ui/Spinner.vue';
 import { useMediaQuery } from '../composables/useMediaQuery';
 import { useNow } from '../composables/useNow';
+import { useScreensaver } from '../composables/useScreensaver';
 import { config } from '../config';
 import type { Insets } from '../lib/camera';
 import { moveFocus } from '../lib/focus';
@@ -51,6 +53,8 @@ const history = useHistoryStore();
 const sharing = useSharingStore();
 const leaderboard = useLeaderboardStore();
 const router = useRouter();
+// Nobody watching a map left open should keep every phone in realtime mode.
+const { active: screensaverActive, wake: wakeFromScreensaverTimer } = useScreensaver();
 
 const CHECKPOINTS_KEY = 'legacytracker.showCheckpoints';
 const ORIENTATION_LOCK_KEY = 'legacytracker.orientationLocked';
@@ -226,12 +230,24 @@ function chooseStyle(style: MapStyle) {
 // A hidden tab is not a map anyone is looking at: tell the server so phones can stop streaming.
 function onVisibility() {
     const visible = document.visibilityState === 'visible';
-    peers.setMapActive(visible);
+    peers.setMapActive(visible && !screensaverActive.value);
     // Nothing tells a browser its socket died silently; coming back always starts fresh.
     if (visible) {
         peers.reconnect();
         void events.refresh();
     }
+}
+
+// The screensaver means nobody is watching, even if the tab stayed visible.
+watch(screensaverActive, (asleep) => {
+    peers.setMapActive(!asleep && document.visibilityState === 'visible');
+});
+
+function wakeFromScreensaver() {
+    wakeFromScreensaverTimer();
+    // The socket may have died silently while the map sat unattended; waking starts fresh.
+    peers.reconnect();
+    void events.refresh();
 }
 
 function onOnline() {
@@ -588,5 +604,6 @@ watch(replaying, (isReplaying) => {
 
         <AppearanceDialog v-model="appearanceOpen" />
         <ApiTokensDialog v-if="apiTokensOpen" @close="apiTokensOpen = false" />
+        <ScreensaverOverlay v-if="screensaverActive" @wake="wakeFromScreensaver" />
     </div>
 </template>
