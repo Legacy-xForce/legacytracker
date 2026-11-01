@@ -86,10 +86,10 @@ const scale = computed(() => (props.selected ? 1.18 : props.moving ? 1.08 : 1) *
 }
 
 .peer-marker--stale {
-    --beam: #9e9e9e;
-    --ring: #9e9e9e;
-    --badge: #616161;
-    --badge-text: #fff;
+    --beam: var(--color-stale);
+    --ring: var(--color-stale);
+    --badge: var(--color-surface-container-highest);
+    --badge-text: var(--color-on-surface-variant);
 }
 
 /* A 56° cone fading out from the person, with a soft glow. */

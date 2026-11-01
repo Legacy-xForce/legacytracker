@@ -354,7 +354,7 @@ onBeforeUnmount(() => {
     width: 18px;
     height: 18px;
     border-radius: var(--radius-full);
-    border: 3px solid #fff;
+    border: 3px solid var(--color-marker-ring);
     box-shadow: var(--shadow-level-1);
 }
 </style>

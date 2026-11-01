@@ -28,9 +28,9 @@ const chips = computed(() => [
         <div class="pointer-events-none relative flex gap-3">
             <!-- Green departure dot, a line, red arrival dot: matching the replay map. -->
             <div class="flex flex-col items-center py-1">
-                <span class="bg-online size-3 rounded-full border-2 border-white" />
+                <span class="bg-online border-marker-ring size-3 rounded-full border-2" />
                 <span class="bg-outline-variant my-[3px] w-0.5 flex-1" />
-                <span class="bg-arrival size-3 rounded-full border-2 border-white" />
+                <span class="bg-arrival border-marker-ring size-3 rounded-full border-2" />
             </div>
             <div class="type-body-md min-w-0 flex-1 space-y-3.5">
                 <div class="flex items-center">

@@ -39,8 +39,8 @@ class AppTheme {
     required this.label,
     required this.description,
     required this.brightness,
-    required this.preview,
-  });
+    AppThemePreview? preview,
+  }) : _preview = preview;
 
   final AppThemeId id;
 
@@ -53,7 +53,22 @@ class AppTheme {
   /// The brightness of the fixed palette; adaptive themes ignore this and
   /// follow the platform.
   final Brightness brightness;
-  final AppThemePreview preview;
+  final AppThemePreview? _preview;
+
+  /// The swatch in the picker: read off the theme's own scheme so a palette
+  /// edit and its swatch cannot disagree. Adaptive, which has two faces,
+  /// supplies its own.
+  AppThemePreview get preview {
+    final given = _preview;
+    if (given != null) return given;
+    final scheme = schemeFor(id, brightness);
+    return AppThemePreview(
+      canvas: scheme.surface,
+      raised: scheme.surfaceContainer,
+      accent: scheme.primary,
+      text: scheme.onSurface,
+    );
+  }
 
   /// Whether the accents come from the phone's own palette (Material You)
   /// rather than the theme's fixed one.
@@ -72,84 +87,42 @@ const appThemes = <AppTheme>[
     label: 'Teal',
     description: 'The original Legacy Tracker look',
     brightness: Brightness.dark,
-    preview: AppThemePreview(
-      canvas: Color(0xFF0E1513),
-      raised: Color(0xFF1A2120),
-      accent: Color(0xFF82D5C8),
-      text: Color(0xFFDDE4E1),
-    ),
   ),
   AppTheme(
     id: AppThemeId.oled,
     label: 'OLED',
     description: 'Pure black for OLED screens',
     brightness: Brightness.dark,
-    preview: AppThemePreview(
-      canvas: Color(0xFF000000),
-      raised: Color(0xFF0D1312),
-      accent: Color(0xFF82D5C8),
-      text: Color(0xFFDDE4E1),
-    ),
   ),
   AppTheme(
     id: AppThemeId.oledAdaptive,
     label: 'OLED Adaptive',
     description: "Pure black with your phone's accents",
     brightness: Brightness.dark,
-    preview: AppThemePreview(
-      canvas: Color(0xFF000000),
-      raised: Color(0xFF0D1312),
-      accent: Color(0xFF82D5C8),
-      text: Color(0xFFDDE4E1),
-    ),
   ),
   AppTheme(
     id: AppThemeId.catppuccinMocha,
     label: 'Mocha',
     description: 'Catppuccin Mocha',
     brightness: Brightness.dark,
-    preview: AppThemePreview(
-      canvas: Color(0xFF1E1E2E),
-      raised: Color(0xFF313244),
-      accent: Color(0xFFCBA6F7),
-      text: Color(0xFFCDD6F4),
-    ),
   ),
   AppTheme(
     id: AppThemeId.catppuccinMacchiato,
     label: 'Macchiato',
     description: 'Catppuccin Macchiato',
     brightness: Brightness.dark,
-    preview: AppThemePreview(
-      canvas: Color(0xFF24273A),
-      raised: Color(0xFF363A4F),
-      accent: Color(0xFFC6A0F6),
-      text: Color(0xFFCAD3F5),
-    ),
   ),
   AppTheme(
     id: AppThemeId.catppuccinFrappe,
     label: 'Frappé',
     description: 'Catppuccin Frappé',
     brightness: Brightness.dark,
-    preview: AppThemePreview(
-      canvas: Color(0xFF303446),
-      raised: Color(0xFF414559),
-      accent: Color(0xFFCA9EE6),
-      text: Color(0xFFC6D0F5),
-    ),
   ),
   AppTheme(
     id: AppThemeId.catppuccinLatte,
     label: 'Latte',
     description: 'Catppuccin Latte',
     brightness: Brightness.light,
-    preview: AppThemePreview(
-      canvas: Color(0xFFEFF1F5),
-      raised: Color(0xFFE6E9EF),
-      accent: Color(0xFF8839EF),
-      text: Color(0xFF4C4F69),
-    ),
   ),
   AppTheme(
     id: AppThemeId.adaptive,
@@ -214,9 +187,7 @@ ThemeData buildThemeFor(AppThemeId id) {
 
 ThemeData buildAppTheme(ColorScheme scheme) {
   final dark = scheme.brightness == Brightness.dark;
-  final rounded16 = RoundedRectangleBorder(
-    borderRadius: AppShape.lg,
-  );
+  final rounded16 = RoundedRectangleBorder(borderRadius: AppShape.lg);
   final overlayStyle =
       (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
         statusBarColor: Colors.transparent,
@@ -411,11 +382,8 @@ class _CatppuccinPalette {
     required this.surface0,
     required this.surface1,
     required this.surface2,
-    required this.overlay0,
-    required this.overlay1,
     required this.overlay2,
     required this.subtext0,
-    required this.subtext1,
     required this.text,
     required this.mauve,
     required this.red,
@@ -432,11 +400,8 @@ class _CatppuccinPalette {
   final Color surface0;
   final Color surface1;
   final Color surface2;
-  final Color overlay0;
-  final Color overlay1;
   final Color overlay2;
   final Color subtext0;
-  final Color subtext1;
   final Color text;
   final Color mauve;
   final Color red;
@@ -455,11 +420,8 @@ class _CatppuccinPalette {
     surface0: Color(0xFF313244),
     surface1: Color(0xFF45475A),
     surface2: Color(0xFF585B70),
-    overlay0: Color(0xFF6C7086),
-    overlay1: Color(0xFF7F849C),
     overlay2: Color(0xFF9399B2),
     subtext0: Color(0xFFA6ADC8),
-    subtext1: Color(0xFFBAC2DE),
     text: Color(0xFFCDD6F4),
     mauve: Color(0xFFCBA6F7),
     red: Color(0xFFF38BA8),
@@ -477,11 +439,8 @@ class _CatppuccinPalette {
     surface0: Color(0xFF363A4F),
     surface1: Color(0xFF494D64),
     surface2: Color(0xFF5B6078),
-    overlay0: Color(0xFF6E738D),
-    overlay1: Color(0xFF8087A2),
     overlay2: Color(0xFF939AB7),
     subtext0: Color(0xFFA5ADCB),
-    subtext1: Color(0xFFB8C0E0),
     text: Color(0xFFCAD3F5),
     mauve: Color(0xFFC6A0F6),
     red: Color(0xFFED8796),
@@ -499,11 +458,8 @@ class _CatppuccinPalette {
     surface0: Color(0xFF414559),
     surface1: Color(0xFF51576D),
     surface2: Color(0xFF626880),
-    overlay0: Color(0xFF737994),
-    overlay1: Color(0xFF838BA7),
     overlay2: Color(0xFF949CBB),
     subtext0: Color(0xFFA5ADCE),
-    subtext1: Color(0xFFB5BFE2),
     text: Color(0xFFC6D0F5),
     mauve: Color(0xFFCA9EE6),
     red: Color(0xFFE78284),
@@ -521,11 +477,8 @@ class _CatppuccinPalette {
     surface0: Color(0xFFCCD0DA),
     surface1: Color(0xFFBCC0CC),
     surface2: Color(0xFFACB0BE),
-    overlay0: Color(0xFF9CA0B0),
-    overlay1: Color(0xFF8C8FA1),
     overlay2: Color(0xFF7C7F93),
     subtext0: Color(0xFF6C6F85),
-    subtext1: Color(0xFF5C5F77),
     text: Color(0xFF4C4F69),
     mauve: Color(0xFF8839EF),
     red: Color(0xFFD20F39),
