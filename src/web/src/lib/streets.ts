@@ -1,7 +1,9 @@
 import { onBeforeUnmount, reactive, ref, watch, type Ref } from 'vue';
 import { nominatim, type Throttle } from './throttle';
+import { trimOldest } from './lru';
 
 const REVERSE_URL = 'https://nominatim.openstreetmap.org/reverse';
+const MAX_NAMES = 500;
 
 /** What the app shows when a position has no usable address. */
 export const NO_ADDRESS = 'Location unavailable';
@@ -88,6 +90,7 @@ export class StreetNames {
                 if (this.names.has(key)) continue;
                 try {
                     this.names.set(key, await this.lookup(at.latitude, at.longitude));
+                    trimOldest(this.names, MAX_NAMES);
                 } catch {
                     // Not remembered: the next request for this place tries again.
                 }

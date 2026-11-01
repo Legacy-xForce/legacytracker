@@ -3,6 +3,8 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:latlong2/latlong.dart';
 
+import 'nominatim.dart';
+
 class PlaceResult {
   const PlaceResult({required this.label, required this.point});
 
@@ -24,15 +26,12 @@ class PlaceSearchService {
     if (trimmed.length < 3) return const [];
     final response = await _httpClient
         .get(
-          Uri.https('nominatim.openstreetmap.org', '/search', {
+          nominatimUri('/search', {
             'format': 'jsonv2',
             'q': trimmed,
             'limit': '6',
           }),
-          headers: const {
-            'accept': 'application/json',
-            'user-agent': 'legacytracker/1.0',
-          },
+          headers: nominatimHeaders,
         )
         .timeout(const Duration(seconds: 10));
     if (response.statusCode != 200) {

@@ -167,6 +167,7 @@ void main() {
       expect(await geocoder.resolve('Piazza Duomo'), isNotNull);
       expect(await geocoder.resolve('  piazza   duomo '), isNotNull);
       expect(calls, 1);
+      await geocoder.flush();
 
       geocoder = EventGeocoder(
         search: search,
