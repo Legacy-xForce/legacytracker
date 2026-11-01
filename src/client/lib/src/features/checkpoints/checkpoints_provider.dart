@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../data/models/checkpoint.dart';
 import '../../data/network/checkpoint_service.dart';
+import '../../data/network/api_client.dart';
 
 /// The shared checkpoint list. Created above the [MaterialApp] so pushed
 /// routes (history, the checkpoints screen) see it too. It refetches on
@@ -97,7 +98,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
       final list = await _service.list(token);
       list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       _checkpoints = list;
-    } on CheckpointException catch (e) {
+    } on ApiException catch (e) {
       _error = e.message;
     } finally {
       _loading = false;
@@ -142,7 +143,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> delete(String id) async {
     try {
       await _service.delete(_requireToken(), id);
-    } on CheckpointException catch (e) {
+    } on ApiException catch (e) {
       // Already gone elsewhere: the list is simply stale.
       if (e.message != 'This checkpoint no longer exists.') rethrow;
     }
@@ -157,7 +158,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
   String _requireToken() {
     final token = _getAccessToken();
     if (token == null) {
-      throw CheckpointException("You're signed out. Sign in again to continue.");
+      throw ApiException("You're signed out. Sign in again to continue.");
     }
     return token;
   }

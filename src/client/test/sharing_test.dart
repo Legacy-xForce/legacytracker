@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:legacytracker/src/data/models/user_model.dart';
+import 'package:legacytracker/src/data/network/api_client.dart';
 import 'package:legacytracker/src/data/network/sharing_service.dart';
 import 'package:legacytracker/src/features/tracking/sharing_provider.dart';
 
@@ -65,7 +66,7 @@ void main() {
 
     await expectLater(
       provider.setSharing('bob', false),
-      throwsA(isA<SharingException>()),
+      throwsA(isA<ApiException>()),
     );
     expect(provider.isSharingWith('bob'), isTrue);
   });

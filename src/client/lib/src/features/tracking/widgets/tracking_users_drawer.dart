@@ -14,7 +14,7 @@ import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
 import '../../../data/network/location_refresh_service.dart';
-import '../../../data/network/sharing_service.dart';
+import '../../../data/network/api_client.dart';
 import '../../auth/auth_provider.dart';
 import '../../checkpoints/checkpoints_screen.dart';
 import '../local_avatar_store.dart';
@@ -1100,7 +1100,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
     final messenger = ScaffoldMessenger.maybeOf(context);
     try {
       await sharing.setSharing(widget.user.profile.id, enabled);
-    } on SharingException catch (e) {
+    } on ApiException catch (e) {
       messenger?.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }

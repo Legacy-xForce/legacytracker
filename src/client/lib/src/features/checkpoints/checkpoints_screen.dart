@@ -3,7 +3,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 
 import '../../data/models/checkpoint.dart';
-import '../../data/network/checkpoint_service.dart';
+import '../../data/network/api_client.dart';
 import '../tracking/widgets/tracking_map_layer.dart';
 import 'checkpoint_editor_screen.dart';
 import 'checkpoints_provider.dart';
@@ -78,7 +78,7 @@ class _CheckpointsScreenState extends State<CheckpointsScreen> {
     if (confirmed != true) return;
     try {
       await provider.delete(checkpoint.id);
-    } on CheckpointException catch (e) {
+    } on ApiException catch (e) {
       messenger.showSnackBar(SnackBar(content: Text(e.message)));
     }
   }

@@ -7,7 +7,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../data/models/checkpoint.dart';
-import '../../data/network/checkpoint_service.dart';
+import '../../data/network/api_client.dart';
 import '../../data/network/mapbox_token_gate.dart';
 import '../../data/network/mapbox_token_service.dart';
 import '../../data/network/place_search_service.dart';
@@ -201,11 +201,11 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
         );
       }
       if (mounted) navigator.pop();
-    } on CheckpointException catch (e) {
+    } on ApiException catch (e) {
       if (!mounted) return;
       setState(() {
         _saving = false;
-        if (e.nameTaken) {
+        if (e.status == 409) {
           _nameError = e.message;
         } else {
           _saveError = e.message;

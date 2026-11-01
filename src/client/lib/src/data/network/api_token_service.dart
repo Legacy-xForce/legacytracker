@@ -3,16 +3,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/api_token.dart';
-
-/// A request the server refused, with a message safe to show to the user.
-class ApiTokenException implements Exception {
-  ApiTokenException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
-}
+import 'api_client.dart';
 
 /// The account's tokens, and the address the API read that request from —
 /// offered as a one-click entry, so limiting a token does not mean guessing
@@ -29,17 +20,15 @@ class ApiTokenList {
 /// can't manage tokens.
 class ApiTokenService {
   ApiTokenService({required String baseUrl, http.Client? httpClient})
-    : _baseUri = Uri.parse(baseUrl),
-      _httpClient = httpClient ?? http.Client();
+    : _api = ApiClient(baseUrl: baseUrl, httpClient: httpClient);
 
-  final Uri _baseUri;
-  final http.Client _httpClient;
+  final ApiClient _api;
 
   Future<ApiTokenList> list(String accessToken) async {
-    final response = await _send(
-      () => _httpClient.get(
-        _uri('/api/v1/api-tokens'),
-        headers: _headers(accessToken),
+    final response = await _api.send(
+      () => _api.httpClient.get(
+        _api.uri('/api/v1/api-tokens'),
+        headers: _api.headers(accessToken),
       ),
     );
     _check(response, expected: 200, fallback: 'The tokens could not be read.');
@@ -61,10 +50,10 @@ class ApiTokenService {
   /// Every live token on the tracker, whoever owns it, for the shared audit
   /// view. Deleted tokens are not listed.
   Future<List<ApiToken>> listAll(String accessToken) async {
-    final response = await _send(
-      () => _httpClient.get(
-        _uri('/api/v1/api-tokens/all'),
-        headers: _headers(accessToken),
+    final response = await _api.send(
+      () => _api.httpClient.get(
+        _api.uri('/api/v1/api-tokens/all'),
+        headers: _api.headers(accessToken),
       ),
     );
     _check(response, expected: 200, fallback: 'The tokens could not be read.');
@@ -85,10 +74,10 @@ class ApiTokenService {
     required String name,
     required ApiTokenScope scope,
   }) async {
-    final response = await _send(
-      () => _httpClient.post(
-        _uri('/api/v1/api-tokens'),
-        headers: _headers(accessToken, json: true),
+    final response = await _api.send(
+      () => _api.httpClient.post(
+        _api.uri('/api/v1/api-tokens'),
+        headers: _api.headers(accessToken, json: true),
         body: jsonEncode({'name': name, 'scope': scope.name}),
       ),
     );
@@ -101,10 +90,10 @@ class ApiTokenService {
   }
 
   Future<IssuedApiToken> rotate(String accessToken, String id) async {
-    final response = await _send(
-      () => _httpClient.post(
-        _uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}/rotate'),
-        headers: _headers(accessToken),
+    final response = await _api.send(
+      () => _api.httpClient.post(
+        _api.uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}/rotate'),
+        headers: _api.headers(accessToken),
       ),
     );
     _check(
@@ -122,10 +111,10 @@ class ApiTokenService {
     String id,
     List<String> allowedIps,
   ) async {
-    final response = await _send(
-      () => _httpClient.patch(
-        _uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}'),
-        headers: _headers(accessToken, json: true),
+    final response = await _api.send(
+      () => _api.httpClient.patch(
+        _api.uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}'),
+        headers: _api.headers(accessToken, json: true),
         body: jsonEncode({'allowed_ips': allowedIps}),
       ),
     );
@@ -137,17 +126,17 @@ class ApiTokenService {
     try {
       return ApiToken.fromJson(_json(response));
     } on Object {
-      throw ApiTokenException(
+      throw ApiException(
         'The server sent an unexpected reply. Try again.',
       );
     }
   }
 
   Future<void> delete(String accessToken, String id) async {
-    final response = await _send(
-      () => _httpClient.delete(
-        _uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}'),
-        headers: _headers(accessToken),
+    final response = await _api.send(
+      () => _api.httpClient.delete(
+        _api.uri('/api/v1/api-tokens/${Uri.encodeComponent(id)}'),
+        headers: _api.headers(accessToken),
       ),
     );
     _check(
@@ -165,13 +154,13 @@ class ApiTokenService {
     String? before,
     int limit = 50,
   }) async {
-    final response = await _send(
-      () => _httpClient.get(
-        _uri(
+    final response = await _api.send(
+      () => _api.httpClient.get(
+        _api.uri(
           '/api/v1/api-tokens/${Uri.encodeComponent(id)}/requests',
           queryParameters: {'limit': '$limit', 'before': ?before},
         ),
-        headers: _headers(accessToken),
+        headers: _api.headers(accessToken),
       ),
     );
     _check(
@@ -201,7 +190,7 @@ class ApiTokenService {
     try {
       return IssuedApiToken.fromJson(_json(response));
     } on Object {
-      throw ApiTokenException(
+      throw ApiException(
         'The server sent an unexpected reply. Try again.',
       );
     }
@@ -209,27 +198,7 @@ class ApiTokenService {
 
   // Hints contain "…": decode as UTF-8 whatever charset the reply names.
   static Map<String, dynamic> _json(http.Response response) =>
-      jsonDecode(utf8.decode(response.bodyBytes)) as Map<String, dynamic>;
-
-  Uri _uri(String path, {Map<String, String>? queryParameters}) =>
-      _baseUri.replace(path: path, queryParameters: queryParameters);
-
-  // Only requests with a body name a JSON type: the server answers 400 to an
-  // empty body that claims to be JSON.
-  Map<String, String> _headers(String accessToken, {bool json = false}) => {
-    if (json) 'content-type': 'application/json',
-    'authorization': 'Bearer $accessToken',
-  };
-
-  Future<http.Response> _send(Future<http.Response> Function() request) async {
-    try {
-      return await request().timeout(const Duration(seconds: 15));
-    } on Exception {
-      throw ApiTokenException(
-        'Unable to reach the server. Check your connection and try again.',
-      );
-    }
-  }
+      ApiClient.json(response);
 
   void _check(
     http.Response response, {
@@ -239,22 +208,13 @@ class ApiTokenService {
     if (response.statusCode == expected) return;
     switch (response.statusCode) {
       case 404:
-        throw ApiTokenException('This token no longer exists.');
+        throw ApiException('This token no longer exists.');
       case 400:
-        throw ApiTokenException(_serverMessage(response) ?? fallback);
+        throw ApiException(ApiClient.serverMessage(response) ?? fallback);
       default:
-        throw ApiTokenException(
+        throw ApiException(
           'Something went wrong (${response.statusCode}). Try again.',
         );
-    }
-  }
-
-  String? _serverMessage(http.Response response) {
-    try {
-      final body = _json(response);
-      return body['error'] as String?;
-    } catch (_) {
-      return null;
     }
   }
 }

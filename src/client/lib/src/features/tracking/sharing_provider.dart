@@ -1,6 +1,7 @@
 import 'package:flutter/widgets.dart';
 
 import '../../data/network/sharing_service.dart';
+import '../../data/network/api_client.dart';
 
 /// Who we are currently not sharing our location with. Created above the
 /// [MaterialApp] like the checkpoints list; it loads on sign-in and on app
@@ -41,17 +42,17 @@ class SharingProvider extends ChangeNotifier with WidgetsBindingObserver {
     try {
       _hiddenFrom = await _service.fetchHiddenFrom(token);
       _notify();
-    } on SharingException {
+    } on ApiException {
       // Keep what we have; the next refresh will try again.
     }
   }
 
-  /// Throws [SharingException] (after restoring the previous state) when the
+  /// Throws [ApiException] (after restoring the previous state) when the
   /// change couldn't be saved.
   Future<void> setSharing(String userId, bool enabled) async {
     final token = _getAccessToken();
     if (token == null) {
-      throw SharingException("You're signed out. Sign in again to continue.");
+      throw ApiException("You're signed out. Sign in again to continue.");
     }
     final previous = _hiddenFrom;
     _hiddenFrom = enabled
@@ -60,7 +61,7 @@ class SharingProvider extends ChangeNotifier with WidgetsBindingObserver {
     _notify();
     try {
       _hiddenFrom = await _service.setShared(token, userId, enabled: enabled);
-    } on SharingException {
+    } on ApiException {
       _hiddenFrom = previous;
       rethrow;
     } finally {

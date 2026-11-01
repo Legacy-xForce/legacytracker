@@ -62,23 +62,6 @@ class RemoteBackend implements Backend {
   }
 
   @override
-  Future<void> registerFcmToken(String token) async {
-    final uri = _apiUri('/api/v1/fcm-token');
-    try {
-      await _httpClient.post(
-        uri,
-        headers: {
-          'content-type': 'application/json',
-          'authorization': 'Bearer ${getAccessToken()}',
-        },
-        body: jsonEncode({'token': token}),
-      );
-    } catch (_) {
-      // Non-critical — FCM pacing updates simply won't arrive if this fails.
-    }
-  }
-
-  @override
   void setMapActive(bool active) {
     _mapActive = active;
     _sendMapActive();

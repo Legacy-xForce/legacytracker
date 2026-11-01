@@ -28,17 +28,8 @@ class ProfileService {
       throw Exception('Unable to fetch profile: ${response.body}');
     }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return UserProfile(
-      id: data['id'] as String,
-      name: data['name'] as String,
-      avatarUrl: data['avatar_url'] as String? ?? '',
-      locationTrackingPaused:
-          data['location_tracking_paused'] as bool? ?? false,
-      missingPermissions: data['missing_permissions'] as bool? ?? false,
-      batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
-      batteryLevel: (data['battery_level'] as num?)?.toInt(),
-      isCharging: data['is_charging'] as bool?,
+    return UserProfile.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
 
@@ -72,17 +63,8 @@ class ProfileService {
       throw Exception('Unable to update profile: ${response.body}');
     }
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    return UserProfile(
-      id: data['id'] as String,
-      name: data['name'] as String,
-      avatarUrl: data['avatar_url'] as String? ?? '',
-      locationTrackingPaused:
-          data['location_tracking_paused'] as bool? ?? false,
-      missingPermissions: data['missing_permissions'] as bool? ?? false,
-      batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
-      batteryLevel: (data['battery_level'] as num?)?.toInt(),
-      isCharging: data['is_charging'] as bool?,
+    return UserProfile.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
     );
   }
 

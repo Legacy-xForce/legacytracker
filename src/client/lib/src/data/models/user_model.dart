@@ -53,6 +53,18 @@ class UserProfile {
     this.hereSince,
   });
 
+  /// The profile endpoints' reply (`GET`/`PATCH /api/v1/profile`).
+  factory UserProfile.fromJson(Map<String, dynamic> data) => UserProfile(
+    id: data['id'] as String,
+    name: data['name'] as String,
+    avatarUrl: data['avatar_url'] as String? ?? '',
+    locationTrackingPaused: data['location_tracking_paused'] as bool? ?? false,
+    missingPermissions: data['missing_permissions'] as bool? ?? false,
+    batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
+    batteryLevel: (data['battery_level'] as num?)?.toInt(),
+    isCharging: data['is_charging'] as bool?,
+  );
+
   /// Whether we haven't heard from this user's device for long enough that
   /// their marker should be greyed out. Parked devices check in about every
   /// half hour (longer in deep Doze) and answer a live ping within seconds
