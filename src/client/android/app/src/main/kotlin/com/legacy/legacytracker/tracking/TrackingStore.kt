@@ -131,6 +131,16 @@ class TrackingStore private constructor(context: Context) :
 
     fun pendingCount(): Long = DatabaseUtils.queryNumEntries(readableDatabase, "points")
 
+    /**
+     * Whether at least [n] points wait. Looks at [n] rows at most: the table can hold 100 000, and
+     * this runs for every accepted fix, where only "enough for a batch?" matters.
+     */
+    fun hasPending(n: Int): Boolean = DatabaseUtils.longForQuery(
+        readableDatabase,
+        "SELECT COUNT(*) FROM (SELECT 1 FROM points LIMIT $n)",
+        null,
+    ) >= n
+
     fun clearPoints() {
         writableDatabase.delete("points", null, null)
     }

@@ -461,6 +461,16 @@ final class TrackingStore {
         exec("DELETE FROM points WHERE id <= \(id)")
     }
 
+    /// Whether at least `n` points wait. Looks at `n` rows at most: the table can hold 100 000 and
+    /// this runs for every accepted fix, where only "enough for a batch?" matters.
+    func hasPending(_ n: Int) -> Bool {
+        guard let db = handle() else { return false }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT COUNT(*) FROM (SELECT 1 FROM points LIMIT \(n))", -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        return sqlite3_step(stmt) == SQLITE_ROW && Int(sqlite3_column_int64(stmt, 0)) >= n
+    }
+
     func pendingCount() -> Int {
         guard let db = handle() else { return 0 }
         var stmt: OpaquePointer?
@@ -1402,12 +1412,12 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         guard !uploader.busy, state.hasCredentials, !state.authFailed else { return }
         if !force, let until = backoffUntil, Date() < until { return }
         if pendingSince == nil {
-            guard store.pendingCount() > 0 else { return }
+            guard store.hasPending(1) else { return }
             pendingSince = Date()
         }
         let age = Date().timeIntervalSince(pendingSince ?? Date())
         let due = force || isLive || appVisible || age >= Tuning.uploadMaxAge ||
-            store.pendingCount() >= Tuning.uploadMaxPending
+            store.hasPending(Tuning.uploadMaxPending)
         if due { startUpload(live: nil) }
     }
 
