@@ -1,6 +1,7 @@
 import { mount } from '@vue/test-utils';
 import { h } from 'vue';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { createPinia, setActivePinia } from 'pinia';
+import { beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import CheckpointsLayer from '../components/CheckpointsLayer.vue';
 import EventsLayer from '../components/EventsLayer.vue';
 import PeersMap from '../components/PeersMap.vue';
@@ -13,6 +14,8 @@ beforeAll(() => {
     Object.defineProperty(HTMLElement.prototype, 'clientWidth', { configurable: true, value: 800 });
     Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, value: 600 });
 });
+
+beforeEach(() => setActivePinia(createPinia()));
 
 function mountMap(layer: () => ReturnType<typeof h>) {
     return mount(PeersMap, {
@@ -31,6 +34,22 @@ describe('map overlays', () => {
         );
         await wrapper.vm.$nextTick();
         expect(document.querySelector('.checkpoint-label')?.textContent).toBe('Home');
+        wrapper.unmount();
+    });
+
+    it('lets a saved place be picked from its name, which takes the click', async () => {
+        const picked: string[] = [];
+        const wrapper = mountMap(() =>
+            h(CheckpointsLayer, {
+                checkpoints: [{ id: 'home', name: 'Home', latitude: 45, longitude: 9, radius: 100, canEdit: true }],
+                onSelect: (id: string) => picked.push(id)
+            })
+        );
+        await wrapper.vm.$nextTick();
+        const chip = document.querySelector<HTMLButtonElement>('.checkpoint-label button.lt-hit');
+        expect(chip).not.toBeNull();
+        chip!.click();
+        expect(picked).toEqual(['home']);
         wrapper.unmount();
     });
 

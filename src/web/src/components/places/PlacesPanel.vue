@@ -21,11 +21,15 @@ const DEFAULT_RADIUS_M = 100;
 const props = defineProps<{
     /** What is under the crosshair: where a new place starts, and where an edited one moves to. */
     cursor: { latitude: number; longitude: number } | null;
+    /** A place picked elsewhere (on the map) that should open in the editor. */
+    request?: string | null;
 }>();
 const emit = defineEmits<{
     /** The place being drawn changed, or null when no editor is open. */
     draft: [draft: PlaceDraft | null];
     goto: [latitude: number, longitude: number];
+    /** The requested place was taken up (or does not exist), so the request can be dropped. */
+    handled: [];
 }>();
 
 const store = useCheckpointsStore();
@@ -165,6 +169,18 @@ function pick(place: PlaceResult) {
     publish();
     emit('goto', place.latitude, place.longitude);
 }
+
+// A place tapped on the map opens at once; if the list is still loading it opens as soon as it has.
+watch(
+    () => [props.request, store.checkpoints] as const,
+    ([id]) => {
+        if (!id) return;
+        const target = store.checkpoints.find((checkpoint) => checkpoint.id === id);
+        if (target) open(target);
+        if (target || store.loaded) emit('handled');
+    },
+    { immediate: true }
+);
 
 onBeforeUnmount(() => {
     clearTimeout(debounce);

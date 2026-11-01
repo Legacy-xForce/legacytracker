@@ -58,7 +58,12 @@ export class Map {
         this.maxZoom = options.maxZoom ?? 22;
     }
 
-    on(type: string, handler: Handler): this {
+    on(type: string, handler: Handler): this;
+    on(type: string, layerId: string, handler: Handler): this;
+    on(type: string, a: string | Handler, b?: Handler): this {
+        // `on(type, layerId, handler)` listens to one layer; the mock keys it as "type@layer".
+        if (typeof a === 'string') return this.on(`${type}@${a}`, b!);
+        const handler = a;
         let set = this.handlers.get(type);
         if (!set) this.handlers.set(type, (set = new Set()));
         set.add(handler);
@@ -73,7 +78,11 @@ export class Map {
         return this.on(type, wrap);
     }
 
-    off(type: string, handler?: Handler): this {
+    off(type: string, handler?: Handler): this;
+    off(type: string, layerId: string, handler: Handler): this;
+    off(type: string, a?: string | Handler, b?: Handler): this {
+        if (typeof a === 'string') return this.off(`${type}@${a}`, b);
+        const handler = a;
         if (handler) this.handlers.get(type)?.delete(handler);
         else this.handlers.delete(type);
         return this;
@@ -252,6 +261,10 @@ export class Map {
         return this.layers.get(id);
     }
 
+    getPadding(): { top: number; right: number; bottom: number; left: number } {
+        return this.padding;
+    }
+
     setPadding(padding: { top: number; right: number; bottom: number; left: number }): this {
         this.padding = padding;
         return this;
@@ -327,7 +340,12 @@ export class Popup {
         this.element.className = 'mapboxgl-popup';
     }
 
-    on(type: string, handler: Handler): this {
+    on(type: string, handler: Handler): this;
+    on(type: string, layerId: string, handler: Handler): this;
+    on(type: string, a: string | Handler, b?: Handler): this {
+        // `on(type, layerId, handler)` listens to one layer; the mock keys it as "type@layer".
+        if (typeof a === 'string') return this.on(`${type}@${a}`, b!);
+        const handler = a;
         let set = this.handlers.get(type);
         if (!set) this.handlers.set(type, (set = new Set()));
         set.add(handler);

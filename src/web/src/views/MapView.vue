@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import CheckpointsLayer from '../components/CheckpointsLayer.vue';
 import EventsLayer from '../components/EventsLayer.vue';
@@ -144,6 +144,15 @@ function showPlaces() {
     selectedId.value = null;
     view.value = 'places';
     sheetExpanded.value = true;
+}
+
+// A place tapped on the map opens in the panel's editor. The request waits for the Places view to
+// mount, so the map's draft layer exists to fly to the place.
+const requestedCheckpoint = ref<string | null>(null);
+async function openCheckpoint(id: string) {
+    showPlaces();
+    await nextTick();
+    requestedCheckpoint.value = id;
 }
 
 // 'people' also covers the selected-person view's list, which is not a tab of its own.
@@ -320,6 +329,7 @@ watch(replaying, (isReplaying) => {
             <CheckpointsLayer
                 v-if="(showCheckpoints || view === 'places') && !replaying"
                 :checkpoints="checkpoints.checkpoints"
+                @select="openCheckpoint"
             />
             <PlaceDraftLayer
                 v-if="view === 'places' && !replaying"
@@ -542,6 +552,8 @@ watch(replaying, (isReplaying) => {
                 <PlacesPanel
                     v-else-if="view === 'places'"
                     :cursor="crosshair"
+                    :request="requestedCheckpoint"
+                    @handled="requestedCheckpoint = null"
                     @draft="placeDraft = $event"
                     @goto="(lat, lng) => draftLayer?.goto(lat, lng)"
                 />

@@ -131,6 +131,29 @@ describe('places panel', () => {
         wrapper.unmount();
     });
 
+    it('opens a place picked on the map, once, and drops the request', async () => {
+        const wrapper = await mountPanel();
+        await wrapper.setProps({ request: '2' });
+        expect(wrapper.find('[data-place-editor]').exists()).toBe(true);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 45, longitude: 9, radius: 80 }]);
+        expect(wrapper.emitted('handled')).toHaveLength(1);
+        wrapper.unmount();
+    });
+
+    it('waits for the list when the place is picked before it has loaded', async () => {
+        const wrapper = mount(PlacesPanel, {
+            props: { cursor: null, request: '1' },
+            attachTo: document.body
+        });
+        expect(wrapper.find('[data-place-editor]').exists()).toBe(false);
+        expect(wrapper.emitted('handled')).toBeUndefined();
+        await useCheckpointsStore().load();
+        await flushPromises();
+        expect(wrapper.find('[data-place-editor]').exists()).toBe(true);
+        expect(wrapper.emitted('handled')).toHaveLength(1);
+        wrapper.unmount();
+    });
+
     it('follows the crosshair while editing', async () => {
         const wrapper = await mountPanel();
         await wrapper.find('[data-add]').trigger('click');

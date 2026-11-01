@@ -21,6 +21,16 @@ function mapSize(map: MapboxMap): Point {
     return { x: container.clientWidth, y: container.clientHeight };
 }
 
+/**
+ * Where the map's centre is drawn. Mapbox keeps the camera padding of a `fitBounds`/`easeTo` that
+ * had some, so the centre is the middle of the padded box, not of the container.
+ */
+function centerPoint(map: MapboxMap): Point {
+    const size = mapSize(map);
+    const { top = 0, right = 0, bottom = 0, left = 0 } = map.getPadding?.() ?? {};
+    return { x: left + (size.x - left - right) / 2, y: top + (size.y - top - bottom) / 2 };
+}
+
 const TILE_SIZE = 512;
 
 /** Web Mercator world pixels at `zoom`. */
@@ -37,20 +47,20 @@ function worldPoint(at: LatLng, zoom: number): Point {
  * hand keeps the maths honest without moving the camera twice.
  */
 function projectAt(map: MapboxMap, at: LatLng, zoom: number): Point {
-    const size = mapSize(map);
+    const middle = centerPoint(map);
     const centre = map.getCenter();
     const world = worldPoint(at, zoom);
     const origin = worldPoint({ lat: centre.lat, lng: centre.lng }, zoom);
-    return { x: world.x - origin.x + size.x / 2, y: world.y - origin.y + size.y / 2 };
+    return { x: world.x - origin.x + middle.x, y: world.y - origin.y + middle.y };
 }
 
 function unprojectAt(map: MapboxMap, point: Point, zoom: number): LatLng {
-    const size = mapSize(map);
+    const middle = centerPoint(map);
     const centre = map.getCenter();
     const origin = worldPoint({ lat: centre.lat, lng: centre.lng }, zoom);
     const scale = TILE_SIZE * 2 ** zoom;
-    const x = point.x - size.x / 2 + origin.x;
-    const y = point.y - size.y / 2 + origin.y;
+    const x = point.x - middle.x + origin.x;
+    const y = point.y - middle.y + origin.y;
     return {
         lng: (x / scale) * 360 - 180,
         lat: (Math.atan(Math.sinh((1 - (2 * y) / scale) * Math.PI)) * 180) / Math.PI
@@ -69,10 +79,10 @@ export function visibleCenter(map: MapboxMap, insets: Insets): Point {
 /** The map centre that shows `point` in the middle of the uncovered part, at `zoom`. */
 export function centerShowing(map: MapboxMap, point: LatLng, zoom: number, insets: Insets): LatLng {
     const centre = visibleCenter(map, insets);
-    const size = mapSize(map);
+    const middle = centerPoint(map);
     const projected = projectAt(map, point, zoom);
     // Shift the centre so the point lands on the visible middle, then read that centre back.
-    return unprojectAt(map, { x: size.x / 2 + projected.x - centre.x, y: size.y / 2 + projected.y - centre.y }, zoom);
+    return unprojectAt(map, { x: middle.x + projected.x - centre.x, y: middle.y + projected.y - centre.y }, zoom);
 }
 
 /** `fitBounds` padding that keeps what is framed clear of the panels, plus a margin. */

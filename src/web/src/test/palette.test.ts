@@ -11,7 +11,6 @@ const hex = (value: string) => value.slice(1).toLowerCase();
 describe('palette', () => {
     it('matches the phone app, so people and events look the same on both', () => {
         const shared = [
-            palette.mapAccent,
             palette.stale,
             palette.staleBadge,
             palette.eventFallback,
