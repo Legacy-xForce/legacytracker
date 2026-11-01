@@ -767,12 +767,12 @@ class TrackingEngine private constructor(context: Context) {
         val now = SystemClock.elapsedRealtime()
         if (!force && now < backoffUntil) return
         if (pendingSince == 0L) {
-            if (store.pendingCount() == 0L) return
+            if (!store.hasPending(1)) return
             pendingSince = now
         }
         val due = force || isLive() || appVisible ||
             now - pendingSince >= Tuning.UPLOAD_MAX_AGE_MS ||
-            store.pendingCount() >= Tuning.UPLOAD_MAX_PENDING
+            store.hasPending(Tuning.UPLOAD_MAX_PENDING)
         if (due) startUpload(null)
     }
 
