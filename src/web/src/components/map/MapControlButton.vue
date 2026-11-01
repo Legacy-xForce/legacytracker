@@ -2,13 +2,12 @@
 import Icon from '../ui/Icon.vue';
 import type { IconName } from '../../lib/icons';
 
-defineProps<{ icon: IconName; label: string; active?: boolean }>();
+defineProps<{ icon: IconName; label: string }>();
 </script>
 
 <template>
     <button
-        class="hover:bg-on-surface/6 relative flex size-12 items-center justify-center first:rounded-t-lg last:rounded-b-lg"
-        :class="active ? 'text-primary' : 'text-on-surface'"
+        class="text-on-surface hover:bg-on-surface/6 relative flex size-12 items-center justify-center first:rounded-t-lg last:rounded-b-lg"
         :aria-label="label"
         :title="label"
     >

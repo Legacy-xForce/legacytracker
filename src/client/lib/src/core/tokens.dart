@@ -20,8 +20,6 @@ abstract final class AppShape {
   static const BorderRadius xl = BorderRadius.all(Radius.circular(xlDp));
   static const BorderRadius full = BorderRadius.all(Radius.circular(fullDp));
 
-  static const Radius xsRadius = Radius.circular(xsDp);
-  static const Radius smRadius = Radius.circular(smDp);
   static const Radius mdRadius = Radius.circular(mdDp);
   static const Radius lgRadius = Radius.circular(lgDp);
   static const Radius xlRadius = Radius.circular(xlDp);

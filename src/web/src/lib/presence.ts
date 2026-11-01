@@ -2,7 +2,7 @@ import { formatElapsed } from './format';
 import type { IconName } from './icons';
 import { hasPosition, isMoving, isStale, type Peer } from './peers';
 
-export interface Presence {
+interface Presence {
     icon: IconName;
     /** Stat-card label and value: "Here for" / "2h 45m". */
     label: string;

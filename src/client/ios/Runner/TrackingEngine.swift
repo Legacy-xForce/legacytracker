@@ -1228,7 +1228,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         let anchor = state.anchor
         let distance = anchor.map { GeoMath.distance($0, fix) } ?? 0
         log("ping", "Fresh fix for \"\(reason)\" (±\(Int(fix.accuracy)) m)")
-        let moved = anchor != nil && fix.accuracy <= Tuning.pingMaxAccuracy &&
+        let moved = anchor != nil &&
             distance > max(Tuning.geofenceRadius, 2 * fix.accuracy)
         if moved {
             enterMoving("\(Int(distance)) m from parked spot")

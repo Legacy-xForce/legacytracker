@@ -20,11 +20,11 @@ export interface AccessGrant {
     expiresAt: number;
 }
 
-export interface GrantTokens extends AccessGrant {
+interface GrantTokens extends AccessGrant {
     refreshToken: string;
 }
 
-export interface SignInResult extends GrantTokens {
+interface SignInResult extends GrantTokens {
     idToken: string;
     returnTo: string;
     /** Whether the sign-in asked for the calendar too. */

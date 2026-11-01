@@ -113,7 +113,7 @@ export class StreetNames {
     }
 }
 
-export const streetNames = new StreetNames();
+const streetNames = new StreetNames();
 
 /**
  * The street at `position`, for as long as the calling component lives. While a new position is

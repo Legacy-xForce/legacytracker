@@ -115,7 +115,4 @@ class MapboxTokenService {
     _inFlight = null;
     _client.close();
   }
-
-  @override
-  String toString() => 'MapboxTokenService';
 }

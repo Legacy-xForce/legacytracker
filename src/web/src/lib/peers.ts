@@ -25,7 +25,7 @@ export interface Peer {
 // Same thresholds as the phone app: >= 1 m/s counts as moving, and silence
 // beyond 90 minutes means the phone is off, offline or not sharing.
 export const MOVING_SPEED = 1;
-export const STALE_AFTER_MS = 90 * 60_000;
+const STALE_AFTER_MS = 90 * 60_000;
 
 export function isMoving(peer: Peer): boolean {
     return peer.sharing && peer.latitude !== null && peer.speed >= MOVING_SPEED;

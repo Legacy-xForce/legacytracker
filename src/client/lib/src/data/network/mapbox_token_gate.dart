@@ -38,7 +38,6 @@ class MapboxTokenGate extends StatefulWidget {
     required this.builder,
     this.service,
     this.devToken = '',
-    this.onTokenChanged,
   });
 
   final MapboxTokenBuilder builder;
@@ -47,7 +46,6 @@ class MapboxTokenGate extends StatefulWidget {
   /// standalone map spike or a local development run).
   final MapboxTokenService? service;
   final String devToken;
-  final ValueChanged<String>? onTokenChanged;
 
   @override
   State<MapboxTokenGate> createState() => _MapboxTokenGateState();
@@ -104,7 +102,6 @@ class _MapboxTokenGateState extends State<MapboxTokenGate> {
           _failed = false;
           if (changed) _automaticRecoveries = 0;
         });
-        if (changed) widget.onTokenChanged?.call(token);
         return;
       }
       if (_token != null) {

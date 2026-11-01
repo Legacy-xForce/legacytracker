@@ -2,12 +2,11 @@ import { config } from '../config';
 
 export type StreamStatus = 'connecting' | 'open' | 'closed';
 
-export interface StreamOptions {
+interface StreamOptions {
     getTicket: () => Promise<string>;
     onMessage: (message: unknown) => void;
     onStatus: (status: StreamStatus) => void;
     /** Called when a ticket can't be had for a reason retrying won't fix. */
-    onFatal?: (error: unknown) => void;
     isFatal?: (error: unknown) => boolean;
     createSocket?: (url: string) => WebSocket;
 }
@@ -86,7 +85,6 @@ export class StreamClient {
             if (this.options.isFatal?.(error)) {
                 this.running = false;
                 this.options.onStatus('closed');
-                this.options.onFatal?.(error);
                 return;
             }
             this.scheduleReconnect();

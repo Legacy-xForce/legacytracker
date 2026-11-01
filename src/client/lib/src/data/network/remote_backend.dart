@@ -285,7 +285,6 @@ class RemoteBackend implements Backend {
         timestamp: recordedAt,
       );
       profile.lastLocation = point;
-      profile.history = [point, ...profile.history].take(20).toList();
     }
     // Sent with every update, coordinates or not; null while travelling.
     if (payload.containsKey('here_since')) {
@@ -320,7 +319,6 @@ class RemoteBackend implements Backend {
       profile.sharesWithMe = payload['sharing'] as bool? ?? true;
       if (!profile.sharesWithMe) {
         profile.lastLocation = null;
-        profile.history = [];
         profile.hereSince = null;
         profile.lastSeenAt = null;
         profile.batteryLevel = null;

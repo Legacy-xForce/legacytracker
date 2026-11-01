@@ -341,7 +341,6 @@ watch(replaying, (isReplaying) => {
                 bottom: `${insets.bottom}px`,
                 left: `${insets.left}px`
             }"
-            data-crosshair
         >
             <Icon name="add" :size="32" class="text-primary" />
         </div>

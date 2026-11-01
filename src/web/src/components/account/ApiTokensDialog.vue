@@ -315,11 +315,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', onKey));
                             </RouterLink>
                         </p>
 
-                        <div
-                            v-if="issued"
-                            class="bg-primary-container/40 border-primary/40 rounded-lg border p-4"
-                            data-issued
-                        >
+                        <div v-if="issued" class="bg-primary-container/40 border-primary/40 rounded-lg border p-4">
                             <p class="type-title-sm">Copy “{{ issued.name }}” now</p>
                             <p class="type-body-sm text-on-surface-variant mt-1">
                                 You won't be able to see this token again.

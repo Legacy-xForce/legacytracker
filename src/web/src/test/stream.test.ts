@@ -191,18 +191,15 @@ describe('StreamClient', () => {
     });
 
     it('gives up and reports when the ticket request is refused for good', async () => {
-        const fatal = vi.fn();
         const { client, statuses } = setup({
             getTicket: async () => {
                 throw new Error('forbidden');
             },
-            isFatal: () => true,
-            onFatal: fatal
+            isFatal: () => true
         });
         client.start();
         await vi.advanceTimersByTimeAsync(60_000);
 
-        expect(fatal).toHaveBeenCalledTimes(1);
         expect(statuses.at(-1)).toBe('closed');
         expect(FakeSocket.instances).toHaveLength(0);
     });

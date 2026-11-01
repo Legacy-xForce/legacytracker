@@ -547,7 +547,7 @@ class TrackingEngine private constructor(context: Context) {
         val anchor = state.anchor
         val distance = anchor?.let { GeoMath.distance(it, fix) } ?: 0.0
         log("ping", "Fresh fix for \"$reason\" (±${fix.accuracy.roundToInt()} m)")
-        val moved = anchor != null && fix.accuracy <= Tuning.PING_MAX_ACCURACY_M &&
+        val moved = anchor != null &&
             distance > max(Tuning.GEOFENCE_RADIUS_M.toDouble(), 2.0 * fix.accuracy)
         if (moved) {
             enterMoving("${distance.roundToInt()} m from parked spot")
@@ -838,7 +838,7 @@ class TrackingEngine private constructor(context: Context) {
         }
     }
 
-    private fun describe(result: Uploader.Result): String = when (result) {
+    internal fun describe(result: Uploader.Result): String = when (result) {
         is Uploader.Result.Sent -> "sent ${result.count}"
         is Uploader.Result.Failed -> result.reason
         Uploader.Result.Offline -> "offline"
