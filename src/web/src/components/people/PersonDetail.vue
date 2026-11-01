@@ -15,7 +15,7 @@ import { directionsUrl } from '../../lib/navigation';
 import { hasPosition, isStale, type Peer } from '../../lib/peers';
 import { presence } from '../../lib/presence';
 import { showToast } from '../../lib/toast';
-import { addDays, startOfDay } from '../../stores/history';
+import { addDays, startOfDay } from '../../lib/dates';
 import { UNREACHABLE_MESSAGE, usePeersStore } from '../../stores/peers';
 import { useSharingStore } from '../../stores/sharing';
 

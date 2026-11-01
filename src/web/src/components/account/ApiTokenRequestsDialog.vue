@@ -1,9 +1,11 @@
 <script setup lang="ts">
+import { errorMessage } from '../../lib/errors';
 import { onMounted, ref } from 'vue';
 import { listApiTokenRequests, type ApiToken, type ApiTokenRequest } from '../../api/apiTokens';
-import { useModal } from '../../lib/focus';
 import { formatClock, formatShortDate } from '../../lib/format';
+import Dialog from '../ui/Dialog.vue';
 import Icon from '../ui/Icon.vue';
+import StateBlock from '../ui/StateBlock.vue';
 import Spinner from '../ui/Spinner.vue';
 
 const props = defineProps<{ token: ApiToken; owner?: string | null }>();
@@ -16,10 +18,6 @@ const loading = ref(false);
 const loadingMore = ref(false);
 const loadError = ref<string | null>(null);
 
-function message(error: unknown): string {
-    return error instanceof Error ? error.message : 'Something went wrong.';
-}
-
 async function load() {
     loading.value = true;
     loadError.value = null;
@@ -29,7 +27,7 @@ async function load() {
         nextBefore.value = page.nextBefore;
         hasMore.value = page.hasMore;
     } catch (error) {
-        loadError.value = message(error);
+        loadError.value = errorMessage(error);
     } finally {
         loading.value = false;
     }
@@ -44,7 +42,7 @@ async function loadMore() {
         nextBefore.value = page.nextBefore;
         hasMore.value = page.hasMore;
     } catch (error) {
-        loadError.value = message(error);
+        loadError.value = errorMessage(error);
     } finally {
         loadingMore.value = false;
     }
@@ -60,142 +58,107 @@ function statusClass(status: number): string {
         : 'bg-secondary-container text-on-secondary-container';
 }
 
-const panel = ref<HTMLElement | null>(null);
-useModal(panel);
-
 onMounted(() => void load());
 </script>
 
 <template>
-    <Teleport to="body">
-        <div
-            class="bg-scrim/32 fixed inset-0 z-[1950] flex items-stretch justify-center sm:items-center sm:p-6"
-            @click.self="emit('close')"
-        >
-            <section
-                ref="panel"
-                tabindex="-1"
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="token-requests-title"
-                class="bg-surface-container scroll-panel shadow-level-3 flex w-full flex-col overflow-y-auto outline-none sm:max-h-[90vh] sm:max-w-lg sm:rounded-xl"
+    <Dialog labelledby="token-requests-title" :z="1950" @close="emit('close')">
+        <header class="flex items-center gap-3 px-6 pt-5 pb-2">
+            <span
+                class="bg-secondary-container text-on-secondary-container flex size-10 items-center justify-center rounded-full"
             >
-                <header class="flex items-center gap-3 px-6 pt-5 pb-2">
-                    <span
-                        class="bg-secondary-container text-on-secondary-container flex size-10 items-center justify-center rounded-full"
-                    >
-                        <Icon name="history" :size="22" />
-                    </span>
-                    <div class="min-w-0 flex-1">
-                        <h2 id="token-requests-title" class="type-title-lg truncate font-bold">Request history</h2>
-                        <p class="type-body-sm text-on-surface-variant truncate">{{ token.name }}</p>
-                        <p v-if="owner" class="type-body-sm text-on-surface-variant truncate">Owner: {{ owner }}</p>
-                    </div>
-                    <button
-                        class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full disabled:opacity-50"
-                        :disabled="loading"
-                        :aria-label="loading ? 'Refreshing request history' : 'Refresh request history'"
-                        :title="loading ? 'Refreshing…' : 'Refresh'"
-                        @click="load"
-                    >
-                        <Icon name="refresh" :size="20" />
-                    </button>
-                    <button
-                        class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
-                        aria-label="Close request history"
-                        @click="emit('close')"
-                    >
-                        <Icon name="close" />
-                    </button>
-                </header>
+                <Icon name="history" :size="22" />
+            </span>
+            <div class="min-w-0 flex-1">
+                <h2 id="token-requests-title" class="type-title-lg truncate font-bold">Request history</h2>
+                <p class="type-body-sm text-on-surface-variant truncate">{{ token.name }}</p>
+                <p v-if="owner" class="type-body-sm text-on-surface-variant truncate">Owner: {{ owner }}</p>
+            </div>
+            <button
+                class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full disabled:opacity-50"
+                :disabled="loading"
+                :aria-label="loading ? 'Refreshing request history' : 'Refresh request history'"
+                :title="loading ? 'Refreshing…' : 'Refresh'"
+                @click="load"
+            >
+                <Icon name="refresh" :size="20" />
+            </button>
+            <button
+                class="text-on-surface-variant hover:bg-on-surface/6 flex size-10 items-center justify-center rounded-full"
+                aria-label="Close request history"
+                @click="emit('close')"
+            >
+                <Icon name="close" />
+            </button>
+        </header>
 
-                <div class="flex flex-col gap-4 px-6 pt-2 pb-6">
-                    <p class="type-body-md text-on-surface-variant">
-                        Every request made with <span class="text-on-surface">“{{ token.name }}”</span>, including ones
-                        refused by its scope or allowed addresses. Query strings are never stored.
-                    </p>
+        <div class="flex flex-col gap-4 px-6 pt-2 pb-6">
+            <p class="type-body-md text-on-surface-variant">
+                Every request made with <span class="text-on-surface">“{{ token.name }}”</span>, including ones refused
+                by its scope or allowed addresses. Query strings are never stored.
+            </p>
 
-                    <div v-if="loading && requests === null" class="flex justify-center py-8"><Spinner /></div>
-                    <div
-                        v-else-if="loadError && requests === null"
-                        class="bg-surface-container-high flex items-center gap-3 rounded-lg py-2 pr-2 pl-4"
-                    >
-                        <Icon name="cloudOff" :size="20" class="text-on-surface-variant" />
-                        <span class="type-body-md flex-1">{{ loadError }}</span>
-                        <button
-                            class="text-primary type-label-lg hover:bg-on-surface/5 rounded-full px-3 py-2"
-                            @click="load"
-                        >
-                            Retry
-                        </button>
-                    </div>
-                    <p
-                        v-else-if="requests && requests.length === 0"
-                        class="bg-surface-container-high type-body-md text-on-surface-variant rounded-lg px-4 py-4"
-                        data-empty-requests
-                    >
-                        No requests yet. Anything using this token will show up here.
-                    </p>
-                    <template v-else>
-                        <div
-                            v-if="loadError"
-                            class="bg-error-container text-on-error-container type-body-sm flex items-center gap-2 rounded-md px-3 py-2"
-                        >
-                            <Icon name="error" :size="16" />
-                            <span class="flex-1">{{ loadError }}</span>
-                        </div>
-                        <ul class="flex flex-col gap-2">
-                            <li
-                                v-for="request in requests ?? []"
-                                :key="request.id"
-                                class="bg-surface-container-high rounded-lg px-4 py-3"
-                                data-request-row
-                            >
-                                <div class="flex items-center gap-2">
-                                    <span
-                                        class="bg-surface-container-lowest type-label-sm rounded-sm px-1.5 py-0.5 font-mono font-bold"
-                                        >{{ request.method }}</span
-                                    >
-                                    <span
-                                        class="type-label-sm rounded-sm px-1.5 py-0.5 font-mono font-bold"
-                                        :class="statusClass(request.statusCode)"
-                                        data-request-status
-                                        >{{ request.statusCode }}</span
-                                    >
-                                    <code class="type-body-sm min-w-0 flex-1 truncate" :title="request.path">{{
-                                        request.path
-                                    }}</code>
-                                </div>
-                                <p class="type-body-sm text-on-surface-variant mt-1">
-                                    {{ when(request.createdAt) }}
-                                    <template v-if="request.clientIp"> · {{ request.clientIp }}</template>
-                                    <template v-if="request.durationMs !== null">
-                                        · {{ request.durationMs }} ms
-                                    </template>
-                                </p>
-                                <p
-                                    v-if="request.userAgent"
-                                    class="type-body-sm text-on-surface-variant truncate"
-                                    :title="request.userAgent"
-                                >
-                                    {{ request.userAgent }}
-                                </p>
-                            </li>
-                        </ul>
-                        <div v-if="hasMore" class="flex justify-center">
-                            <button
-                                class="text-primary type-label-lg hover:bg-on-surface/5 flex items-center gap-2 rounded-full px-4 py-2 disabled:opacity-60"
-                                :disabled="loadingMore"
-                                @click="loadMore"
-                            >
-                                <Spinner v-if="loadingMore" :size="16" />
-                                <Icon v-else name="history" :size="18" />
-                                Load older
-                            </button>
-                        </div>
-                    </template>
+            <StateBlock v-if="loading && requests === null" kind="loading" />
+            <StateBlock v-else-if="loadError && requests === null" kind="error" :message="loadError" @retry="load" />
+            <StateBlock v-else-if="requests && requests.length === 0" kind="empty" data-empty-requests>
+                No requests yet. Anything using this token will show up here.
+            </StateBlock>
+            <template v-else>
+                <div
+                    v-if="loadError"
+                    class="bg-error-container text-on-error-container type-body-sm flex items-center gap-2 rounded-md px-3 py-2"
+                >
+                    <Icon name="error" :size="16" />
+                    <span class="flex-1">{{ loadError }}</span>
                 </div>
-            </section>
+                <ul class="flex flex-col gap-2">
+                    <li
+                        v-for="request in requests ?? []"
+                        :key="request.id"
+                        class="bg-surface-container-high rounded-lg px-4 py-3"
+                        data-request-row
+                    >
+                        <div class="flex items-center gap-2">
+                            <span
+                                class="bg-surface-container-lowest type-label-sm rounded-sm px-1.5 py-0.5 font-mono font-bold"
+                                >{{ request.method }}</span
+                            >
+                            <span
+                                class="type-label-sm rounded-sm px-1.5 py-0.5 font-mono font-bold"
+                                :class="statusClass(request.statusCode)"
+                                data-request-status
+                                >{{ request.statusCode }}</span
+                            >
+                            <code class="type-body-sm min-w-0 flex-1 truncate" :title="request.path">{{
+                                request.path
+                            }}</code>
+                        </div>
+                        <p class="type-body-sm text-on-surface-variant mt-1">
+                            {{ when(request.createdAt) }}
+                            <template v-if="request.clientIp"> · {{ request.clientIp }}</template>
+                            <template v-if="request.durationMs !== null"> · {{ request.durationMs }} ms </template>
+                        </p>
+                        <p
+                            v-if="request.userAgent"
+                            class="type-body-sm text-on-surface-variant truncate"
+                            :title="request.userAgent"
+                        >
+                            {{ request.userAgent }}
+                        </p>
+                    </li>
+                </ul>
+                <div v-if="hasMore" class="flex justify-center">
+                    <button
+                        class="text-primary type-label-lg hover:bg-on-surface/5 flex items-center gap-2 rounded-full px-4 py-2 disabled:opacity-60"
+                        :disabled="loadingMore"
+                        @click="loadMore"
+                    >
+                        <Spinner v-if="loadingMore" :size="16" />
+                        <Icon v-else name="history" :size="18" />
+                        Load older
+                    </button>
+                </div>
+            </template>
         </div>
-    </Teleport>
+    </Dialog>
 </template>

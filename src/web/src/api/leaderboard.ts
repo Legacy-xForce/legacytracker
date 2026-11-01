@@ -1,4 +1,5 @@
-import { ApiError, trackerFetch } from './tracker';
+import { numOrZero } from '../lib/coerce';
+import { ensureOk, trackerFetch } from './tracker';
 
 export interface LeaderboardEntry {
     userId: string;
@@ -13,10 +14,7 @@ export interface LeaderboardEntry {
     tripCount: number;
 }
 
-function num(value: unknown): number {
-    const parsed = typeof value === 'string' ? Number(value) : value;
-    return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : 0;
-}
+const num = numOrZero;
 
 export function parseLeaderboard(body: unknown): LeaderboardEntry[] {
     const entries = (body as { entries?: unknown } | null)?.entries;
@@ -42,6 +40,6 @@ export function parseLeaderboard(body: unknown): LeaderboardEntry[] {
 export async function fetchLeaderboard(from: Date, to: Date): Promise<LeaderboardEntry[]> {
     const query = new URLSearchParams({ from: from.toISOString(), to: to.toISOString() });
     const response = await trackerFetch(`/api/v1/leaderboard?${query}`);
-    if (!response.ok) throw new ApiError(`Tracker error (${response.status}).`, response.status);
+    await ensureOk(response);
     return parseLeaderboard(await response.json());
 }

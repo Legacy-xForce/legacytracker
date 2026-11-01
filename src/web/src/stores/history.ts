@@ -1,26 +1,11 @@
 import { defineStore } from 'pinia';
 import { computed, ref, shallowRef } from 'vue';
 import { deleteHistory, fetchSessions, NotSharingError, type HistorySession } from '../api/history';
+import { addDays, addMonths, startOfDay, startOfMonth } from '../lib/dates';
 import { ReplayTrack } from '../lib/replay';
 
 /** How far back the calendar goes, like the app. */
 const MONTHS_BACK = 12;
-
-export function startOfDay(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-export function addDays(date: Date, days: number): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + days);
-}
-
-export function startOfMonth(date: Date): Date {
-    return new Date(date.getFullYear(), date.getMonth(), 1);
-}
-
-export function addMonths(date: Date, months: number): Date {
-    return new Date(date.getFullYear(), date.getMonth() + months, 1);
-}
 
 export interface DaySummary {
     trips: number;

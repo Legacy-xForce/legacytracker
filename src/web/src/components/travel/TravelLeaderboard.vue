@@ -7,7 +7,7 @@ import Spinner from '../ui/Spinner.vue';
 import { moveFocus } from '../../lib/focus';
 import { formatDistance, formatTripDuration } from '../../lib/format';
 import { formatPeriod, fromDateInput, MAX_PERIOD_DAYS, toDateInput, type PeriodKind } from '../../lib/periods';
-import { addDays } from '../../stores/history';
+import { addDays } from '../../lib/dates';
 import { useLeaderboardStore } from '../../stores/leaderboard';
 
 defineProps<{ selfId: string }>();

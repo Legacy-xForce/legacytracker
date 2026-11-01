@@ -1,4 +1,5 @@
-import { ApiError, trackerFetch } from './tracker';
+import { numOrZero, time as parseTime } from '../lib/coerce';
+import { ApiError, ensureOk, serverErrorText, trackerFetch } from './tracker';
 import type { ReplayPoint } from '../lib/replay';
 
 /** The person switched off sharing with us, so there is nothing to show. */
@@ -20,13 +21,11 @@ export interface HistorySession {
     points: ReplayPoint[];
 }
 
-function num(value: unknown): number {
-    const parsed = typeof value === 'string' ? Number(value) : value;
-    return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : 0;
-}
+const num = numOrZero;
 
+/** NaN when absent, so a bad row can be told apart from a time at 0. */
 function time(value: unknown): number {
-    return typeof value === 'string' ? Date.parse(value) : NaN;
+    return parseTime(value) ?? NaN;
 }
 
 function parsePoint(raw: Record<string, unknown>): ReplayPoint | null {
@@ -94,10 +93,9 @@ export async function fetchSessions(
     if (!withPoints) query.set('points', 'false');
     const response = await trackerFetch(`/api/v1/history?${query}`);
     if (response.status === 403) {
-        const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
-        if (body?.error === 'not_sharing') throw new NotSharingError();
+        if ((await serverErrorText(response)) === 'not_sharing') throw new NotSharingError();
         throw new ApiError('Access denied.', 403);
     }
-    if (!response.ok) throw new ApiError(`Tracker error (${response.status}).`, response.status);
+    await ensureOk(response);
     return parseSessions(await response.json());
 }

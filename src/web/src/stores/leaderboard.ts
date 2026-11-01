@@ -11,7 +11,7 @@ import {
     type Period,
     type PeriodKind
 } from '../lib/periods';
-import { addDays, startOfDay } from './history';
+import { addDays, startOfDay } from '../lib/dates';
 
 /** A custom range starts as the last 30 days, today included. */
 function defaultCustom(): Period {

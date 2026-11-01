@@ -55,9 +55,24 @@ export async function trackerFetch(path: string, init: RequestInit = {}): Promis
     return response;
 }
 
+/** The server's own `error` text for a failed response, when it gave one. */
+export async function serverErrorText(response: Response): Promise<string | null> {
+    const body = (await response
+        .clone()
+        .json()
+        .catch(() => null)) as { error?: unknown } | null;
+    return typeof body?.error === 'string' ? body.error : null;
+}
+
+/** Throws an ApiError carrying the server's message (or a generic one) unless the response is ok. */
+export async function ensureOk(response: Response): Promise<void> {
+    if (response.ok) return;
+    throw new ApiError((await serverErrorText(response)) ?? `Tracker error (${response.status}).`, response.status);
+}
+
 export async function trackerJson<T>(path: string, init: RequestInit = {}): Promise<T> {
     const response = await trackerFetch(path, init);
-    if (!response.ok) throw new ApiError(`Tracker error (${response.status}).`, response.status);
+    await ensureOk(response);
     return (await response.json()) as T;
 }
 
