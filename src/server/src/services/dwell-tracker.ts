@@ -1,3 +1,4 @@
+import { haversineMeters } from "./geo";
 /**
  * "Here since": when a user arrived where they are now, for the app's
  * "Here for" counter.
@@ -38,21 +39,6 @@ export interface Dwell {
   lastAt: string;
   /** Last time the user was seen somewhere else — the stay began after it. */
   after: string | null;
-}
-
-function haversineMeters(
-  a: { latitude: number; longitude: number },
-  b: { latitude: number; longitude: number },
-): number {
-  const R = 6371000;
-  const lat1 = (a.latitude * Math.PI) / 180;
-  const lat2 = (b.latitude * Math.PI) / 180;
-  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-  const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 export function isTravellingPoint(point: DwellPoint): boolean {

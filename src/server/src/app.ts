@@ -169,7 +169,6 @@ const lastKnownName = new Map<string, string>();
 // Each user's current stay ("here since"), seeded from stored history the
 // first time a user is needed and advanced with every point after that.
 const dwellByUser = new Map<string, Dwell | null>();
-const STATE_ID = "foreground";
 const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 // Without points (calendar summaries) a request is cheap to answer, so a
@@ -206,6 +205,8 @@ const RELEASE_CHECK_INTERVAL_MS = 5 * 60_000;
 // Just under the check interval, so every check sees fresh data.
 const RELEASE_CACHE_TTL_MS = 4 * 60_000;
 
+// Phase 4 (docs/oidc-migration.md): PacingMode, X-Pacing-Mode and the FCM
+// `pacing` field go once min_supported_code passes the builds that read them.
 const PacingMode = {
   AGGRESSIVE: "AGGRESSIVE",
   PASSIVE: "PASSIVE",
@@ -218,8 +219,6 @@ interface TicketEntry {
   displayName: string;
   expiresAt: number;
   used: boolean;
-  // Issued to a read-only caller: the stream may watch, not upload.
-  readOnly: boolean;
   // OP session of the token the ticket was issued for: a back-channel logout
   // for it closes the stream.
   sid: string | null;
@@ -443,20 +442,10 @@ function getPacingMode(): PacingMode {
   return liveController.isActive ? PacingMode.AGGRESSIVE : PacingMode.PASSIVE;
 }
 
-async function updateViewerState(): Promise<void> {
+/** Live mode and the viewer list follow the in-memory connection registry. */
+function updateViewers(): void {
   liveController.update(connectionManager.activeMapCount);
   viewerPresence.update(connectionManager.activeMapUsers());
-  try {
-    await pool.query(
-      `INSERT INTO viewer_state (id, active_viewers)
-       VALUES ($1, $2)
-       ON CONFLICT (id)
-       DO UPDATE SET active_viewers = EXCLUDED.active_viewers, updated_at = now()`,
-      [STATE_ID, connectionManager.count],
-    );
-  } catch (error) {
-    app.log.warn({ error }, "Unable to synchronize viewer state with database");
-  }
 }
 
 function normalizeNumber(value: unknown): number | null {
@@ -490,6 +479,8 @@ type IdentityResult =
       sid: string | null;
     }
   | IdentityFailure;
+
+type IdentityOk = Extract<IdentityResult, { ok: true }>;
 
 type IdentityOptions = {
   // Routes that mint credentials or manage tokens: a leaked API token must
@@ -530,6 +521,57 @@ function rejectRequest(
   return failure.forbidden
     ? reply.code(403).send({ error: failure.error ?? "Missing tracker scope" })
     : reply.code(401).send({ error: "Unauthorized" });
+}
+
+/**
+ * Resolves who is calling, or answers 401/403 itself and returns null so the
+ * handler can `return reply`. The route label in the log is the route pattern
+ * Fastify matched, never a string retyped per handler.
+ */
+async function authenticate(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  options: IdentityOptions = {},
+): Promise<IdentityOk | null> {
+  const identity = await getCurrentUserIdentity(request, options);
+  if (identity.ok) return identity;
+  rejectRequest(
+    request,
+    reply,
+    request.routeOptions.url ?? request.url,
+    identity,
+  );
+  return null;
+}
+
+/**
+ * Routes that mint app-only credentials refuse sessions from another OIDC
+ * client (the web). Phase 4 (docs/oidc-migration.md): drop the
+ * `clientId !== null` escape that still lets legacy password-login tokens by.
+ */
+function notMobileClient(identity: IdentityOk): boolean {
+  return identity.clientId !== null && identity.clientId !== AUTH_MOBILE_CLIENT;
+}
+
+function rejectMobileOnly(
+  request: FastifyRequest,
+  reply: FastifyReply,
+  identity: IdentityOk,
+  reason: string,
+  error: string,
+) {
+  return rejectRequest(
+    request,
+    reply,
+    request.routeOptions.url ?? request.url,
+    {
+      ok: false,
+      reason,
+      detail: `client_id ${identity.clientId}`,
+      forbidden: true,
+      error,
+    },
+  );
 }
 
 function readApiTokenHeader(request: FastifyRequest): string | null {
@@ -649,6 +691,7 @@ async function getCurrentUserIdentity(
   if (!verified.ok) {
     if (verified.lostTrackerScope && verified.sub) {
       // The account lost access: its API tokens go with it.
+      // Phase 4 (docs/oidc-migration.md): delete with the legacy token branch.
       purgeApiTokens(verified.sub, "a token without the tracker scope");
     }
     return verified;
@@ -1223,18 +1266,14 @@ async function loadSharing(): Promise<void> {
 }
 
 app.get("/api/v1/sharing", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/sharing", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   return reply.send({ hidden_from: sharing.hiddenFrom(identity.userId) });
 });
 
 app.put("/api/v1/sharing/:viewerId", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/sharing/:viewerId", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   const { viewerId } = request.params as { viewerId: string };
   const enabled = (request.body as { enabled?: unknown } | null)?.enabled;
   if (typeof enabled !== "boolean") {
@@ -1284,11 +1323,8 @@ app.put("/api/v1/sharing/:viewerId", async (request, reply) => {
 // Wakes a user's phone for a fresh position and answers once it has reported
 // in (200 with their roster entry) or the wait runs out (504).
 app.post("/api/v1/users/:userId/location-refresh", async (request, reply) => {
-  const route = "/api/v1/users/:userId/location-refresh";
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   const { userId } = request.params as { userId: string };
   const { rows: known } = await pool.query(
     "SELECT 1 FROM users WHERE id = $1",
@@ -1321,10 +1357,8 @@ app.post("/api/v1/users/:userId/location-refresh", async (request, reply) => {
 });
 
 app.get("/api/v1/profile", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/profile", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
 
   await ensureUserExists(identity.userId, identity.displayName);
 
@@ -1337,20 +1371,12 @@ app.get("/api/v1/profile", async (request, reply) => {
     return reply.code(404).send({ error: "User not found" });
   }
 
-  const user = result.rows[0];
-  return reply.send({
-    id: user.id,
-    name: user.name,
-    avatar_url: user.avatar_url ?? "",
-    role: user.role ?? "user",
-  });
+  return reply.send(profileResponse(result.rows[0]));
 });
 
 app.patch("/api/v1/profile", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/profile", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
 
   const body = request.body as Record<string, unknown> | null;
   if (body == null) {
@@ -1389,20 +1415,12 @@ app.patch("/api/v1/profile", async (request, reply) => {
     [identity.userId],
   );
 
-  const user = result.rows[0];
-  return reply.send({
-    id: user.id,
-    name: user.name,
-    avatar_url: user.avatar_url ?? "",
-    role: user.role ?? "user",
-  });
+  return reply.send(profileResponse(result.rows[0]));
 });
 
 app.post("/api/v1/fcm-token", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/fcm-token", identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
 
   const body = request.body as Record<string, unknown> | null;
   const token = typeof body?.token === "string" ? body.token.trim() : null;
@@ -1427,18 +1445,16 @@ app.post("/api/v1/fcm-token", async (request, reply) => {
 // cached per user until shortly before they expire. Only the app's sessions
 // may ask: the web ships a public token restricted to its own origins.
 app.post("/api/v1/mapbox/token", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/mapbox/token", identity);
-  }
-  if (identity.clientId !== null && identity.clientId !== AUTH_MOBILE_CLIENT) {
-    return rejectRequest(request, reply, "/api/v1/mapbox/token", {
-      ok: false,
-      reason: "Mapbox token requested by a client other than the app",
-      detail: `client_id ${identity.clientId}`,
-      forbidden: true,
-      error: "Map tokens are only issued to the app",
-    });
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
+  if (notMobileClient(identity)) {
+    return rejectMobileOnly(
+      request,
+      reply,
+      identity,
+      "Mapbox token requested by a client other than the app",
+      "Map tokens are only issued to the app",
+    );
   }
 
   try {
@@ -1475,18 +1491,16 @@ app.post("/api/v1/mapbox/token", async (request, reply) => {
 // token (re-registration after reinstall / token loss). Only the phone app's
 // sessions may do this: a token taken from the web app can't mint devices.
 app.post("/api/v1/devices", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/devices", identity);
-  }
-  if (identity.clientId !== null && identity.clientId !== AUTH_MOBILE_CLIENT) {
-    return rejectRequest(request, reply, "/api/v1/devices", {
-      ok: false,
-      reason: "device registration from a client other than the app",
-      detail: `client_id ${identity.clientId}`,
-      forbidden: true,
-      error: "Devices can only be registered from the app",
-    });
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
+  if (notMobileClient(identity)) {
+    return rejectMobileOnly(
+      request,
+      reply,
+      identity,
+      "device registration from a client other than the app",
+      "Devices can only be registered from the app",
+    );
   }
 
   const body = (request.body ?? {}) as Record<string, unknown>;
@@ -1554,19 +1568,52 @@ async function getUserRole(userId: string): Promise<string> {
   return (rows[0]?.role as string | undefined) ?? "user";
 }
 
+function profileResponse(user: {
+  id: string;
+  name: string;
+  avatar_url: string | null;
+  role: string | null;
+}) {
+  return {
+    id: user.id,
+    name: user.name,
+    avatar_url: user.avatar_url ?? "",
+    role: user.role ?? "user",
+  };
+}
+
+/** Postgres error classes the routes translate: see mapDbError(). */
+function dbErrorCode(error: unknown): string | undefined {
+  return typeof error === "object" && error !== null
+    ? ((error as { code?: unknown }).code as string | undefined)
+    : undefined;
+}
+
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    (error as { code?: unknown }).code === "23505"
-  );
+  return dbErrorCode(error) === "23505";
+}
+
+/** 22P02: a path id that is not a valid uuid cannot match any row. */
+function isInvalidUuid(error: unknown): boolean {
+  return dbErrorCode(error) === "22P02";
+}
+
+/**
+ * What a checkpoint write that matched no row means: the caller may not touch
+ * it (403) or it does not exist (404).
+ */
+async function checkpointMissOrForbidden(reply: FastifyReply, id: string) {
+  const exists = await pool.query("SELECT 1 FROM checkpoints WHERE id = $1", [
+    id,
+  ]);
+  return exists.rowCount
+    ? reply.code(403).send({ error: "Forbidden" })
+    : reply.code(404).send({ error: "Checkpoint not found" });
 }
 
 app.get("/api/v1/checkpoints", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/checkpoints", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   await ensureUserExists(identity.userId, identity.displayName);
   const role = await getUserRole(identity.userId);
   const { rows } = await pool.query(
@@ -1583,10 +1630,8 @@ app.get("/api/v1/checkpoints", async (request, reply) => {
 });
 
 app.post("/api/v1/checkpoints", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/checkpoints", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   const input = validateCheckpointInput(request.body);
   if (!input.ok) {
     return reply.code(400).send({ error: input.error });
@@ -1611,10 +1656,8 @@ app.post("/api/v1/checkpoints", async (request, reply) => {
 });
 
 app.patch("/api/v1/checkpoints/:id", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/checkpoints/:id", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   const { id } = request.params as { id: string };
   const input = validateCheckpointInput(request.body);
   if (!input.ok) {
@@ -1652,25 +1695,18 @@ app.patch("/api/v1/checkpoints/:id", async (request, reply) => {
     if (isUniqueViolation(error)) {
       return reply.code(409).send({ error: "Checkpoint name already exists" });
     }
-    if ((error as { code?: unknown }).code === "22P02") {
+    if (isInvalidUuid(error)) {
       // Not a valid uuid.
       return reply.code(404).send({ error: "Checkpoint not found" });
     }
     throw error;
   }
-  const exists = await pool.query("SELECT 1 FROM checkpoints WHERE id = $1", [
-    id,
-  ]);
-  return exists.rowCount
-    ? reply.code(403).send({ error: "Forbidden" })
-    : reply.code(404).send({ error: "Checkpoint not found" });
+  return checkpointMissOrForbidden(reply, id);
 });
 
 app.delete("/api/v1/checkpoints/:id", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/checkpoints/:id", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
   const { id } = request.params as { id: string };
 
   await ensureUserExists(identity.userId, identity.displayName);
@@ -1684,27 +1720,19 @@ app.delete("/api/v1/checkpoints/:id", async (request, reply) => {
       return reply.send({ deleted: true });
     }
   } catch (error) {
-    if ((error as { code?: unknown }).code === "22P02") {
+    if (isInvalidUuid(error)) {
       return reply.code(404).send({ error: "Checkpoint not found" });
     }
     throw error;
   }
-  const exists = await pool.query("SELECT 1 FROM checkpoints WHERE id = $1", [
-    id,
-  ]);
-  return exists.rowCount
-    ? reply.code(403).send({ error: "Forbidden" })
-    : reply.code(404).send({ error: "Checkpoint not found" });
+  return checkpointMissOrForbidden(reply, id);
 });
 
 // Personal API tokens. Managed only from a signed-in session; see
 // services/api-tokens.ts for how they authenticate.
 app.get("/api/v1/api-tokens", async (request, reply) => {
-  const route = "/api/v1/api-tokens";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   return reply.send({
     tokens: await apiTokens.list(identity.userId),
     // Lets the dialog offer the address it is answering from instead of
@@ -1718,20 +1746,14 @@ app.get("/api/v1/api-tokens", async (request, reply) => {
 // reviewing what can read or write is the point. Managing them stays with the
 // owner, and the trail each one leaves is readable through the requests route.
 app.get("/api/v1/api-tokens/all", async (request, reply) => {
-  const route = "/api/v1/api-tokens/all";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   return reply.send({ tokens: await apiTokens.listAll() });
 });
 
 app.post("/api/v1/api-tokens", async (request, reply) => {
-  const route = "/api/v1/api-tokens";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   const input = validateApiTokenInput(request.body);
   if (!input.ok) {
     return reply.code(400).send({ error: input.error });
@@ -1758,11 +1780,8 @@ app.post("/api/v1/api-tokens", async (request, reply) => {
 });
 
 app.post("/api/v1/api-tokens/:id/rotate", async (request, reply) => {
-  const route = "/api/v1/api-tokens/:id/rotate";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   const { id } = request.params as { id: string };
   const issued = isApiTokenId(id)
     ? await apiTokens.rotate(identity.userId, id)
@@ -1778,11 +1797,8 @@ app.post("/api/v1/api-tokens/:id/rotate", async (request, reply) => {
 });
 
 app.patch("/api/v1/api-tokens/:id", async (request, reply) => {
-  const route = "/api/v1/api-tokens/:id";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   const input = parseAllowedIps(
     (request.body as { allowed_ips?: unknown } | null)?.allowed_ips,
   );
@@ -1804,11 +1820,8 @@ app.patch("/api/v1/api-tokens/:id", async (request, reply) => {
 });
 
 app.delete("/api/v1/api-tokens/:id", async (request, reply) => {
-  const route = "/api/v1/api-tokens/:id";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   const { id } = request.params as { id: string };
   const removed = isApiTokenId(id)
     ? await apiTokens.remove(identity.userId, id)
@@ -1827,11 +1840,8 @@ app.delete("/api/v1/api-tokens/:id", async (request, reply) => {
 // about what integrations do is the point. Still session-only, so a leaked
 // token can't read or scrub what other tokens did.
 app.get("/api/v1/api-tokens/:id/requests", async (request, reply) => {
-  const route = "/api/v1/api-tokens/:id/requests";
-  const identity = await getCurrentUserIdentity(request, { sessionOnly: true });
-  if (!identity.ok) {
-    return rejectRequest(request, reply, route, identity);
-  }
+  const identity = await authenticate(request, reply, { sessionOnly: true });
+  if (!identity) return reply;
   const { id } = request.params as { id: string };
   if (!isApiTokenId(id)) {
     return reply.code(404).send({ error: "API token not found" });
@@ -1886,10 +1896,8 @@ app.get("/api/v1/app/android/latest", async (_request, reply) => {
 });
 
 app.post("/api/v1/streams/ticket", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/streams/ticket", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
 
   const ticket = crypto.randomUUID();
   lastKnownName.set(identity.userId, identity.displayName);
@@ -1898,7 +1906,6 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
     displayName: identity.displayName,
     expiresAt: Date.now() + 60_000,
     used: false,
-    readOnly: identity.readOnly,
     sid: identity.sid,
   });
 
@@ -1965,10 +1972,8 @@ app.post("/api/v1/location", async (request, reply) => {
 });
 
 app.get("/api/v1/history", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/history", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
 
   const query = request.query as Record<string, string | undefined>;
   const userId =
@@ -2068,10 +2073,8 @@ app.get("/api/v1/history", async (request, reply) => {
 // while parked doesn't count. People who hide their location from the caller
 // are left out entirely: distance alone says when they were on the move.
 app.get("/api/v1/leaderboard", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/leaderboard", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
 
   const range = parseHistoryRange(
     request.query as Record<string, string | undefined>,
@@ -2147,10 +2150,8 @@ app.get("/api/v1/leaderboard", async (request, reply) => {
 // is deliberately no `user_id` — nobody can erase someone else's history — and
 // no device-token access: it takes a signed-in user.
 app.delete("/api/v1/history", async (request, reply) => {
-  const identity = await getCurrentUserIdentity(request);
-  if (!identity.ok) {
-    return rejectRequest(request, reply, "/api/v1/history", identity);
-  }
+  const identity = await authenticate(request, reply);
+  if (!identity) return reply;
 
   const range = parseHistoryRange(
     request.query as Record<string, string | undefined>,
@@ -2271,14 +2272,13 @@ app.register(async () => {
     tickets.delete(ticket);
     const userId = entry.userId;
     const displayName = entry.displayName;
-    const readOnly = entry.readOnly;
     lastKnownName.set(userId, displayName);
     connectionManager.add(userId, connection.socket, entry.sid);
     app.log.info(
       { userId, totalConnections: connectionManager.count },
       "[ws] client connected",
     );
-    updateViewerState();
+    updateViewers();
 
     // Listen before the snapshot query: clients announce their map state as
     // soon as the socket opens, and anything sent while nobody listens is lost.
@@ -2310,23 +2310,11 @@ app.register(async () => {
           return;
         }
         connectionManager.setMapActive(userId, connection.socket, active);
-        void updateViewerState();
+        updateViewers();
         return;
       }
 
-      if (msgType !== "location" || readOnly) {
-        return;
-      }
-
-      // Legacy path: builds before the native tracking engine streamed
-      // foreground fixes over the socket. Current builds upload over HTTP.
-      const point = parseLocationItem(msg);
-      if (!point) {
-        app.log.warn({ userId, msg }, "[ws] invalid location payload");
-        return;
-      }
-
-      await ingestPoints(userId, displayName, [point]);
+      // Anything else is ignored: locations are uploaded over HTTP.
     });
 
     connection.socket.on("close", () => {
@@ -2335,7 +2323,7 @@ app.register(async () => {
         "[ws] client disconnected",
       );
       connectionManager.remove(userId, connection.socket);
-      updateViewerState();
+      updateViewers();
     });
 
     const snapshot = await buildSnapshot(userId);
@@ -2367,7 +2355,7 @@ const start = async (): Promise<void> => {
     await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
     setInterval(() => {
-      if (connectionManager.sweep() > 0) void updateViewerState();
+      if (connectionManager.sweep() > 0) updateViewers();
     }, HEARTBEAT_INTERVAL_MS).unref();
     if (androidReleases) {
       void announceNewAndroidRelease();

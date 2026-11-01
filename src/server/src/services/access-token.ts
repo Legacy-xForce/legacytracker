@@ -157,6 +157,7 @@ export async function verifyAccessToken(
     };
   }
 
+  // Phase 4 (docs/oidc-migration.md): delete with the legacy token branch.
   if (payload.type !== "access") {
     return { ok: false, reason: "not an access token" };
   }

@@ -1,3 +1,4 @@
+import { haversineMeters } from "./geo";
 const SESSION_GAP_MINUTES = 15;
 const STOP_RADIUS_METERS = 75;
 const STOP_MIN_MINUTES = 10;
@@ -35,19 +36,6 @@ export interface LocationSession {
   topSpeed: number;
   pointCount: number;
   points: HistoryPoint[];
-}
-
-function haversineMeters(a: HistoryPoint, b: HistoryPoint): number {
-  const R = 6371000;
-  const lat1 = (a.latitude * Math.PI) / 180;
-  const lat2 = (b.latitude * Math.PI) / 180;
-  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-  const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
-
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
-  return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 function minutesBetween(a: HistoryPoint, b: HistoryPoint): number {

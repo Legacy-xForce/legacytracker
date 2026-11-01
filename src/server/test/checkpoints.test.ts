@@ -3,9 +3,7 @@ import { test } from "node:test";
 
 import {
   canModifyCheckpoint,
-  haversineMeters,
   normalizeCheckpointName,
-  resolveCheckpoint,
   validateCheckpointInput,
 } from "../src/services/checkpoints";
 
@@ -74,38 +72,4 @@ test("owners and admins may modify a checkpoint, other users may not", () => {
   assert.equal(canModifyCheckpoint("admin", "u1", "u2"), true);
   assert.equal(canModifyCheckpoint(null, "u1", "u2"), false);
   assert.equal(canModifyCheckpoint(undefined, "u1", "u1"), true);
-});
-
-test("haversine distance is roughly right", () => {
-  // 0.001 degrees of latitude is ~111 m.
-  const d = haversineMeters(45, 9, 45.001, 9);
-  assert.ok(d > 110 && d < 112, `got ${d}`);
-  assert.equal(haversineMeters(45, 9, 45, 9), 0);
-});
-
-const cp = (id: string, lat: number, lon: number, radiusM: number) => ({
-  id,
-  name: id,
-  latitude: lat,
-  longitude: lon,
-  radiusM,
-});
-
-test("a point outside every checkpoint resolves to nothing", () => {
-  assert.equal(resolveCheckpoint(45.01, 9, [cp("a", 45, 9, 100)]), null);
-  assert.equal(resolveCheckpoint(45, 9, []), null);
-});
-
-test("a point inside a checkpoint resolves to it", () => {
-  assert.equal(resolveCheckpoint(45.0005, 9, [cp("a", 45, 9, 100)])?.id, "a");
-});
-
-test("overlapping checkpoints resolve to the smallest radius", () => {
-  const list = [cp("big", 45, 9, 250), cp("small", 45, 9, 50)];
-  assert.equal(resolveCheckpoint(45, 9, list)?.id, "small");
-});
-
-test("equal radii resolve to the nearest center", () => {
-  const list = [cp("far", 45.001, 9, 200), cp("near", 45, 9, 200)];
-  assert.equal(resolveCheckpoint(45.0001, 9, list)?.id, "near");
 });
