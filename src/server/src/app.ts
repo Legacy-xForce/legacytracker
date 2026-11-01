@@ -3,6 +3,7 @@ import crypto from "crypto";
 import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import cors from "@fastify/cors";
 import websocket from "@fastify/websocket";
+import { mapLimit } from "./services/concurrency";
 import { createRemoteJWKSet } from "jose";
 import pool from "./config/db";
 import {
@@ -169,6 +170,9 @@ const lastKnownName = new Map<string, string>();
 // Each user's current stay ("here since"), seeded from stored history the
 // first time a user is needed and advanced with every point after that.
 const dwellByUser = new Map<string, Dwell | null>();
+const LEADERBOARD_CHUNK = 25;
+const API_TOKEN_REQUEST_RETENTION_DAYS = 90;
+const DWELL_SEED_CONCURRENCY = 3;
 const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
 // Without points (calendar summaries) a request is cheap to answer, so a
@@ -811,6 +815,9 @@ async function ensureBackendSchema(): Promise<void> {
        )`,
     );
     await pool.query(
+      "CREATE INDEX IF NOT EXISTS user_fcm_tokens_token_idx ON user_fcm_tokens (token)",
+    );
+    await pool.query(
       "CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id)",
     );
     await pool.query(
@@ -1218,12 +1225,14 @@ async function buildSnapshot(viewerId: string, onlyUserId?: string) {
   const visible = allUsers.rows.filter(
     (row) => !sharing.isHidden(row.id, viewerId),
   );
+  // Seeding a stay is the heaviest query we run; a cold start must not fire
+  // one per user at once and starve the pool of ingest connections.
   const dwells = new Map(
-    await Promise.all(
-      visible.map(
-        async (row) =>
-          [row.id, row.recorded_at ? await getDwell(row.id) : null] as const,
-      ),
+    await mapLimit(
+      visible,
+      DWELL_SEED_CONCURRENCY,
+      async (row) =>
+        [row.id, row.recorded_at ? await getDwell(row.id) : null] as const,
     ),
   );
   return allUsers.rows.map((row) => {
@@ -2088,34 +2097,48 @@ app.get("/api/v1/leaderboard", async (request, reply) => {
     "SELECT id, name FROM users",
   );
   const totals: { userId: string; name: string; totals: TravelTotals }[] = [];
-  // One person at a time keeps a long window from holding everyone's points
-  // in memory at once.
-  for (const user of users.rows) {
-    if (sharing.isHidden(user.id, identity.userId)) continue;
+  const visible = users.rows.filter(
+    (user) => !sharing.isHidden(user.id, identity.userId),
+  );
+  // A handful of set-based queries instead of one per user; the chunk size
+  // keeps a long window from holding everyone's points in memory at once.
+  for (let start = 0; start < visible.length; start += LEADERBOARD_CHUNK) {
+    const chunk = visible.slice(start, start + LEADERBOARD_CHUNK);
     const result = await pool.query(
-      `SELECT recorded_at,
+      `SELECT user_id, recorded_at,
               ST_Y(location::geometry) AS latitude,
               ST_X(location::geometry) AS longitude,
               speed, source
        FROM location_history
-       WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
+       WHERE user_id = ANY($1) AND recorded_at >= $2 AND recorded_at <= $3
          AND source IS DISTINCT FROM 'heartbeat' AND source IS DISTINCT FROM 'ping'
-       ORDER BY recorded_at ASC`,
-      [user.id, range.from.toISOString(), range.to.toISOString()],
+       ORDER BY user_id, recorded_at ASC`,
+      [
+        chunk.map((user) => user.id),
+        range.from.toISOString(),
+        range.to.toISOString(),
+      ],
     );
-    const points: HistoryPoint[] = result.rows.map((row) => ({
-      recordedAt: new Date(row.recorded_at).toISOString(),
-      latitude: Number(row.latitude),
-      longitude: Number(row.longitude),
-      speed: Number(row.speed),
-      heading: null,
-      source: row.source ?? null,
-    }));
-    totals.push({
-      userId: user.id,
-      name: lastKnownName.get(user.id) ?? user.name,
-      totals: summarizeTravel(points),
-    });
+    const byUser = new Map<string, HistoryPoint[]>();
+    for (const row of result.rows) {
+      let list = byUser.get(row.user_id);
+      if (!list) byUser.set(row.user_id, (list = []));
+      list.push({
+        recordedAt: new Date(row.recorded_at).toISOString(),
+        latitude: Number(row.latitude),
+        longitude: Number(row.longitude),
+        speed: Number(row.speed),
+        heading: null,
+        source: row.source ?? null,
+      });
+    }
+    for (const user of chunk) {
+      totals.push({
+        userId: user.id,
+        name: lastKnownName.get(user.id) ?? user.name,
+        totals: summarizeTravel(byUser.get(user.id) ?? []),
+      });
+    }
   }
 
   const entries = rankLeaderboard(totals, identity.userId);
@@ -2252,6 +2275,7 @@ app.register(async () => {
         : entry.used
           ? "ticket already used"
           : "ticket expired";
+      tickets.delete(ticket);
       app.log.warn(
         {
           reason,
@@ -2354,8 +2378,20 @@ const start = async (): Promise<void> => {
     await loadSharing();
     await app.listen({ port, host: "0.0.0.0" });
     app.log.info(`Legacy Tracker server listening on http://0.0.0.0:${port}`);
+    const pruneTrail = () =>
+      void apiTokenRequests
+        .prune(API_TOKEN_REQUEST_RETENTION_DAYS)
+        .catch((error) =>
+          app.log.warn({ error }, "[api-tokens] unable to prune request trail"),
+        );
+    pruneTrail();
+    setInterval(pruneTrail, 24 * 60 * 60 * 1000).unref();
     setInterval(() => {
       if (connectionManager.sweep() > 0) updateViewers();
+      const now = Date.now();
+      for (const [ticket, entry] of tickets) {
+        if (entry.expiresAt < now) tickets.delete(ticket);
+      }
     }, HEARTBEAT_INTERVAL_MS).unref();
     if (androidReleases) {
       void announceNewAndroidRelease();

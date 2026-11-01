@@ -119,22 +119,26 @@ export class ApiTokenRequests {
     tokenId: string,
     options: { limit: number; before: string | null },
   ): Promise<ApiTokenRequestPage | null> {
-    const exists = await this.pool.query(
-      "SELECT 1 FROM api_tokens WHERE id = $1 AND NOT deleted",
-      [tokenId],
-    );
-    if (exists.rowCount === 0) {
-      return null;
-    }
-    const { rows } = await this.pool.query<ApiTokenRequestRow>(
-      `SELECT id, method, path, status_code, client_ip, user_agent,
-              duration_ms, created_at
-       FROM api_token_requests
-       WHERE token_id = $1
-         AND ($3::bigint IS NULL OR id < $3::bigint)
-       ORDER BY id DESC
+    // One round trip: the join yields no row at all when no live token has
+    // that id, and a single all-NULL row when it has no requests yet.
+    const { rows: joined } = await this.pool.query<
+      ApiTokenRequestRow | { id: null }
+    >(
+      `SELECT r.id, r.method, r.path, r.status_code, r.client_ip, r.user_agent,
+              r.duration_ms, r.created_at
+       FROM api_tokens t
+       LEFT JOIN api_token_requests r
+         ON r.token_id = t.id AND ($3::bigint IS NULL OR r.id < $3::bigint)
+       WHERE t.id = $1 AND NOT t.deleted
+       ORDER BY r.id DESC NULLS LAST
        LIMIT $2`,
       [tokenId, options.limit + 1, options.before],
+    );
+    if (joined.length === 0) {
+      return null;
+    }
+    const rows = joined.filter(
+      (row): row is ApiTokenRequestRow => row.id !== null,
     );
     const hasMore = rows.length > options.limit;
     const page = hasMore ? rows.slice(0, options.limit) : rows;
@@ -143,5 +147,14 @@ export class ApiTokenRequests {
       has_more: hasMore,
       next_before: hasMore ? page[page.length - 1].id : null,
     };
+  }
+
+  /** Retention: the trail keeps this many days; older rows are removed. */
+  async prune(days: number): Promise<number> {
+    const result = await this.pool.query(
+      "DELETE FROM api_token_requests WHERE created_at < now() - ($1::int * interval '1 day')",
+      [days],
+    );
+    return result.rowCount ?? 0;
   }
 }

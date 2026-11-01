@@ -93,9 +93,7 @@ test("a page of requests is newest first and points at the next one", async () =
   const pool = {
     query: async (text: string, values: unknown[]) => {
       calls.push({ text, values });
-      return text.includes("SELECT 1 FROM api_tokens")
-        ? { rows: [{ "?column?": 1 }], rowCount: 1 }
-        : { rows, rowCount: rows.length };
+      return { rows, rowCount: rows.length };
     },
   } as unknown as Pool;
 
@@ -108,8 +106,8 @@ test("a page of requests is newest first and points at the next one", async () =
   assert.equal(page.requests.length, 2);
   assert.equal(page.has_more, true);
   assert.equal(page.next_before, "2");
-  assert.deepEqual(calls[0].values, [entry.tokenId]);
-  assert.deepEqual(calls[1].values, [entry.tokenId, 3, null]);
+  assert.equal(calls.length, 1);
+  assert.deepEqual(calls[0].values, [entry.tokenId, 3, null]);
   assert.equal(page.requests[0].created_at, "2026-10-20T08:00:00.000Z");
 });
 
@@ -118,9 +116,7 @@ test("the trail is readable by anyone, so the query does not name its owner", as
   const pool = {
     query: async (text: string, values: unknown[]) => {
       calls.push({ text, values });
-      return text.includes("FROM api_tokens")
-        ? { rows: [{ "?column?": 1 }], rowCount: 1 }
-        : { rows: [], rowCount: 0 };
+      return { rows: [{ id: null }], rowCount: 1 };
     },
   } as unknown as Pool;
 
@@ -131,8 +127,13 @@ test("the trail is readable by anyone, so the query does not name its owner", as
 
   assert.ok(page);
   assert.doesNotMatch(calls[0].text, /user_id/);
-  assert.match(calls[0].text, /NOT deleted/);
-  assert.deepEqual(calls[0].values, [entry.tokenId]);
+  assert.match(calls[0].text, /NOT t\.deleted/);
+  assert.deepEqual(page.requests, []);
+  assert.deepEqual(calls[0].values, [
+    entry.tokenId,
+    DEFAULT_API_TOKEN_REQUEST_LIMIT + 1,
+    null,
+  ]);
 });
 
 test("a token that does not exist or is deleted has no trail", async () => {

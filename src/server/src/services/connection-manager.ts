@@ -98,10 +98,18 @@ class ConnectionManager {
    * on each.
    */
   broadcastEach(build: (viewerId: string) => unknown | null) {
+    // `build` hands every viewer who may see a payload the same object, so
+    // serialize each distinct object once, not once per viewer.
+    const encoded = new Map<unknown, string>();
     for (const [userId, entries] of [...this.clients.entries()]) {
       const message = build(userId);
       if (message == null) continue;
-      this.deliver(userId, entries, JSON.stringify(message));
+      let text = encoded.get(message);
+      if (text === undefined) {
+        text = JSON.stringify(message);
+        encoded.set(message, text);
+      }
+      this.deliver(userId, entries, text);
     }
   }
 

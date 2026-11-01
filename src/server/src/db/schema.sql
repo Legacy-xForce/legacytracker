@@ -23,6 +23,9 @@ CREATE TABLE IF NOT EXISTS user_fcm_tokens (
   PRIMARY KEY (user_id, token)
 );
 
+-- Pruning dead tokens deletes by token alone.
+CREATE INDEX IF NOT EXISTS user_fcm_tokens_token_idx ON user_fcm_tokens (token);
+
 -- Long-lived, revocable upload credentials for the native tracking engine.
 -- Background uploads can't depend on the short-lived JWT: the app may stay
 -- closed for days, and refreshing a rotating refresh token from two places
