@@ -7,7 +7,8 @@ import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
 import type { HistorySession } from '../../api/history';
 import { formatClock, formatDistance, formatLongDay, formatTripDuration } from '../../lib/format';
-import { addMonths, useHistoryStore } from '../../stores/history';
+import { addMonths } from '../../lib/dates';
+import { useHistoryStore } from '../../stores/history';
 
 const history = useHistoryStore();
 

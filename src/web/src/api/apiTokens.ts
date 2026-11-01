@@ -1,4 +1,5 @@
-import { ApiError, trackerFetch } from './tracker';
+import { time } from '../lib/coerce';
+import { ApiError, ensureOk, trackerFetch } from './tracker';
 
 export type ApiTokenScope = 'read' | 'write';
 
@@ -49,12 +50,6 @@ export interface ApiTokenRequestPage {
     hasMore: boolean;
     /** Pass back as `before` to fetch the next page; null on the last one. */
     nextBefore: string | null;
-}
-
-function time(value: unknown): number | null {
-    if (typeof value !== 'string') return null;
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
 }
 
 export function parseApiToken(raw: unknown): ApiToken | null {
@@ -115,14 +110,6 @@ function parseIssued(raw: unknown): IssuedApiToken {
     const value = (raw as { token?: unknown } | null)?.token;
     if (!token || typeof value !== 'string') throw new ApiError('Invalid token response.', 0);
     return { ...token, token: value };
-}
-
-/** Throws with the server's own message when it gave one ("…limit reached"). */
-async function ensureOk(response: Response): Promise<void> {
-    if (response.ok) return;
-    const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
-    const message = typeof body?.error === 'string' ? body.error : `Tracker error (${response.status}).`;
-    throw new ApiError(message, response.status);
 }
 
 export async function listApiTokens(): Promise<ApiTokenList> {

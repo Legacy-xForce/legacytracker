@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import type { HistorySession } from '../api/history';
 import { formatLongDay, formatMonth, formatTripDuration } from '../lib/format';
-import { addMonths, startOfMonth, summarizeByDay } from '../stores/history';
+import { addMonths, startOfMonth } from '../lib/dates';
+import { summarizeByDay } from '../stores/history';
 
 function trip(start: Date, minutes: number, meters: number): HistorySession {
     return {

@@ -1,3 +1,4 @@
+import { num, time } from './coerce';
 import { parseTrackingIssues, type TrackingIssue } from './tracking-issues';
 
 /** One person on the map, as the tracker stream describes them. */
@@ -37,21 +38,6 @@ export function hasPosition(peer: Peer): boolean {
 
 export function isStale(peer: Peer, now: number): boolean {
     return peer.lastSeenAt === null || now - peer.lastSeenAt > STALE_AFTER_MS;
-}
-
-function num(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) return value;
-    if (typeof value === 'string' && value.trim() !== '') {
-        const parsed = Number(value);
-        return Number.isFinite(parsed) ? parsed : null;
-    }
-    return null;
-}
-
-function time(value: unknown): number | null {
-    if (typeof value !== 'string') return null;
-    const parsed = Date.parse(value);
-    return Number.isNaN(parsed) ? null : parsed;
 }
 
 function applyUpdate(peers: Map<string, Peer>, payload: Record<string, unknown>): boolean {

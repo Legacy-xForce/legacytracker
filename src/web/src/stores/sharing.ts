@@ -1,15 +1,10 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { trackerFetch } from '../api/tracker';
+import { serverErrorText, trackerFetch } from '../api/tracker';
 
 function parseHidden(body: unknown): Set<string> {
     const list = (body as { hidden_from?: unknown } | null)?.hidden_from;
     return new Set(Array.isArray(list) ? list.filter((id): id is string => typeof id === 'string') : []);
-}
-
-async function serverMessage(response: Response, fallback: string): Promise<string> {
-    const body = (await response.json().catch(() => null)) as { error?: unknown } | null;
-    return typeof body?.error === 'string' ? body.error : fallback;
 }
 
 /**
@@ -42,7 +37,7 @@ export const useSharingStore = defineStore('sharing', () => {
             headers: { 'content-type': 'application/json' },
             body: JSON.stringify({ enabled })
         });
-        if (!response.ok) throw new Error(await serverMessage(response, 'Could not change sharing.'));
+        if (!response.ok) throw new Error((await serverErrorText(response)) ?? 'Could not change sharing.');
         hiddenFrom.value = parseHidden(await response.json());
     }
 

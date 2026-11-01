@@ -1,3 +1,4 @@
+import { addDays, addMonths, startOfDay, startOfMonth } from './dates';
 import { MONTH_NAMES } from './format';
 
 export type PeriodKind = 'week' | 'month' | 'custom';
@@ -12,17 +13,15 @@ export interface Period {
 /** The longest custom range the server answers, in days. */
 export const MAX_PERIOD_DAYS = 366;
 
-function day(date: Date, offset = 0): Date {
-    return new Date(date.getFullYear(), date.getMonth(), date.getDate() + offset);
-}
+const day = addDays;
 
 /** The week (Monday to Sunday, like the calendar) or month that contains `date`. */
 export function periodContaining(kind: 'week' | 'month', date: Date): Period {
     if (kind === 'month') {
         return {
             kind,
-            from: new Date(date.getFullYear(), date.getMonth(), 1),
-            to: new Date(date.getFullYear(), date.getMonth() + 1, 1)
+            from: startOfMonth(date),
+            to: addMonths(date, 1)
         };
     }
     const from = day(date, -((date.getDay() + 6) % 7));
@@ -32,7 +31,7 @@ export function periodContaining(kind: 'week' | 'month', date: Date): Period {
 /** The previous (-1) or next (+1) week or month. A custom range moves by its own length. */
 export function shiftPeriod(period: Period, delta: number): Period {
     if (period.kind === 'month') {
-        return periodContaining('month', new Date(period.from.getFullYear(), period.from.getMonth() + delta, 1));
+        return periodContaining('month', addMonths(period.from, delta));
     }
     if (period.kind === 'week') return periodContaining('week', day(period.from, 7 * delta));
     const days = Math.round((period.to.getTime() - period.from.getTime()) / 86_400_000);
@@ -42,7 +41,7 @@ export function shiftPeriod(period: Period, delta: number): Period {
 /** From the first to the last day, both included, in either order. */
 export function customPeriod(first: Date, last: Date): Period {
     const [a, b] = first <= last ? [first, last] : [last, first];
-    return { kind: 'custom', from: day(a), to: day(b, 1) };
+    return { kind: 'custom', from: startOfDay(a), to: day(b, 1) };
 }
 
 export function periodDays(period: Period): number {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
-import { ApiError, trackerFetch, trackerJson } from '../api/tracker';
+import { ApiError, serverErrorText, trackerFetch, trackerJson } from '../api/tracker';
 import { haversine } from '../lib/replay';
 
 export interface Checkpoint {
@@ -92,8 +92,7 @@ async function refused(response: Response): Promise<CheckpointError> {
         case 404:
             return new CheckpointError('This checkpoint no longer exists.');
         case 400: {
-            const detail = (await response.json().catch(() => null)) as { error?: unknown } | null;
-            return new CheckpointError(typeof detail?.error === 'string' ? detail.error : 'Invalid checkpoint.');
+            return new CheckpointError((await serverErrorText(response)) ?? 'Invalid checkpoint.');
         }
         default:
             return new CheckpointError(`Something went wrong (${response.status}). Try again.`);
