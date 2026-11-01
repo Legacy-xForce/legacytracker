@@ -39,8 +39,8 @@ class AppTheme {
     required this.label,
     required this.description,
     required this.brightness,
-    AppThemePreview? preview,
-  }) : _preview = preview;
+    this._preview,
+  });
 
   final AppThemeId id;
 
