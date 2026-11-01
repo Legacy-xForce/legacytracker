@@ -622,9 +622,7 @@ class _DrawerUser {
       );
     }
     if (batterySavingEnabled) {
-      result.add(
-        _UserStatus('Battery saver', Icons.battery_saver, AppPalette.battery),
-      );
+      result.add(_UserStatus('Battery saver', Icons.battery_saver));
     }
     return result;
   }
@@ -699,11 +697,14 @@ class _Presence {
 }
 
 class _UserStatus {
-  const _UserStatus(this.label, this.icon, this.color);
+  const _UserStatus(this.label, this.icon, [this.color]);
 
   final String label;
   final IconData icon;
-  final Color color;
+
+  /// A fixed colour for a state with a meaning of its own (paused, missing
+  /// permissions); null takes the theme's primary.
+  final Color? color;
 }
 
 /// Rebuilds every second, for live "Here for" counters.
@@ -940,16 +941,17 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final color = status.color ?? Theme.of(context).colorScheme.primary;
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: status.color.withValues(alpha: 0.14),
+        color: color.withValues(alpha: 0.14),
         borderRadius: AppShape.full,
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(status.icon, size: 13, color: status.color),
+          Icon(status.icon, size: 13, color: color),
           const SizedBox(width: 4),
           Text(
             status.label,

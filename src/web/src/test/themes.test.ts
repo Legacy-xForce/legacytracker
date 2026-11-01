@@ -97,6 +97,29 @@ function contrast(a: string, b: string): number {
     return (hi + 0.05) / (lo + 0.05);
 }
 
+function hue(hex: string): number {
+    const [r, g, b] = [1, 3, 5].map((offset) => parseInt(hex.slice(offset, offset + 2), 16) / 255);
+    const max = Math.max(r, g, b);
+    const delta = max - Math.min(r, g, b);
+    if (delta === 0) return 0;
+    const sector = max === r ? ((g - b) / delta) % 6 : max === g ? (b - r) / delta + 2 : (r - g) / delta + 4;
+    return (sector * 60 + 360) % 360;
+}
+
+describe('accent families', () => {
+    // The buttons, counters and switchers that use the secondary container once stayed teal in
+    // Catppuccin; every theme's secondary tones now share the hue family of its primary.
+    for (const theme of THEMES.filter((t) => t.id.startsWith('catppuccin-'))) {
+        it(`${theme.id} keeps its secondary tones in the primary's hue family`, () => {
+            const tokens = themeTokens(theme.id);
+            for (const role of ['secondary', 'secondary-container']) {
+                const distance = Math.abs(hue(tokens[role]) - hue(tokens.primary));
+                expect(Math.min(distance, 360 - distance), role).toBeLessThanOrEqual(40);
+            }
+        });
+    }
+});
+
 describe('colour role tokens', () => {
     const roles = ['secondary', 'on-secondary', 'secondary-container', 'on-secondary-container', 'scrim', 'shadow'];
     const pairs: [string, string][] = [

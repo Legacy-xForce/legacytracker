@@ -124,9 +124,9 @@ html[data-theme='catppuccin-mocha'] {
     --color-on-primary: #11111b;
     --color-primary-container: #483f5e;
     --color-on-primary-container: #cdd6f4;
-    --color-secondary-container: #384953;
+    --color-secondary-container: #444059;
     --color-on-secondary-container: #cdd6f4;
-    --color-secondary: #89dceb;
+    --color-secondary: #afa0d4;
     --color-on-secondary: #11111b;
     --color-scrim: #000000;
     --color-shadow: #000000;
@@ -150,9 +150,9 @@ html[data-theme='catppuccin-macchiato'] {
     --color-on-primary: #181926;
     --color-primary-container: #4b4467;
     --color-on-primary-container: #cad3f5;
-    --color-secondary-container: #3b4d5a;
+    --color-secondary-container: #474663;
     --color-on-secondary-container: #cad3f5;
-    --color-secondary: #91d7e3;
+    --color-secondary: #ac9dd6;
     --color-on-secondary: #181926;
     --color-scrim: #000000;
     --color-shadow: #000000;
@@ -176,9 +176,9 @@ html[data-theme='catppuccin-frappe'] {
     --color-on-primary: #232634;
     --color-primary-container: #554d6c;
     --color-on-primary-container: #c6d0f5;
-    --color-secondary-container: #425560;
+    --color-secondary-container: #514f6a;
     --color-on-secondary-container: #c6d0f5;
-    --color-secondary: #99d1db;
+    --color-secondary: #af9dd0;
     --color-on-secondary: #232634;
     --color-scrim: #000000;
     --color-shadow: #000000;
@@ -202,9 +202,9 @@ html[data-theme='catppuccin-latte'] {
     --color-on-primary: #eff1f5;
     --color-primary-container: #dfd4f4;
     --color-on-primary-container: #4c4f69;
-    --color-secondary-container: #c8e0e4;
+    --color-secondary-container: #d7d0ea;
     --color-on-secondary-container: #4c4f69;
-    --color-secondary: #1b6d80;
+    --color-secondary: #7759af;
     --color-on-secondary: #eff1f5;
     --color-scrim: #000000;
     --color-shadow: #000000;
