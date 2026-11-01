@@ -218,6 +218,15 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   final Map<String, PolylineAnnotation> _lineAnnotations = {};
   final Map<String, String> _lineSpecs = {};
   final Set<String> _addedImages = {};
+
+  /// When each style image stopped being used by any marker. An image is only
+  /// removed after [_imageGrace]: Mapbox applies an annotation update on its
+  /// own thread, so deleting the previous animation frame right after pointing
+  /// the annotation at the next one can leave a rendered frame with no image,
+  /// which is a blink. Cleared on a style reload.
+  final Map<String, DateTime> _unusedSince = {};
+  static const _imageGrace = Duration(seconds: 2);
+  Timer? _imageCleanup;
   final Set<String> _failedImages = {};
   double _appliedInset = -1;
   bool _scaleBarHidden = false;
@@ -292,6 +301,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   @override
   void dispose() {
     widget.scene.removeListener(_onSceneChanged);
+    _imageCleanup?.cancel();
     _cancelTaps();
     super.dispose();
   }
@@ -369,6 +379,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     // and repopulate rather than creating a second set of layers.
     await _clearAnnotations();
     _addedImages.clear();
+    _unusedSince.clear();
     _failedImages.clear();
     _appliedInset = -1;
     _scaleBarHidden = false;
@@ -712,15 +723,30 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   Future<void> _removeUnusedImages(Set<String> used) async {
     final map = _map;
     if (map == null) return;
-    final unused = _addedImages.difference(used).toList();
-    for (final id in unused) {
+    final now = DateTime.now();
+    _unusedSince.removeWhere((id, _) => used.contains(id));
+    var waiting = false;
+    for (final id in _addedImages.difference(used).toList()) {
+      final since = _unusedSince.putIfAbsent(id, () => now);
+      if (now.difference(since) < _imageGrace) {
+        waiting = true;
+        continue;
+      }
       try {
         await map.style.removeStyleImage(id);
       } catch (_) {
         // The image may already be gone with a style switch.
       }
       _addedImages.remove(id);
+      _unusedSince.remove(id);
     }
+    // Nothing else may sync once an animation stops, so come back for the rest.
+    _imageCleanup?.cancel();
+    _imageCleanup = waiting
+        ? Timer(_imageGrace, () {
+            if (mounted) _syncAll();
+          })
+        : null;
   }
 
   Future<void> _syncPointLayer(MapMarkerLayer layer) async {
