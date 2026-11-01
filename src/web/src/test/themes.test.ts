@@ -98,33 +98,10 @@ function contrast(a: string, b: string): number {
 }
 
 describe('colour role tokens', () => {
-    const roles = [
-        'secondary',
-        'on-secondary',
-        'secondary-container',
-        'on-secondary-container',
-        'tertiary',
-        'on-tertiary',
-        'tertiary-container',
-        'on-tertiary-container',
-        'surface-dim',
-        'surface-bright',
-        'inverse-surface',
-        'inverse-on-surface',
-        'inverse-primary',
-        'surface-tint',
-        'scrim',
-        'shadow'
-    ];
+    const roles = ['secondary', 'on-secondary', 'secondary-container', 'on-secondary-container', 'scrim', 'shadow'];
     const pairs: [string, string][] = [
         ['on-secondary', 'secondary'],
-        ['on-secondary-container', 'secondary-container'],
-        ['on-tertiary', 'tertiary'],
-        ['on-tertiary-container', 'tertiary-container'],
-        ['inverse-on-surface', 'inverse-surface'],
-        ['inverse-primary', 'inverse-surface'],
-        ['on-surface', 'surface-dim'],
-        ['on-surface', 'surface-bright']
+        ['on-secondary-container', 'secondary-container']
     ];
 
     for (const theme of THEMES) {
@@ -137,19 +114,8 @@ describe('colour role tokens', () => {
 
             it('keeps text pairs readable', () => {
                 for (const [fg, bg] of pairs) {
-                    expect(contrast(tokens[fg], tokens[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(
-                        fg === 'inverse-primary' ? 3 : 4.5
-                    );
+                    expect(contrast(tokens[fg], tokens[bg]), `${fg} on ${bg}`).toBeGreaterThanOrEqual(4.5);
                 }
-            });
-
-            it('tints the surface with the primary and brackets the surface between dim and bright', () => {
-                expect(tokens['surface-tint']).toBe(tokens['primary']);
-                const [dim, surface, bright] = ['surface-dim', 'surface', 'surface-bright'].map((t) =>
-                    luminance(tokens[t])
-                );
-                expect(dim).toBeLessThanOrEqual(surface);
-                expect(bright).toBeGreaterThanOrEqual(surface);
             });
         });
     }

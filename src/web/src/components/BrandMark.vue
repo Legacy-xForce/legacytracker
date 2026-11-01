@@ -65,8 +65,8 @@ const dots = PEOPLE.map(([ring, degrees, userId]) => {
             class="text-on-primary-container absolute top-1/2 left-1/2 flex size-[84px] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full"
             style="
                 background: linear-gradient(135deg, var(--color-primary-container), var(--color-secondary-container));
-                border: 1.5px solid rgb(130 213 200 / 0.45);
-                box-shadow: 0 0 28px rgb(130 213 200 / 0.25);
+                border: 1.5px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
+                box-shadow: var(--shadow-level-2);
             "
         >
             <Icon name="shareLocation" :size="40" />

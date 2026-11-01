@@ -128,7 +128,7 @@ onBeforeUnmount(() => {
     align-items: center;
     justify-content: center;
     border-radius: var(--radius-md);
-    border: 2.5px solid #fff;
+    border: 2.5px solid var(--color-marker-ring);
     box-shadow: var(--shadow-level-1);
     font-size: 22px;
 }
