@@ -142,7 +142,17 @@ class _CheckpointsScreenState extends State<CheckpointsScreen> {
       itemBuilder: (context, index) {
         final checkpoint = visible[index];
         return ListTile(
-          leading: const Icon(Icons.place_rounded),
+          leading: SizedBox.square(
+            dimension: 40,
+            child: Center(
+              child: checkpoint.emoji.isEmpty
+                  ? const Icon(Icons.place_rounded)
+                  : Text(
+                      checkpoint.emoji,
+                      style: theme.textTheme.headlineSmall,
+                    ),
+            ),
+          ),
           title: Text(checkpoint.name),
           subtitle: Text('${checkpoint.radiusM} m radius'),
           trailing: checkpoint.canEdit

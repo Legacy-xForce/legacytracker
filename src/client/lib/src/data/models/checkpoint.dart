@@ -15,10 +15,15 @@ class Checkpoint {
     required this.radiusM,
     required this.createdBy,
     required this.canEdit,
+    this.emoji = '',
   });
 
   final String id;
   final String name;
+
+  /// One emoji shown with the name on the map and in lists, or an empty
+  /// string when the checkpoint has none.
+  final String emoji;
   final double latitude;
   final double longitude;
   final int radiusM;
@@ -31,6 +36,7 @@ class Checkpoint {
     return Checkpoint(
       id: json['id'] as String,
       name: json['name'] as String,
+      emoji: json['emoji'] as String? ?? '',
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
       radiusM: (json['radius_m'] as num).toInt(),

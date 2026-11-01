@@ -121,7 +121,8 @@ function paint() {
             el.className = 'checkpoint-label lt-marker';
             el.style.zIndex = `${Z_INDEX}`;
             // The whole pill takes the click (see .lt-hit): a button, so the keyboard reaches it too.
-            el.innerHTML = `<button type="button" class="lt-hit" aria-label="${escapeHtml(checkpoint.name)}">${icons.place}<span>${escapeHtml(checkpoint.name)}</span></button>`;
+            const glyph = checkpoint.emoji ? `<span class="emoji">${escapeHtml(checkpoint.emoji)}</span>` : icons.place;
+            el.innerHTML = `<button type="button" class="lt-hit" aria-label="${escapeHtml(checkpoint.name)}">${glyph}<span>${escapeHtml(checkpoint.name)}</span></button>`;
             el.querySelector('button')!.addEventListener('click', (event) => {
                 event.stopPropagation();
                 emit('select', checkpoint.id);
@@ -192,5 +193,10 @@ onBeforeUnmount(() => {
 .checkpoint-label svg {
     color: var(--color-primary);
     font-size: 14px;
+}
+
+.checkpoint-label .emoji {
+    font-size: 14px;
+    line-height: 16px;
 }
 </style>

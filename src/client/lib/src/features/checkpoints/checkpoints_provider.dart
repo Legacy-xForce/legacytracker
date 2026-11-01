@@ -111,6 +111,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
     required double latitude,
     required double longitude,
     required int radiusM,
+    String emoji = '',
   }) async {
     await _service.create(
       _requireToken(),
@@ -118,6 +119,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
       latitude: latitude,
       longitude: longitude,
       radiusM: radiusM,
+      emoji: emoji,
     );
     await _reload();
   }
@@ -128,6 +130,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
     required double latitude,
     required double longitude,
     required int radiusM,
+    String emoji = '',
   }) async {
     await _service.update(
       _requireToken(),
@@ -136,6 +139,7 @@ class CheckpointsProvider extends ChangeNotifier with WidgetsBindingObserver {
       latitude: latitude,
       longitude: longitude,
       radiusM: radiusM,
+      emoji: emoji,
     );
     await _reload();
   }

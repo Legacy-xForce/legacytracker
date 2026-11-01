@@ -808,8 +808,12 @@ class TrackingMapTabState extends State<TrackingMapTab>
       final accent = Theme.of(context).colorScheme.primary;
       for (final checkpoint in checkpoints) {
         final image = _imageFor(
-          'label:${checkpoint.name}:${accent.toARGB32()}',
-          () => _icons.checkpointLabel(checkpoint.name, accent: accent),
+          'label:${checkpoint.name}:${checkpoint.emoji}:${accent.toARGB32()}',
+          () => _icons.checkpointLabel(
+            checkpoint.name,
+            emoji: checkpoint.emoji,
+            accent: accent,
+          ),
         );
         if (image == null) continue;
         markers.add(

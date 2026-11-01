@@ -13,7 +13,10 @@ class CheckpointService {
 
   Future<List<Checkpoint>> list(String accessToken) async {
     final response = await _api.send(
-      () => _api.httpClient.get(_api.uri('/api/v1/checkpoints'), headers: _api.headers(accessToken)),
+      () => _api.httpClient.get(
+        _api.uri('/api/v1/checkpoints'),
+        headers: _api.headers(accessToken),
+      ),
     );
     _check(response, expected: 200);
     final body = jsonDecode(response.body) as Map<String, dynamic>;
@@ -28,16 +31,19 @@ class CheckpointService {
     required double latitude,
     required double longitude,
     required int radiusM,
+    String emoji = '',
   }) async {
     final response = await _api.send(
       () => _api.httpClient.post(
         _api.uri('/api/v1/checkpoints'),
         headers: _api.headers(accessToken, json: true),
-        body: _body(name, latitude, longitude, radiusM),
+        body: _body(name, emoji, latitude, longitude, radiusM),
       ),
     );
     _check(response, expected: 201);
-    return Checkpoint.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return Checkpoint.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<Checkpoint> update(
@@ -47,16 +53,19 @@ class CheckpointService {
     required double latitude,
     required double longitude,
     required int radiusM,
+    String emoji = '',
   }) async {
     final response = await _api.send(
       () => _api.httpClient.patch(
         _api.uri('/api/v1/checkpoints/$id'),
         headers: _api.headers(accessToken, json: true),
-        body: _body(name, latitude, longitude, radiusM),
+        body: _body(name, emoji, latitude, longitude, radiusM),
       ),
     );
     _check(response, expected: 200);
-    return Checkpoint.fromJson(jsonDecode(response.body) as Map<String, dynamic>);
+    return Checkpoint.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
   }
 
   Future<void> delete(String accessToken, String id) async {
@@ -69,13 +78,19 @@ class CheckpointService {
     _check(response, expected: 200);
   }
 
-  String _body(String name, double latitude, double longitude, int radiusM) =>
-      jsonEncode({
-        'name': name,
-        'latitude': latitude,
-        'longitude': longitude,
-        'radius_m': radiusM,
-      });
+  String _body(
+    String name,
+    String emoji,
+    double latitude,
+    double longitude,
+    int radiusM,
+  ) => jsonEncode({
+    'name': name,
+    'emoji': emoji,
+    'latitude': latitude,
+    'longitude': longitude,
+    'radius_m': radiusM,
+  });
 
   void _check(http.Response response, {required int expected}) {
     if (response.statusCode == expected) return;
@@ -90,7 +105,9 @@ class CheckpointService {
       case 404:
         throw ApiException('This checkpoint no longer exists.');
       case 400:
-        throw ApiException(ApiClient.serverMessage(response) ?? 'Invalid checkpoint.');
+        throw ApiException(
+          ApiClient.serverMessage(response) ?? 'Invalid checkpoint.',
+        );
       default:
         throw ApiException(
           'Something went wrong (${response.statusCode}). Try again.',

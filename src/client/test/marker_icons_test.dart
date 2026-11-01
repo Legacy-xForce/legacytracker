@@ -176,6 +176,24 @@ void main() {
     expectPng(long);
   });
 
+  test('a checkpoint label shows its emoji next to the name', () async {
+    final factory = MarkerIconFactory();
+    addTearDown(factory.dispose);
+
+    final withEmoji = await factory.checkpointLabel(
+      'Home',
+      emoji: '🏠',
+      accent: markerAccentColor,
+    );
+    final plain = await factory.checkpointLabel(
+      'Home',
+      accent: markerAccentColor,
+    );
+
+    expect(withEmoji.id, isNot(plain.id));
+    expectPng(withEmoji);
+  });
+
   test('event and beam icons render', () async {
     final factory = MarkerIconFactory();
     addTearDown(factory.dispose);

@@ -34,7 +34,10 @@ void main() {
 
     test('overlaps go to the smallest radius, then the nearest center', () {
       expect(
-        resolveCheckpoint(45, 9, [cp('big', 45, 9, 250), cp('small', 45, 9, 50)])?.id,
+        resolveCheckpoint(45, 9, [
+          cp('big', 45, 9, 250),
+          cp('small', 45, 9, 50),
+        ])?.id,
         'small',
       );
       expect(
@@ -51,13 +54,25 @@ void main() {
     CheckpointService serviceFor(int status, [String body = '{}']) =>
         CheckpointService(
           baseUrl: 'https://example.test',
-          httpClient: MockClient((_) async => http.Response(body, status)),
+          httpClient: MockClient(
+            (_) async => http.Response(
+              body,
+              status,
+              headers: {'content-type': 'application/json; charset=utf-8'},
+            ),
+          ),
         );
 
     test('a duplicate name is reported as nameTaken', () async {
       final service = serviceFor(409);
       await expectLater(
-        service.create('t', name: 'Home', latitude: 1, longitude: 1, radiusM: 50),
+        service.create(
+          't',
+          name: 'Home',
+          latitude: 1,
+          longitude: 1,
+          radiusM: 50,
+        ),
         throwsA(isA<ApiException>().having((e) => e.status, 'status', 409)),
       );
     });
@@ -65,13 +80,49 @@ void main() {
     test('list parses checkpoints and can_edit', () async {
       final service = serviceFor(
         200,
-        '{"checkpoints":[{"id":"a","name":"Home","latitude":1.5,"longitude":2.5,'
+        '{"checkpoints":[{"id":"a","name":"Home","emoji":"🏠","latitude":1.5,"longitude":2.5,'
         '"radius_m":80,"created_by":"u1","can_edit":false}]}',
       );
       final list = await service.list('t');
       expect(list.single.name, 'Home');
+      expect(list.single.emoji, '🏠');
       expect(list.single.radiusM, 80);
       expect(list.single.canEdit, isFalse);
+    });
+
+    test('an old server response without an emoji reads as none', () async {
+      final service = serviceFor(
+        200,
+        '{"checkpoints":[{"id":"a","name":"Home","latitude":1.5,"longitude":2.5,'
+        '"radius_m":80,"created_by":"u1","can_edit":false}]}',
+      );
+      expect((await service.list('t')).single.emoji, isEmpty);
+    });
+
+    test('create sends the emoji', () async {
+      http.Request? sent;
+      final service = CheckpointService(
+        baseUrl: 'https://example.test',
+        httpClient: MockClient((request) async {
+          sent = request;
+          return http.Response(
+            '{"id":"a","name":"Home","emoji":"🏠","latitude":1,"longitude":1,'
+            '"radius_m":50,"created_by":"u1","can_edit":true}',
+            201,
+            headers: {'content-type': 'application/json; charset=utf-8'},
+          );
+        }),
+      );
+      final created = await service.create(
+        't',
+        name: 'Home',
+        emoji: '🏠',
+        latitude: 1,
+        longitude: 1,
+        radiusM: 50,
+      );
+      expect(created.emoji, '🏠');
+      expect(sent!.body, contains('"emoji":"🏠"'));
     });
   });
 
@@ -87,8 +138,10 @@ void main() {
 
       await provider.toggleShowOnMap();
       expect(provider.showOnMap, isFalse);
-      expect((await SharedPreferences.getInstance()).getBool('checkpoints_on_map'),
-          isFalse);
+      expect(
+        (await SharedPreferences.getInstance()).getBool('checkpoints_on_map'),
+        isFalse,
+      );
 
       final reopened = CheckpointsProvider(
         service: CheckpointService(baseUrl: 'https://example.test'),

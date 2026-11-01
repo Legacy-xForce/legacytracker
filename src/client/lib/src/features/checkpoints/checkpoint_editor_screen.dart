@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:mapbox_maps_flutter/mapbox_maps_flutter.dart';
@@ -45,6 +46,7 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
 
   late LatLng _center;
   late double _radius;
+  String _emoji = '';
   MapboxMap? _map;
   MapboxTokenService? _tokenService;
   final MapScene _scene = MapScene();
@@ -72,6 +74,7 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
         widget.initialCenter ??
         AppConstants.defaultMapCenter;
     _radius = (checkpoint?.radiusM ?? 100).toDouble();
+    _emoji = checkpoint?.emoji ?? '';
     _nameController.text = checkpoint?.name ?? '';
     _tokenService = MapboxTokenService(
       baseUrl: AppConstants.backendBaseUrl,
@@ -169,6 +172,17 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
     _syncScene();
   }
 
+  Future<void> _pickEmoji() async {
+    final picked = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      builder: (_) => _EmojiSheet(emoji: _emoji),
+    );
+    if (!mounted || picked == null || picked == _emoji) return;
+    setState(() => _emoji = picked);
+  }
+
   Future<void> _save() async {
     final name = _nameController.text.trim().replaceAll(RegExp(r'\s+'), ' ');
     if (name.isEmpty) {
@@ -190,6 +204,7 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
           latitude: _center.latitude,
           longitude: _center.longitude,
           radiusM: _radius.round(),
+          emoji: _emoji,
         );
       } else {
         await provider.update(
@@ -198,6 +213,7 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
           latitude: _center.latitude,
           longitude: _center.longitude,
           radiusM: _radius.round(),
+          emoji: _emoji,
         );
       }
       if (mounted) navigator.pop();
@@ -298,19 +314,34 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  TextField(
-                    controller: _nameController,
-                    enabled: !_readOnly,
-                    maxLength: maxCheckpointNameLength,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      labelText: 'Name',
-                      counterText: '',
-                      errorText: _nameError,
-                    ),
-                    onChanged: (_) {
-                      if (_nameError != null) setState(() => _nameError = null);
-                    },
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _EmojiButton(
+                        emoji: _emoji,
+                        enabled: !_readOnly,
+                        onPressed: _pickEmoji,
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: TextField(
+                          controller: _nameController,
+                          enabled: !_readOnly,
+                          maxLength: maxCheckpointNameLength,
+                          textCapitalization: TextCapitalization.sentences,
+                          decoration: InputDecoration(
+                            labelText: 'Name',
+                            counterText: '',
+                            errorText: _nameError,
+                          ),
+                          onChanged: (_) {
+                            if (_nameError != null) {
+                              setState(() => _nameError = null);
+                            }
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 4),
                   Text(
@@ -348,6 +379,118 @@ class _CheckpointEditorScreenState extends State<CheckpointEditorScreen> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _EmojiButton extends StatelessWidget {
+  const _EmojiButton({
+    required this.emoji,
+    required this.enabled,
+    required this.onPressed,
+  });
+
+  final String emoji;
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox.square(
+      dimension: 56,
+      child: Material(
+        color: scheme.surfaceContainerHigh,
+        borderRadius: AppShape.lg,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: enabled ? onPressed : null,
+          child: Center(
+            child: emoji.isEmpty
+                ? Icon(
+                    Icons.add_reaction_outlined,
+                    color: scheme.onSurfaceVariant,
+                  )
+                : Text(emoji, style: Theme.of(context).textTheme.headlineSmall),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The Material 3 themed emoji picker: the same sheet on every phone, with
+/// the app's surface, accent and search field instead of the package defaults.
+class _EmojiSheet extends StatelessWidget {
+  const _EmojiSheet({required this.emoji});
+
+  final String emoji;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    return SafeArea(
+      top: false,
+      child: SizedBox(
+        height: 400,
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 0, 12, 4),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text('Choose an emoji', style: text.titleMedium),
+                  ),
+                  if (emoji.isNotEmpty)
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(''),
+                      child: const Text('Remove'),
+                    ),
+                ],
+              ),
+            ),
+            Expanded(
+              child: EmojiPicker(
+                onEmojiSelected: (_, emoji) =>
+                    Navigator.of(context).pop(emoji.emoji),
+                config: Config(
+                  height: null,
+                  checkPlatformCompatibility: false,
+                  emojiViewConfig: EmojiViewConfig(
+                    columns: 8,
+                    emojiSizeMax: 24,
+                    backgroundColor: scheme.surface,
+                    buttonMode: ButtonMode.MATERIAL,
+                  ),
+                  categoryViewConfig: CategoryViewConfig(
+                    backgroundColor: scheme.surface,
+                    indicatorColor: scheme.primary,
+                    iconColor: scheme.onSurfaceVariant,
+                    iconColorSelected: scheme.primary,
+                    backspaceColor: scheme.primary,
+                    dividerColor: scheme.surface.withValues(alpha: 0),
+                  ),
+                  bottomActionBarConfig: BottomActionBarConfig(
+                    backgroundColor: scheme.surface,
+                    buttonColor: scheme.surfaceContainerHigh,
+                    buttonIconColor: scheme.onSurface,
+                    showBackspaceButton: false,
+                  ),
+                  searchViewConfig: SearchViewConfig(
+                    backgroundColor: scheme.surface,
+                    buttonIconColor: scheme.onSurfaceVariant,
+                    hintText: 'Search emoji',
+                    inputTextStyle: TextStyle(color: scheme.onSurface),
+                    hintTextStyle: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

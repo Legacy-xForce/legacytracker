@@ -123,11 +123,17 @@ class LocationStreetLabel extends StatelessWidget {
       return Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(
-            Icons.place_rounded,
-            size: (textStyle?.fontSize ?? 12) + 2,
-            color: textStyle?.color,
-          ),
+          if (checkpoint.emoji.isEmpty)
+            Icon(
+              Icons.place_rounded,
+              size: (textStyle?.fontSize ?? 12) + 2,
+              color: textStyle?.color,
+            )
+          else
+            Text(
+              checkpoint.emoji,
+              style: TextStyle(fontSize: (textStyle?.fontSize ?? 12) + 2),
+            ),
           const SizedBox(width: 3),
           Flexible(
             child: Text(
