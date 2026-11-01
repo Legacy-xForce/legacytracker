@@ -1,8 +1,15 @@
-import { mount } from '@vue/test-utils';
+import { mount, shallowMount } from '@vue/test-utils';
+import { createPinia, setActivePinia } from 'pinia';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { defineComponent, nextTick } from 'vue';
+import { createMemoryHistory, createRouter } from 'vue-router';
 import ScreensaverOverlay from '../components/ui/ScreensaverOverlay.vue';
 import { SCREENSAVER_TIMEOUT_MS, useScreensaver } from '../composables/useScreensaver';
+import { useCheckpointsStore } from '../stores/checkpoints';
+import { useEventsStore } from '../stores/events';
+import { usePeersStore } from '../stores/peers';
+import { useSharingStore } from '../stores/sharing';
+import MapView from '../views/MapView.vue';
 
 const TIMEOUT = 60_000;
 
@@ -124,5 +131,34 @@ describe('ScreensaverOverlay', () => {
 
         wrapper.unmount();
         expect(app.hasAttribute('inert')).toBe(false);
+    });
+});
+
+describe('MapView', () => {
+    it('does not show the screensaver on the first load', async () => {
+        setActivePinia(createPinia());
+        vi.spyOn(usePeersStore(), 'start').mockImplementation(() => {});
+        vi.spyOn(usePeersStore(), 'stop').mockImplementation(() => {});
+        vi.spyOn(usePeersStore(), 'setMapActive').mockImplementation(() => {});
+        vi.spyOn(useCheckpointsStore(), 'load').mockResolvedValue();
+        vi.spyOn(useEventsStore(), 'refresh').mockResolvedValue();
+        vi.spyOn(useSharingStore(), 'load').mockResolvedValue();
+
+        const router = createRouter({
+            history: createMemoryHistory(),
+            routes: [{ path: '/', name: 'map', component: { template: '<div />' } }]
+        });
+        await router.push('/');
+
+        const wrapper = shallowMount(MapView, { global: { plugins: [router] } });
+        // Reading a nested ref through a plain object in a template is always truthy; the prompt
+        // must stay absent until the timeout, not just once it is due.
+        expect(wrapper.find('screensaver-overlay-stub').exists()).toBe(false);
+
+        await vi.advanceTimersByTimeAsync(SCREENSAVER_TIMEOUT_MS);
+        await nextTick();
+        expect(wrapper.find('screensaver-overlay-stub').exists()).toBe(true);
+
+        wrapper.unmount();
     });
 });
