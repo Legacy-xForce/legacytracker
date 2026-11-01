@@ -82,7 +82,26 @@ function draw() {
 
 // The point is whatever sits under the crosshair, in the middle of the part of the map the panels
 // don't cover.
+// While the map is being dragged the point changes every frame; nobody reads it mid-gesture, so
+// it is reported at most every 100 ms and once more when the map settles.
+const MOVE_INTERVAL_MS = 100;
+let moveTimer: ReturnType<typeof setTimeout> | null = null;
+
 function onMove() {
+    if (moveTimer !== null) return;
+    moveTimer = setTimeout(() => {
+        moveTimer = null;
+        reportCentre();
+    }, MOVE_INTERVAL_MS);
+}
+
+function onMoveEnd() {
+    if (moveTimer !== null) clearTimeout(moveTimer);
+    moveTimer = null;
+    reportCentre();
+}
+
+function reportCentre() {
     const target = map.value;
     if (!target) return;
     const centre = visibleCenter(target, insets.value);
@@ -104,10 +123,12 @@ watch(
     (target, previous) => {
         previous?.off('style.load', draw);
         previous?.off('move', onMove);
+        previous?.off('moveend', onMoveEnd);
         target?.on('style.load', draw);
         target?.on('move', onMove);
+        target?.on('moveend', onMoveEnd);
         draw();
-        onMove();
+        reportCentre();
     },
     { immediate: true }
 );
@@ -115,6 +136,8 @@ watch(() => [props.draft?.latitude, props.draft?.longitude, props.draft?.radius,
 onBeforeUnmount(() => {
     map.value?.off('style.load', draw);
     map.value?.off('move', onMove);
+    map.value?.off('moveend', onMoveEnd);
+    if (moveTimer !== null) clearTimeout(moveTimer);
     clear();
 });
 

@@ -3,7 +3,7 @@ import { computed } from 'vue';
 import PlaceLabel from '../PlaceLabel.vue';
 import Icon from '../ui/Icon.vue';
 import type { HistorySession } from '../../api/history';
-import { formatClock, formatDistance, formatTripDuration } from '../../lib/format';
+import { formatClock, formatDistance, formatSpeed, formatTripDuration } from '../../lib/format';
 
 const props = defineProps<{ session: HistorySession; playing: boolean; deletable?: boolean }>();
 const emit = defineEmits<{ play: []; delete: [] }>();
@@ -13,7 +13,7 @@ const end = computed(() => props.session.points[props.session.points.length - 1]
 const chips = computed(() => [
     { icon: 'timelapse' as const, label: formatTripDuration(props.session.durationSeconds) },
     { icon: 'straighten' as const, label: formatDistance(props.session.distanceMeters) },
-    { icon: 'speed' as const, label: `${Math.round(props.session.topSpeed * 3.6)} km/h top` }
+    { icon: 'speed' as const, label: `${formatSpeed(props.session.topSpeed)} top` }
 ]);
 </script>
 

@@ -1,3 +1,4 @@
+import { msToKmh } from './format';
 /** One recorded fix of a travel session. */
 export interface ReplayPoint {
     latitude: number;
@@ -46,7 +47,7 @@ interface ReplaySegment {
  * a route made of tiny speed changes still draws as a handful of polylines.
  */
 export function speedColor(speedMps: number): string {
-    const kmh = Number.isFinite(speedMps) ? Math.max(0, speedMps) * 3.6 : 0;
+    const kmh = Number.isFinite(speedMps) ? msToKmh(Math.max(0, speedMps)) : 0;
     const step = Math.round(Math.min(1, kmh / SPEED_COLOR_MAX_KMH) * SPEED_COLOR_STEPS) / SPEED_COLOR_STEPS;
     let index = 0;
     while (index < SPEED_COLOR_STOPS.length - 2 && step > SPEED_COLOR_STOPS[index + 1][0]) index++;

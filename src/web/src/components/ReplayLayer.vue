@@ -9,7 +9,7 @@ import type { HistorySession } from '../api/history';
 import { framePadding, holdAt, visibleCenter, type Insets } from '../lib/camera';
 import { PEER_MARKER_SIZE } from '../lib/clusters';
 import { boundsOf, type LatLng } from '../lib/geo';
-import { formatClock, formatLongDay } from '../lib/format';
+import { formatClock, formatLongDay, formatSpeed, msToKmh } from '../lib/format';
 import { isStyleNotLoaded } from '../lib/mapbox';
 import { useInsets, useMap } from '../lib/mapContext';
 import { MOVING_SPEED } from '../lib/peers';
@@ -57,7 +57,7 @@ function riderProps() {
         stale: false,
         moving: point.speed >= MOVING_SPEED,
         heading: point.heading,
-        speedKmh: point.speed * 3.6,
+        speedKmh: msToKmh(point.speed),
         battery: null,
         charging: false,
         // The replay marker sits over the route, so it can afford to be smaller than a live peer.
@@ -301,7 +301,7 @@ onBeforeUnmount(() => {
             </div>
             <div class="type-title-md mt-3 flex items-center justify-between font-bold tabular-nums">
                 <span data-testid="replay-time">{{ formatClock(current.recordedAt) }}</span>
-                <span>{{ Math.round(current.speed * 3.6) }} km/h</span>
+                <span>{{ formatSpeed(current.speed) }}</span>
             </div>
             <input
                 type="range"
