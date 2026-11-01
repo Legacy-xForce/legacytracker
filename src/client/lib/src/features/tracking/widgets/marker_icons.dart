@@ -5,9 +5,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../avatar_pictures.dart';
 import 'user_avatar.dart';
 import '../../../core/tokens.dart';
 import '../../../core/palette.dart';
+import '../../../core/theme.dart';
 
 /// Accent used by the map markers, matching the app's teal/blue accents.
 const markerAccentColor = AppPalette.beam;
@@ -96,13 +98,10 @@ class MarkerColors {
     peerPillText: scheme.onSurface,
   );
 
-  /// The fixed teal look, for harnesses without an app theme.
-  static const teal = MarkerColors(
-    accent: markerAccentColor,
-    selfPill: AppPalette.selfPill,
-    selfPillText: AppPalette.white,
-    peerPill: AppPalette.peerPill,
-    peerPillText: AppPalette.white,
+  /// The default theme's look, for harnesses without an app theme. Read off
+  /// that theme's own scheme, so it cannot drift from the app.
+  static final teal = MarkerColors.from(
+    schemeFor(defaultAppThemeId, appThemeFor(defaultAppThemeId).brightness),
   );
 
   /// The accent: heading beam and the cluster tail dot.
@@ -154,6 +153,59 @@ class ClusterStyle {
       '${chipText.toARGB32()}-${accent.toARGB32()}';
 }
 
+/// A person's picture, decoded for the map: one frame, or every frame of an
+/// animated GIF/WebP. The map draws markers as bitmaps, so an animation is a
+/// new bitmap per frame; which frame is showing is a function of the clock,
+/// so any number of markers (and rebuilds) agree on it without shared state.
+class AvatarArt {
+  AvatarArt(this.frames, List<Duration> delays, this.startedAt)
+    : durations = [for (final delay in delays) _frameDuration(delay)],
+      assert(frames.isNotEmpty && frames.length == delays.length);
+
+  final List<ui.Image> frames;
+  final List<Duration> durations;
+
+  /// When the animation began, so a picture starts on its first frame.
+  final DateTime startedAt;
+
+  /// Browsers play a GIF frame that asks for 10 ms or less at 100 ms; so do we.
+  static Duration _frameDuration(Duration delay) =>
+      delay.inMilliseconds <= 10 ? const Duration(milliseconds: 100) : delay;
+
+  bool get animated => frames.length > 1;
+
+  /// The frame showing [now]. A still picture is always frame 0.
+  int frameAt(DateTime now) {
+    if (!animated) return 0;
+    final total = durations.fold<int>(0, (sum, d) => sum + d.inMilliseconds);
+    var elapsed = now.difference(startedAt).inMilliseconds % total;
+    for (var i = 0; i < durations.length; i++) {
+      elapsed -= durations[i].inMilliseconds;
+      if (elapsed < 0) return i;
+    }
+    return durations.length - 1;
+  }
+
+  /// How long until the frame showing [now] gives way to the next one.
+  Duration untilNextFrame(DateTime now) {
+    final total = durations.fold<int>(0, (sum, d) => sum + d.inMilliseconds);
+    var elapsed = now.difference(startedAt).inMilliseconds % total;
+    for (final duration in durations) {
+      if (elapsed < duration.inMilliseconds) {
+        return Duration(milliseconds: duration.inMilliseconds - elapsed);
+      }
+      elapsed -= duration.inMilliseconds;
+    }
+    return durations.last;
+  }
+
+  void dispose() {
+    for (final frame in frames) {
+      frame.dispose();
+    }
+  }
+}
+
 /// Builds the bitmap icons rendered through Mapbox point annotations.
 ///
 /// Icons are cached by a deterministic id; callers add each id to the style
@@ -162,11 +214,23 @@ class ClusterStyle {
 /// shows the person's initial, and [notifyListeners] fires so the caller can
 /// rebuild with the photo.
 class MarkerIconFactory extends ChangeNotifier {
+  MarkerIconFactory({AvatarPictures? pictures, DateTime Function()? clock})
+    : _pictures = pictures ?? AvatarPictures.instance,
+      _clock = clock ?? DateTime.now;
+
   static const double pixelRatio = 2.0;
   static const int _maxCachedIcons = 256;
 
+  /// A photo is a few dozen logical pixels on the map, so decoding it larger
+  /// only costs memory - which matters now that an animation keeps every frame.
+  static const int _avatarDecodeSize = 128;
+  static const int _maxAvatarFrames = 60;
+
+  final AvatarPictures _pictures;
+  final DateTime Function() _clock;
+
   final Map<String, MarkerImage> _icons = {};
-  final Map<String, ui.Image> _avatars = {};
+  final Map<String, AvatarArt> _avatars = {};
   final Set<String> _avatarPending = {};
   final Set<String> _avatarFailed = {};
   bool _disposed = false;
@@ -207,8 +271,13 @@ class MarkerIconFactory extends ChangeNotifier {
   /// fixed offline greys because that is a state, not a palette.
   Future<MarkerImage> personMarker(
     MarkerPerson person, {
-    MarkerColors colors = MarkerColors.teal,
-  }) async {
+    MarkerColors? colors,
+  }) => _personMarker(person, colors ?? MarkerColors.teal);
+
+  Future<MarkerImage> _personMarker(
+    MarkerPerson person,
+    MarkerColors colors,
+  ) async {
     // Badge text and cache id share one 5 km/h bucket: that bounds how often a
     // 304x336 bitmap is re-rendered (roughly twice a second at motorway speed)
     // while still matching the web's rounded readout closely.
@@ -558,19 +627,19 @@ class MarkerIconFactory extends ChangeNotifier {
     final key = _avatarKey(person);
     if (key == null) return null;
     final loaded = _avatars[key];
-    if (loaded != null) return loaded;
+    if (loaded != null) return loaded.frames[loaded.frameAt(_clock())];
     if (_avatarFailed.contains(key)) return null;
     if (_avatarPending.add(key)) {
       // Not awaited: the marker shows the initial immediately and the id
       // changes to the photo variant when this completes.
       unawaited(
-        _loadAvatar(person).then((image) {
+        _loadAvatar(person).then((art) {
           _avatarPending.remove(key);
-          if (image != null) {
+          if (art != null) {
             if (_disposed) {
-              image.dispose();
+              art.dispose();
             } else {
-              _avatars[key] = image;
+              _avatars[key] = art;
             }
           } else {
             _avatarFailed.add(key);
@@ -582,6 +651,33 @@ class MarkerIconFactory extends ChangeNotifier {
     return null;
   }
 
+  /// Whether any loaded picture moves, so the caller knows to keep asking for
+  /// fresh bitmaps (see [avatarFrame]).
+  bool get hasAnimatedAvatars => _avatars.values.any((art) => art.animated);
+
+  /// When the next animated picture changes frame, or null if none moves. The
+  /// caller sleeps until then instead of polling, so a GIF that holds a frame
+  /// for a second costs one render per second.
+  Duration? get untilNextAvatarFrame {
+    final now = _clock();
+    Duration? soonest;
+    for (final art in _avatars.values) {
+      if (!art.animated) continue;
+      final wait = art.untilNextFrame(now);
+      if (soonest == null || wait < soonest) soonest = wait;
+    }
+    return soonest;
+  }
+
+  /// Which frame of [person]'s picture is showing right now: -1 for a still
+  /// or missing one. Callers put it in their cache keys, so a new frame is a
+  /// new bitmap and a still picture never re-renders.
+  int avatarFrame(MarkerPerson person) {
+    final key = _avatarKey(person);
+    final art = key == null ? null : _avatars[key];
+    return art == null || !art.animated ? -1 : art.frameAt(_clock());
+  }
+
   String? _avatarKey(MarkerPerson person) {
     final bytes = person.avatarBytes;
     if (bytes != null && bytes.isNotEmpty) {
@@ -591,54 +687,55 @@ class MarkerIconFactory extends ChangeNotifier {
     return urls.isEmpty ? null : urls.join('|');
   }
 
-  Future<ui.Image?> _loadAvatar(MarkerPerson person) async {
+  Future<AvatarArt?> _loadAvatar(MarkerPerson person) async {
     final bytes = person.avatarBytes;
-    if (bytes != null && bytes.isNotEmpty) {
-      return _decode(ResizeImage.resizeIfNeeded(128, 128, MemoryImage(bytes)));
-    }
-    // A legacy avatar_url can answer with HTML instead of an image, so every
-    // candidate gets its own attempt before falling back to the initial.
-    for (final url in avatarCandidateUrls(
-      person.id,
-      avatarUrl: person.avatarUrl,
-    )) {
-      final image = await _decode(
-        ResizeImage.resizeIfNeeded(128, 128, NetworkImage(url)),
-      );
-      if (image != null) return image;
-    }
-    return null;
+    if (bytes != null && bytes.isNotEmpty) return _decode(bytes);
+    // The same session cache the people list reads, so a picture is fetched
+    // once; it walks the legacy candidates and skips ones that aren't images.
+    final urls = avatarCandidateUrls(person.id, avatarUrl: person.avatarUrl);
+    if (urls.isEmpty) return null;
+    final picture = await _pictures.load(urls.join('|'), urls);
+    final fetched = picture.bytes;
+    return fetched == null ? null : _decode(fetched);
   }
 
-  Future<ui.Image?> _decode(ImageProvider provider) async {
-    final completer = Completer<ui.Image?>();
-    final stream = provider.resolve(ImageConfiguration.empty);
-    late final ImageStreamListener listener;
-    listener = ImageStreamListener(
-      (info, _) {
-        if (!completer.isCompleted) completer.complete(info.image);
-        stream.removeListener(listener);
-      },
-      onError: (_, _) {
-        if (!completer.isCompleted) completer.complete(null);
-        stream.removeListener(listener);
-      },
-    );
-    stream.addListener(listener);
-    return completer.future.timeout(
-      const Duration(seconds: 4),
-      onTimeout: () {
-        stream.removeListener(listener);
-        return null;
-      },
-    );
+  /// Every frame of a GIF/WebP (a still picture has one), small enough to keep.
+  Future<AvatarArt?> _decode(Uint8List bytes) async {
+    ui.Codec? codec;
+    final frames = <ui.Image>[];
+    final delays = <Duration>[];
+    try {
+      codec = await ui.instantiateImageCodec(
+        bytes,
+        targetWidth: _avatarDecodeSize,
+        allowUpscaling: false,
+      );
+      final count = math.min(codec.frameCount, _maxAvatarFrames);
+      for (var i = 0; i < count; i++) {
+        final frame = await codec.getNextFrame();
+        frames.add(frame.image);
+        delays.add(frame.duration);
+      }
+      return AvatarArt(frames, delays, _clock());
+    } catch (_) {
+      for (final frame in frames) {
+        frame.dispose();
+      }
+      return null;
+    } finally {
+      codec?.dispose();
+    }
   }
 
   /// Identity of a cluster bitmap. Selection is not part of it: the caller
   /// scales the annotation instead of baking another bitmap. The theme style
   /// is, so a theme switch cannot leave the old colours cached under the same
   /// people.
-  String _liveId(List<MarkerPerson> members, bool allStale, ClusterStyle style) {
+  String _liveId(
+    List<MarkerPerson> members,
+    bool allStale,
+    ClusterStyle style,
+  ) {
     final buffer = StringBuffer('cluster:${style.id}:$allStale');
     for (final member in members) {
       buffer
@@ -651,10 +748,11 @@ class MarkerIconFactory extends ChangeNotifier {
 
   String _personToken(MarkerPerson person) {
     final avatar = _avatarKey(person);
+    final art = avatar == null ? null : _avatars[avatar];
     final avatarState = avatar == null
         ? 'none'
-        : _avatars.containsKey(avatar)
-        ? 'ready'
+        : art != null
+        ? (art.animated ? 'ready${art.frameAt(_clock())}' : 'ready')
         : _avatarFailed.contains(avatar)
         ? 'failed'
         : 'initial';
@@ -705,8 +803,8 @@ class MarkerIconFactory extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
-    for (final image in _avatars.values) {
-      image.dispose();
+    for (final art in _avatars.values) {
+      art.dispose();
     }
     _avatars.clear();
     _icons.clear();
@@ -781,19 +879,16 @@ class MarkerIconFactory extends ChangeNotifier {
     required double size,
   }) {
     final radius = size / 2;
-    final initialBackground =
-        person.isStale ? AppPalette.staleDark : userColor(person.id);
+    final initialBackground = person.isStale
+        ? AppPalette.staleDark
+        : userColor(person.id);
     final circle = Rect.fromCircle(center: center, radius: radius);
     canvas.save();
     canvas.clipPath(Path()..addOval(circle));
     if (image != null) {
       _drawImageCover(canvas, image, circle, stale: person.isStale);
     } else {
-      canvas.drawCircle(
-        center,
-        radius,
-        Paint()..color = initialBackground,
-      );
+      canvas.drawCircle(center, radius, Paint()..color = initialBackground);
       _drawText(
         canvas,
         userInitial(person.name),
