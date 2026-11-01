@@ -17,7 +17,9 @@ import UIKit
 // only the fixes the replay needs; after a few minutes without displacement
 // GPS stops and the region is re-armed at the new parking spot.
 //
-// Everything runs on the main thread, where CLLocationManager delivers.
+// Engine state lives on the main thread, where CLLocationManager delivers. The upload batch (read,
+// JSON encoding, delete after the server took it) runs on the uploader's serial queue; the SQLite
+// connection is opened in serialized mode, so both threads may use it.
 
 // MARK: - Fix and geometry
 
@@ -113,6 +115,11 @@ enum Tuning {
     static let maxStopAccuracy: Double = 100
     static let maxPlausibleSpeed: Double = 90
     static let stopTimeout: TimeInterval = 5 * 60
+    /// Stopped for sure (see `stillSpeed`): end the trip sooner. Android uses activity recognition's
+    /// STILL for the same 2 min; iOS has no activity signal wired up, so GPS speed stands in.
+    static let stopTimeoutStill: TimeInterval = 2 * 60
+    /// Every fix with a valid speed below this, for `stopTimeoutStill`, counts as stopped.
+    static let stillSpeed: Double = 0.5
     static let noFixTimeout: TimeInterval = 5 * 60
     static let tickInterval: TimeInterval = 20
     static let resumeWindow: TimeInterval = 10 * 60
@@ -132,6 +139,9 @@ enum Tuning {
     static let pingTimeout: TimeInterval = 15
     static let pingMaxAccuracy: Double = 100
 
+    /// Parked with the app on screen and the app-open fix taken: a coarse request until something
+    /// needs a fresh fix again (a ping, live mode). Trips still start from the geofence.
+    static let foregroundIdleDistance: Double = 25
     static let foregroundMoveThreshold: Double = 60
     static let foregroundMoveAccuracy: Double = 30
     static let lowBatteryPercent = 15
@@ -358,6 +368,7 @@ final class TrackingStore {
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
     private var db: OpaquePointer?
+    private let openLock = NSLock()
     private var insertsSincePrune = 0
     private var logsSinceTrim = 0
 
@@ -365,6 +376,9 @@ final class TrackingStore {
     /// protection keeps the file unreadable — a location relaunch then just
     /// skips storage until the next opportunity.
     private func handle() -> OpaquePointer? {
+        // Main and the upload queue both get here; only one may open the file.
+        openLock.lock()
+        defer { openLock.unlock() }
         if let db = db { return db }
         guard let dir = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first else {
             return nil
@@ -682,6 +696,8 @@ final class Uploader {
     private let state: EngineState
     private let store: TrackingStore
     private let session: URLSession
+    /// Batch reads, JSON encoding and acknowledged deletes: off the main thread, one at a time.
+    private let work = DispatchQueue(label: "com.legacy.legacytracker.upload", qos: .utility)
     private(set) var busy = false
     var online = true
     /// Phone settings blocking location updates right now; sent with each
@@ -724,48 +740,67 @@ final class Uploader {
         }
     }
 
+    /// Runs on the main thread; the batch work hops to `work` and every result comes back to main.
     private func sendBatch(url: URL, auth: String, live: Fix?, sent: Int, liveTtl: Int?,
                            completion: @escaping (Outcome) -> Void) {
-        let batch = store.pending(limit: Tuning.uploadBatchSize)
-        if batch.isEmpty && live == nil {
-            completion(sent == 0 ? .nothingToSend : .sent(count: sent, liveTtl: liveTtl))
-            return
+        // Read on main: the location manager and the battery cache belong to it.
+        let issues = trackingIssues()
+        let liveBattery: (Int?, Bool?) = live != nil ? Battery.read() : (nil, nil)
+        let store = self.store
+        work.async { [weak self] in
+            let batch = store.pending(limit: Tuning.uploadBatchSize)
+            var body: [[String: Any]] = batch.map { Uploader.json($0.fix, $0.source, $0.battery, $0.charging) }
+            if let live = live {
+                body.append(Uploader.json(live, Uploader.sourceLive, liveBattery.0, liveBattery.1))
+            }
+            // The server keeps the latest report, so the newest point carries it.
+            if !body.isEmpty { body[body.count - 1]["tracking_issues"] = issues }
+            let payload = body.isEmpty ? nil : try? JSONSerialization.data(withJSONObject: body)
+            DispatchQueue.main.async {
+                guard let self = self else { return }
+                if body.isEmpty {
+                    completion(sent == 0 ? .nothingToSend : .sent(count: sent, liveTtl: liveTtl))
+                    return
+                }
+                self.post(url: url, auth: auth, payload: payload, batch: batch, sent: sent, liveTtl: liveTtl,
+                          completion: completion)
+            }
         }
-        var body: [[String: Any]] = batch.map { Uploader.json($0.fix, $0.source, $0.battery, $0.charging) }
-        if let live = live {
-            let (level, charging) = Battery.read()
-            body.append(Uploader.json(live, Uploader.sourceLive, level, charging))
-        }
-        // The server keeps the latest report, so the newest point carries it.
-        if !body.isEmpty { body[body.count - 1]["tracking_issues"] = trackingIssues() }
+    }
+
+    private func post(url: URL, auth: String, payload: Data?, batch: [TrackingStore.StoredPoint], sent: Int, liveTtl: Int?,
+                      completion: @escaping (Outcome) -> Void) {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(auth, forHTTPHeaderField: "Authorization")
-        request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+        request.httpBody = payload
 
         session.dataTask(with: request) { [weak self] data, response, error in
-            DispatchQueue.main.async {
-                guard let self = self else { return }
-                if let error = error {
-                    completion(.failed(error.localizedDescription))
-                    return
+            guard let self = self else { return }
+            if let error = error {
+                DispatchQueue.main.async { completion(.failed(error.localizedDescription)) }
+                return
+            }
+            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard (200..<300).contains(code) else {
+                DispatchQueue.main.async {
+                    completion(code == 401 || code == 403 ? .authRejected : .failed("HTTP \(code)"))
                 }
-                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                switch code {
-                case 200..<300:
-                    if let lastId = batch.last?.id { self.store.deleteUpTo(lastId) }
-                    let ttl = Uploader.parseLiveTtl(data) ?? liveTtl
+                return
+            }
+            let ttl = Uploader.parseLiveTtl(data) ?? liveTtl
+            let store = self.store
+            self.work.async { [weak self] in
+                if let lastId = batch.last?.id { store.deleteUpTo(lastId) }
+                DispatchQueue.main.async {
+                    guard let self = self else { return }
                     let total = sent + batch.count
                     if batch.count < Tuning.uploadBatchSize {
                         completion(.sent(count: total, liveTtl: ttl))
                     } else {
                         self.sendBatch(url: url, auth: auth, live: nil, sent: total, liveTtl: ttl, completion: completion)
                     }
-                case 401, 403:
-                    completion(.authRejected)
-                default:
-                    completion(.failed("HTTP \(code)"))
                 }
             }
         }.resume()
@@ -839,6 +874,23 @@ private final class Session {
     var lastLiveSent: Fix?
     var lastLiveAt: Date?
     var liveSoon = false
+    /// Time (ms) of the first fix of the current run of near-zero GPS speeds.
+    private var stillSince: Int64?
+
+    /// The stop timeout for this fix: shorter once GPS has reported standing still long enough.
+    func stopTimeout(after fix: Fix) -> TimeInterval {
+        if fix.hasSpeed {
+            if fix.speed >= Tuning.stillSpeed {
+                stillSince = nil
+            } else if stillSince == nil {
+                stillSince = fix.time
+            }
+        }
+        guard let since = stillSince, Double(fix.time - since) >= Tuning.stopTimeoutStill * 1000 else {
+            return Tuning.stopTimeout
+        }
+        return Tuning.stopTimeoutStill
+    }
 
     // Jitter filter: how far the trip got from its start, and its first stored row, so a trip that
     // went nowhere can be dropped before upload. Resumed trips are never discarded (their start is
@@ -929,6 +981,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         guard !bootstrapped else { return }
         bootstrapped = true
         manager.delegate = self
+        UIDevice.current.isBatteryMonitoringEnabled = true
         uploader.trackingIssues = { [weak self] in self?.trackingIssues() ?? [] }
         manager.pausesLocationUpdatesAutomatically = false
         manager.activityType = .other
@@ -1194,6 +1247,13 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
     }
 
     private func applyGpsProfile() {
+        if session == nil {
+            // Parked with the app on screen: full accuracy only while a fresh fix is wanted.
+            let idle = foregroundPing == nil && !isLive
+            manager.desiredAccuracy = idle ? kCLLocationAccuracyHundredMeters : kCLLocationAccuracyBest
+            manager.distanceFilter = idle ? Tuning.foregroundIdleDistance : kCLDistanceFilterNone
+            return
+        }
         let saver = session?.kind == .trip && !appVisible && !isLive && lowPower
         manager.desiredAccuracy = saver ? kCLLocationAccuracyNearestTenMeters : kCLLocationAccuracyBest
         manager.distanceFilter = kCLDistanceFilterNone
@@ -1224,9 +1284,10 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         trip.lastFix = fix
         if isJump(trip, fix) { return }
 
+        let timeout = trip.stopTimeout(after: fix)
         if fix.accuracy <= Tuning.maxStopAccuracy,
-           let stop = trip.stopDetector.offer(fix, timeout: Tuning.stopTimeout) {
-            endTrip(trip, stop: stop, why: "no movement for \(Int(Tuning.stopTimeout / 60)) min")
+           let stop = trip.stopDetector.offer(fix, timeout: timeout) {
+            endTrip(trip, stop: stop, why: "no movement for \(Int(timeout / 60)) min")
             return
         }
         let maxAccuracy = trip.sampler.tuning == SamplerTuning.saver ? Tuning.maxRecordAccuracySaver : Tuning.maxRecordAccuracy
@@ -1341,6 +1402,8 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
                 foregroundPing = nil
                 onPingFix(best, reason: ping.reason)
                 if state.mode != .stationary { return }
+                // Got what the full-accuracy request was for.
+                if gpsRunning { applyGpsProfile() }
             }
         }
         guard let anchor = state.anchor, fix.accuracy <= Tuning.foregroundMoveAccuracy else { return }
@@ -1645,37 +1708,33 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
     /// Codes from the server's closed set (`services/tracking-issues.ts`).
     /// iOS reports a phone-wide "Location Services" switch as `.denied`, so
     /// that case and a refused permission both read as a missing permission.
-    func trackingIssues() -> [String] {
-        let authorization: CLAuthorizationStatus
+    private func locationAccess() -> (authorization: CLAuthorizationStatus, precise: Bool) {
         if #available(iOS 14.0, *) {
-            authorization = manager.authorizationStatus
-        } else {
-            authorization = CLLocationManager.authorizationStatus()
+            return (manager.authorizationStatus, manager.accuracyAuthorization == .fullAccuracy)
         }
-        switch authorization {
+        return (CLLocationManager.authorizationStatus(), true)
+    }
+
+    func trackingIssues() -> [String] {
+        trackingIssues(locationAccess())
+    }
+
+    private func trackingIssues(_ access: (authorization: CLAuthorizationStatus, precise: Bool)) -> [String] {
+        switch access.authorization {
         case .denied, .restricted, .notDetermined:
             return ["location_permission"]
         default:
             break
         }
         var issues: [String] = []
-        if authorization != .authorizedAlways { issues.append("background_location") }
-        if #available(iOS 14.0, *), manager.accuracyAuthorization != .fullAccuracy {
-            issues.append("precise_location")
-        }
+        if access.authorization != .authorizedAlways { issues.append("background_location") }
+        if !access.precise { issues.append("precise_location") }
         return issues
     }
 
     func status() -> [String: Any] {
         let anchor = state.anchor
-        let authorization: CLAuthorizationStatus
-        if #available(iOS 14.0, *) {
-            authorization = manager.authorizationStatus
-        } else {
-            authorization = CLLocationManager.authorizationStatus()
-        }
-        var precise = true
-        if #available(iOS 14.0, *) { precise = manager.accuracyAuthorization == .fullAccuracy }
+        let access = locationAccess()
         let lastFix = max(Double(lastFixTime), state.lastFixAt)
         var map: [String: Any] = [
             "mode": state.mode.rawValue,
@@ -1684,13 +1743,13 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             "live": isLive,
             "lowPower": lowPower,
             "pending": store.pendingCount(),
-            "preciseLocation": precise,
-            "backgroundLocation": authorization == .authorizedAlways,
+            "preciseLocation": access.precise,
+            "backgroundLocation": access.authorization == .authorizedAlways,
             // Android-only concepts; nothing for the user to fix on iOS.
             "activityRecognition": true,
             "batteryOptimizationIgnored": true,
             "notificationsEnabled": false,
-            "issues": trackingIssues(),
+            "issues": trackingIssues(access),
         ]
         if state.lastUploadOkAt > 0 { map["lastUploadAt"] = NSNumber(value: Int64(state.lastUploadOkAt * 1000)) }
         if let error = state.lastUploadError { map["lastUploadError"] = error }

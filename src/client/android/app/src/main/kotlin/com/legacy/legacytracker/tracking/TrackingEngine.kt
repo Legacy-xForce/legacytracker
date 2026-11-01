@@ -86,6 +86,7 @@ class TrackingEngine private constructor(context: Context) {
     private var trip: TripSession? = null
     private var tripService: TripService? = null
     private var foregroundCallback: LocationCallback? = null
+    private var foregroundFast = false
     private var foregroundPing: ForegroundPing? = null
     private var lastFixTime = 0L
 
@@ -217,9 +218,9 @@ class TrackingEngine private constructor(context: Context) {
             if (state.mode == TrackingMode.MOVING) {
                 trip?.refreshProfile()
             } else {
-                startForegroundSession()
                 // Opening the app refreshes our own position for everyone else.
                 foregroundPing = ForegroundPing("app opened")
+                startForegroundSession()
             }
             maybeFlush(force = true)
         } else {
@@ -485,8 +486,8 @@ class TrackingEngine private constructor(context: Context) {
             current != null && current.kind == SessionKind.TRIP -> current.sendLiveSoon()
             current != null -> Unit // a ping is already in flight
             appVisible -> {
-                startForegroundSession()
                 foregroundPing = ForegroundPing(reason)
+                startForegroundSession()
             }
             else -> {
                 val session = TripSession(SessionKind.PING, reason)
@@ -566,21 +567,37 @@ class TrackingEngine private constructor(context: Context) {
 
     // ── App visible while parked ────────────────────────────────────────────
 
+    /**
+     * GPS while the app is on screen and parked: full rate while a fresh fix is wanted (a ping,
+     * live mode), balanced power otherwise. Calling it again switches between the two.
+     */
     @SuppressLint("MissingPermission")
     private fun startForegroundSession() {
-        if (foregroundCallback != null || state.mode == TrackingMode.OFF) return
+        if (state.mode == TrackingMode.OFF) return
         if (trip?.kind == SessionKind.TRIP || !hasLocationPermission()) return
+        val fast = foregroundPing != null || isLive()
+        if (foregroundCallback != null) {
+            if (foregroundFast == fast) return
+            stopForegroundSession()
+        }
         val callback = object : LocationCallback() {
             override fun onLocationResult(result: LocationResult) {
                 for (location in result.locations) onForegroundFix(Fix.from(location))
             }
         }
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
-            .setMinUpdateIntervalMillis(1_000L)
-            .build()
+        val request = if (fast) {
+            LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, 1_000L)
+                .setMinUpdateIntervalMillis(1_000L)
+                .build()
+        } else {
+            LocationRequest.Builder(Priority.PRIORITY_BALANCED_POWER_ACCURACY, Tuning.FOREGROUND_IDLE_INTERVAL_MS)
+                .setMinUpdateDistanceMeters(Tuning.FOREGROUND_IDLE_DISTANCE_M)
+                .build()
+        }
         try {
             fused.requestLocationUpdates(request, callback, looper)
             foregroundCallback = callback
+            foregroundFast = fast
         } catch (e: SecurityException) {
             log("position", "Foreground updates refused: ${e.message}")
         }
@@ -603,6 +620,8 @@ class TrackingEngine private constructor(context: Context) {
                 foregroundPing = null
                 onPingFix(ping.best!!, ping.reason)
                 if (state.mode != TrackingMode.STATIONARY) return
+                // Got what the full-rate request was for.
+                startForegroundSession()
             }
         }
 
@@ -858,6 +877,7 @@ class TrackingEngine private constructor(context: Context) {
         if (wasLive != live) {
             log("live", if (live) "Live mode on — someone is watching" else "Live mode off")
             trip?.refreshProfile()
+            if (appVisible && trip == null) startForegroundSession()
             emitState()
         }
     }

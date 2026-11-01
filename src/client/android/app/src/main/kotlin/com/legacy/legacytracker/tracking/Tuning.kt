@@ -81,6 +81,13 @@ object Tuning {
     /** With fresh GPS on screen, this much displacement from the anchor is a trip. */
     const val FOREGROUND_MOVE_THRESHOLD_M = 60.0
     const val FOREGROUND_MOVE_ACCURACY_M = 30f
+    /**
+     * Once the app-open fix is in, a parked phone on screen drops to this balanced-power request
+     * until something needs a fresh fix again (a ping, live mode). Trips still start from the
+     * geofence and activity transitions.
+     */
+    const val FOREGROUND_IDLE_INTERVAL_MS = 10_000L
+    const val FOREGROUND_IDLE_DISTANCE_M = 25f
 
     const val LOW_BATTERY_PERCENT = 15
 
