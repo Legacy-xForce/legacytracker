@@ -204,7 +204,7 @@ function onTabKey(event: KeyboardEvent) {
                                     <template v-else>No trips</template>
                                 </p>
                             </div>
-                            <p class="type-title-lg shrink-0 font-bold tabular-nums" data-distance>
+                            <p class="type-title-lg shrink-0 font-bold tabular-nums">
                                 {{ formatDistance(entry.distanceMeters) }}
                             </p>
                         </div>

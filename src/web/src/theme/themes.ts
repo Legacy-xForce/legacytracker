@@ -3,9 +3,9 @@ import { storage } from '../lib/storage';
 export type ThemeId =
     'teal' | 'oled' | 'catppuccin-mocha' | 'catppuccin-macchiato' | 'catppuccin-frappe' | 'catppuccin-latte';
 
-export type ThemeMode = 'dark' | 'light';
+type ThemeMode = 'dark' | 'light';
 
-export interface AppTheme {
+interface AppTheme {
     id: ThemeId;
     /** Full name used in accessibility labels. */
     label: string;

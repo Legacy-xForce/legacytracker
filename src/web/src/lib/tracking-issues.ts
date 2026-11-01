@@ -14,12 +14,12 @@ export const TRACKING_ISSUES = [
 export type TrackingIssue = (typeof TRACKING_ISSUES)[number];
 
 /** Who the banner talks about: the viewer themselves ("You should…") or someone else. */
-export interface Subject {
+interface Subject {
     name: string;
     self: boolean;
 }
 
-export interface IssueCopy {
+interface IssueCopy {
     title: string;
     /** One sentence on what's wrong and what the person should do. */
     summary: string;
@@ -27,12 +27,10 @@ export interface IssueCopy {
     steps: string[];
 }
 
-const KNOWN = new Set<string>(TRACKING_ISSUES);
-
 /** Keeps the codes this client knows, in display order; anything else (newer builds) is ignored. */
 export function parseTrackingIssues(value: unknown): TrackingIssue[] {
     if (!Array.isArray(value)) return [];
-    return TRACKING_ISSUES.filter((issue) => value.includes(issue) && KNOWN.has(issue));
+    return TRACKING_ISSUES.filter((issue) => value.includes(issue));
 }
 
 export function issueCopy(issue: TrackingIssue, { name, self }: Subject): IssueCopy {

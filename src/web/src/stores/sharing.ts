@@ -51,5 +51,5 @@ export const useSharingStore = defineStore('sharing', () => {
         loaded.value = false;
     }
 
-    return { hiddenFrom, loaded, load, isSharingWith, setSharing, reset };
+    return { loaded, load, isSharingWith, setSharing, reset };
 });

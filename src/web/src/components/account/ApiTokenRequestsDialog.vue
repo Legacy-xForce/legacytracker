@@ -96,7 +96,6 @@ onMounted(() => void load());
                         :disabled="loading"
                         :aria-label="loading ? 'Refreshing request history' : 'Refresh request history'"
                         :title="loading ? 'Refreshing…' : 'Refresh'"
-                        data-refresh-requests
                         @click="load"
                     >
                         <Icon name="refresh" :size="20" />
@@ -187,7 +186,6 @@ onMounted(() => void load());
                             <button
                                 class="text-primary type-label-lg hover:bg-on-surface/5 flex items-center gap-2 rounded-full px-4 py-2 disabled:opacity-60"
                                 :disabled="loadingMore"
-                                data-load-more
                                 @click="loadMore"
                             >
                                 <Spinner v-if="loadingMore" :size="16" />

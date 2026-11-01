@@ -155,10 +155,16 @@ class Uploader(context: Context, private val state: EngineState, private val sto
     companion object {
         const val SOURCE_LIVE = "live"
 
-        private fun iso(time: Long): String =
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("UTC")
-            }.format(Date(time))
+        // SimpleDateFormat is not thread-safe and costly to build, so each
+        // calling thread keeps one instead of one per uploaded point.
+        private val isoFormat = object : ThreadLocal<SimpleDateFormat>() {
+            override fun initialValue() =
+                SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                    timeZone = TimeZone.getTimeZone("UTC")
+                }
+        }
+
+        private fun iso(time: Long): String = isoFormat.get()!!.format(Date(time))
 
         fun pointJson(fix: Fix, source: String, battery: Int?, charging: Boolean?): JSONObject {
             val coords = JSONObject()

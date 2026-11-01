@@ -22,7 +22,7 @@ export const DIMMED_COLOR = '#757575';
 const DARK_INITIAL = '#1b1b1b';
 
 /** WCAG relative luminance of a `#rrggbb` colour. */
-export function relativeLuminance(hex: string): number {
+function relativeLuminance(hex: string): number {
     const channel = (offset: number) => {
         const value = parseInt(hex.slice(offset, offset + 2), 16) / 255;
         return value <= 0.03928 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;

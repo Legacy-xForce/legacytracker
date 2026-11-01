@@ -62,7 +62,7 @@ function openDetailsFor(event: CalendarEvent) {
     // Popups read the clock when opened.
     render(h(EventDetails, { event, now: Date.now() }), openDetails);
     // Clear the pin (36px tall, centred on the point) rather than clipping its tip.
-    popup = new Popup({ maxWidth: '320px', offset: 24, closeButton: true, className: 'lt-popup' })
+    popup = new Popup({ maxWidth: '320px', offset: 24, closeButton: true })
         .setLngLat([event.point[1], event.point[0]])
         .setDOMContent(openDetails)
         .addTo(target);

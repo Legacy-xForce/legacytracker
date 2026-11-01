@@ -26,7 +26,7 @@ export interface IssuedApiToken extends ApiToken {
     token: string;
 }
 
-export interface ApiTokenList {
+interface ApiTokenList {
     tokens: ApiToken[];
     /** The address the API is answering from, for one-click allowlisting. */
     yourIp: string | null;

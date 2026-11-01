@@ -68,8 +68,6 @@
 	<string>Legacytracker needs your location to show your position on the map.</string>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>Legacytracker needs your location at all times to keep sharing your position while the app is in the background.</string>
-	<key>NSLocationAlwaysUsageDescription</key>
-	<string>Legacytracker needs your location at all times to keep sharing your position while the app is in the background.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

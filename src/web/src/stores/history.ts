@@ -4,7 +4,7 @@ import { deleteHistory, fetchSessions, NotSharingError, type HistorySession } fr
 import { ReplayTrack } from '../lib/replay';
 
 /** How far back the calendar goes, like the app. */
-export const MONTHS_BACK = 12;
+const MONTHS_BACK = 12;
 
 export function startOfDay(date: Date): Date {
     return new Date(date.getFullYear(), date.getMonth(), date.getDate());
@@ -72,7 +72,6 @@ export const useHistoryStore = defineStore('history', () => {
     let monthRequest = 0;
     let dayRequest = 0;
 
-    const active = computed(() => userId.value !== null);
     const currentMonth = computed(() => startOfMonth(new Date()));
     const canGoBack = computed(() => month.value > addMonths(currentMonth.value, -MONTHS_BACK));
     const canGoForward = computed(() => month.value < currentMonth.value);
@@ -207,7 +206,6 @@ export const useHistoryStore = defineStore('history', () => {
         tripsLoading,
         tripsError,
         playing,
-        active,
         canGoBack,
         canGoForward,
         open,

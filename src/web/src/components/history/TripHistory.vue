@@ -96,7 +96,6 @@ const daySummary = computed(() => {
                         v-if="history.canDelete && history.trips.length > 0 && !history.tripsLoading"
                         class="text-on-surface-variant hover:bg-on-surface/8 -my-2 flex size-10 shrink-0 items-center justify-center rounded-full"
                         aria-label="Delete this day's trips"
-                        data-delete-day
                         @click="pending = { day: selectedInMonth }"
                     >
                         <Icon name="trash" />

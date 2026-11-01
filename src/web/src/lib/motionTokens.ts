@@ -4,7 +4,7 @@
  */
 export const duration = { short: 100, medium: 200, long: 300, extraLong: 500 } as const;
 
-export function prefersReducedMotion(): boolean {
+function prefersReducedMotion(): boolean {
     return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 

@@ -171,8 +171,6 @@ onBeforeUnmount(() => {
     // Leaving the tab with an editor open must not leave its circle on the map.
     if (editing.value) emit('draft', null);
 });
-
-defineExpose({ open });
 </script>
 
 <template>
@@ -207,7 +205,6 @@ defineExpose({ open });
                     <li v-for="place in results" :key="`${place.latitude},${place.longitude}`">
                         <button
                             class="hover:bg-on-surface/6 type-body-md flex w-full items-center gap-3 px-4 py-2.5 text-left"
-                            data-result
                             @click="pick(place)"
                         >
                             <Icon name="place" :size="20" />

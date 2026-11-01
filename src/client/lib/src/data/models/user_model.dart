@@ -20,7 +20,6 @@ class UserProfile {
   /// updates; empty when nothing is wrong (or nothing was reported yet).
   List<TrackingIssue> trackingIssues;
   LocationPoint? lastLocation;
-  List<LocationPoint> history;
 
   /// Server-reported time this user's device last reached the server (trip
   /// upload, live point, on-demand ping or parked heartbeat).
@@ -52,11 +51,7 @@ class UserProfile {
     this.lastLocation,
     this.lastSeenAt,
     this.hereSince,
-    List<LocationPoint>? history,
-  }) : history = history ?? [];
-
-  bool get hasAnyStatus =>
-      locationTrackingPaused || missingPermissions || batterySavingEnabled;
+  });
 
   /// Whether we haven't heard from this user's device for long enough that
   /// their marker should be greyed out. Parked devices check in about every

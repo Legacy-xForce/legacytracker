@@ -8,9 +8,6 @@ import 'palette.dart';
 /// motorway run reads green at a glance.
 const double speedColorMaxKmh = 70;
 
-/// Red at a standstill, orange and yellow through the middle, green at full speed.
-const List<(double, Color)> _speedColorStops = AppPalette.speedStops;
-
 /// Nearby speeds share a colour, so consecutive route segments merge into one
 /// polyline instead of redrawing the line for every fix.
 const int _speedColorSteps = 16;
@@ -23,12 +20,12 @@ Color speedColor(double speedMps) {
   final step = (ratio * _speedColorSteps).round() / _speedColorSteps;
 
   var index = 0;
-  while (index < _speedColorStops.length - 2 &&
-      step > _speedColorStops[index + 1].$1) {
+  while (index < AppPalette.speedStops.length - 2 &&
+      step > AppPalette.speedStops[index + 1].$1) {
     index++;
   }
-  final (start, from) = _speedColorStops[index];
-  final (end, to) = _speedColorStops[index + 1];
+  final (start, from) = AppPalette.speedStops[index];
+  final (end, to) = AppPalette.speedStops[index + 1];
   final local = end == start ? 0.0 : (step - start) / (end - start);
   return Color.lerp(from, to, local)!;
 }

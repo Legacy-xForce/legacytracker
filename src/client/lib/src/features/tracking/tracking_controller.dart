@@ -63,7 +63,6 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   bool isTracking = false;
   bool permissionGranted = false;
   LocationPoint? lastLocation;
-  List<LocationPoint> history = [];
   List<UserProfile> peers = [];
 
   /// Who has the live map open right now, ourselves included.
@@ -77,14 +76,6 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
   Timer? _batteryRefreshTimer;
   bool _reregistering = false;
   bool _awaitingAnchor = false;
-
-  String get speedLabel {
-    final speed = lastLocation?.speed ?? 0.0;
-    return '${speed.toStringAsFixed(1)} m/s';
-  }
-
-  bool get isMoving =>
-      lastLocation?.speed != null && (lastLocation?.speed ?? 0) >= 1.0;
 
   LatLng get mapCenter {
     if (lastLocation != null &&
@@ -348,9 +339,7 @@ class TrackingController extends ChangeNotifier with WidgetsBindingObserver {
         if (!point.latitude.isFinite || !point.longitude.isFinite) return;
         lastLocation = point;
         _rememberCenter(point);
-        history = [point, ...history].take(40).toList();
         selfProfile.lastLocation = point;
-        selfProfile.history = history;
         notifyListeners();
         // The engine anchors the parking spot on its first fix without a
         // state change of its own; pick the anchor up as soon as it exists.

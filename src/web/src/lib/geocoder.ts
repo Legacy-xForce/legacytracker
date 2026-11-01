@@ -6,7 +6,7 @@ const SEARCH_URL = 'https://nominatim.openstreetmap.org/search';
 
 export type Point = [number, number];
 
-export function normalizeLocation(location: string): string {
+function normalizeLocation(location: string): string {
     return location.trim().toLowerCase().replace(/\s+/g, ' ');
 }
 

@@ -120,10 +120,6 @@ class MockBackend implements Backend {
           peer.batteryLevel =
               ((peer.batteryLevel ?? 60) - random.nextInt(2)).clamp(10, 100)
                   .toInt();
-          peer.history = [
-            peer.lastLocation!,
-            ...peer.history,
-          ].take(20).toList();
         }
       }
       _peerController.add(List.unmodifiable(_peers));

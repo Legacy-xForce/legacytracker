@@ -21,7 +21,7 @@ class UploadWorker(context: Context, params: WorkerParameters) : Worker(context,
     override fun doWork(): Result {
         val engine = TrackingEngine.get(applicationContext)
         val outcome = engine.uploader.uploadAll()
-        engine.post { engine.log("upload", "Background upload: ${outcome.javaClass.simpleName}") }
+        engine.post { engine.log("upload", "Background upload: ${engine.describe(outcome)}") }
         return when (outcome) {
             is Uploader.Result.Failed, Uploader.Result.Offline -> Result.retry()
             else -> Result.success()

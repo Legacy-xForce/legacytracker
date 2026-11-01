@@ -1,4 +1,4 @@
-export type JwtPayload = Record<string, unknown>;
+type JwtPayload = Record<string, unknown>;
 
 /** The claims of a JWT, or null when it isn't one. The signature is not checked; servers do that. */
 export function decodeJwt(token: string): JwtPayload | null {

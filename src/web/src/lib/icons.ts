@@ -20,7 +20,6 @@ import chevronLeft from '@material-symbols/svg-400/rounded/chevron_left.svg?raw'
 import chevronRight from '@material-symbols/svg-400/rounded/chevron_right.svg?raw';
 import close from '@material-symbols/svg-400/rounded/close.svg?raw';
 import contentCopy from '@material-symbols/svg-400/rounded/content_copy.svg?raw';
-import dateRange from '@material-symbols/svg-400/rounded/date_range.svg?raw';
 import darkMode from '@material-symbols/svg-400/rounded/dark_mode.svg?raw';
 import cloudOff from '@material-symbols/svg-400/rounded/cloud_off-fill.svg?raw';
 import directions from '@material-symbols/svg-400/rounded/directions-fill.svg?raw';
@@ -35,7 +34,6 @@ import group from '@material-symbols/svg-400/rounded/group-fill.svg?raw';
 import history from '@material-symbols/svg-400/rounded/history.svg?raw';
 import info from '@material-symbols/svg-400/rounded/info.svg?raw';
 import key from '@material-symbols/svg-400/rounded/key-fill.svg?raw';
-import landscape from '@material-symbols/svg-400/rounded/landscape.svg?raw';
 import layers from '@material-symbols/svg-400/rounded/layers.svg?raw';
 import lightMode from '@material-symbols/svg-400/rounded/light_mode.svg?raw';
 import location from '@material-symbols/svg-400/rounded/location_on.svg?raw';
@@ -60,7 +58,6 @@ import remove from '@material-symbols/svg-400/rounded/remove.svg?raw';
 import route from '@material-symbols/svg-400/rounded/route.svg?raw';
 import satellite from '@material-symbols/svg-400/rounded/satellite_alt.svg?raw';
 import shareLocation from '@material-symbols/svg-400/rounded/share_location.svg?raw';
-import shield from '@material-symbols/svg-400/rounded/shield.svg?raw';
 import speed from '@material-symbols/svg-400/rounded/speed-fill.svg?raw';
 import speedOutlined from '@material-symbols/svg-400/rounded/speed.svg?raw';
 import straighten from '@material-symbols/svg-400/rounded/straighten-fill.svg?raw';
@@ -69,9 +66,7 @@ import search from '@material-symbols/svg-400/rounded/search.svg?raw';
 import trash from '@material-symbols/svg-400/rounded/delete.svg?raw';
 import timer from '@material-symbols/svg-400/rounded/timer.svg?raw';
 import touchApp from '@material-symbols/svg-400/rounded/touch_app.svg?raw';
-import trophy from '@material-symbols/svg-400/rounded/trophy-fill.svg?raw';
 import trendingUp from '@material-symbols/svg-400/rounded/trending_up.svg?raw';
-import visibility from '@material-symbols/svg-400/rounded/visibility.svg?raw';
 import visibilityOff from '@material-symbols/svg-400/rounded/visibility_off.svg?raw';
 import wbTwilight from '@material-symbols/svg-400/rounded/wb_twilight.svg?raw';
 
@@ -96,7 +91,6 @@ const raw = {
     close,
     cloudOff,
     contentCopy,
-    dateRange,
     darkMode,
     edit,
     directions,
@@ -111,7 +105,6 @@ const raw = {
     history,
     info,
     key,
-    landscape,
     layers,
     lightMode,
     location,
@@ -136,7 +129,6 @@ const raw = {
     route,
     satellite,
     shareLocation,
-    shield,
     speed,
     speedOutlined,
     straighten,
@@ -144,9 +136,7 @@ const raw = {
     timer,
     trash,
     touchApp,
-    trophy,
     trendingUp,
-    visibility,
     visibilityOff,
     wbTwilight
 };

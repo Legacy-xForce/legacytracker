@@ -31,16 +31,16 @@ export function clusterAnchor(memberCount: number): [number, number] {
  * On-screen distance under which people fold into one bubble. Sized to a marker's whole
  * footprint (avatar, badges, pulse), not just the avatar, so two markers never half-overlap.
  */
-export const CLUSTER_RADIUS_PX = 96;
+const CLUSTER_RADIUS_PX = 96;
 
 /**
  * Real-world distance under which people may fold into one bubble. Zooming out shrinks the
  * on-screen gap between people, so the pixel radius alone would merge people kilometres apart;
  * this keeps a group meaning "actually together".
  */
-export const CLUSTER_MAX_METERS = 100;
+const CLUSTER_MAX_METERS = 100;
 
-export interface GroupPoint {
+interface GroupPoint {
     x: number;
     y: number;
     /** Real position; when both points have one, they must also be within `maxMeters`. */

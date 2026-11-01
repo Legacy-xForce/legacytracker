@@ -39,7 +39,6 @@ class ProfileService {
       batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
       batteryLevel: (data['battery_level'] as num?)?.toInt(),
       isCharging: data['is_charging'] as bool?,
-      history: [],
     );
   }
 
@@ -84,7 +83,6 @@ class ProfileService {
       batterySavingEnabled: data['battery_saving_enabled'] as bool? ?? false,
       batteryLevel: (data['battery_level'] as num?)?.toInt(),
       isCharging: data['is_charging'] as bool?,
-      history: [],
     );
   }
 

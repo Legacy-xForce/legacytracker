@@ -2,13 +2,16 @@ import 'dart:math' as math;
 
 import 'package:latlong2/latlong.dart';
 
+import '../../../core/constants.dart';
+
 /// Web-Mercator helpers shared by the map. The map is always north-up, so a
 /// plain projection is enough to decide whether two markers overlap on screen.
-const double _maxMercatorLatitude = 85.05112878;
 const double _earthRadiusMeters = 6371008.8;
 
 double _clampLatitude(double latitude) =>
-    latitude.clamp(-_maxMercatorLatitude, _maxMercatorLatitude).toDouble();
+    latitude
+        .clamp(-AppConstants.maxMercatorLatitude, AppConstants.maxMercatorLatitude)
+        .toDouble();
 
 double _latitudeRadians(double latitude) =>
     _clampLatitude(latitude) * math.pi / 180;

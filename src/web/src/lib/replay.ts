@@ -16,8 +16,8 @@ export interface ReplayPoint {
 export const TARGET_PLAYBACK_MS = 40_000;
 /** Every speed option plays this many times faster than the base pace: "1x" covers a trip in ~20 s. */
 export const BASE_SPEED = 2;
-export const MIN_PACE_MPS = 5;
-export const MIN_SEGMENT_MS = 16;
+const MIN_PACE_MPS = 5;
+const MIN_SEGMENT_MS = 16;
 export const MAX_SEGMENT_MS = 3_000;
 export const PLAYBACK_SPEEDS = [1, 2, 4] as const;
 
@@ -35,7 +35,7 @@ const SPEED_COLOR_STOPS: readonly (readonly [number, readonly [number, number, n
 /** Nearby speeds share a colour, so consecutive segments merge into one polyline. */
 const SPEED_COLOR_STEPS = 16;
 
-export interface ReplaySegment {
+interface ReplaySegment {
     /** `[latitude, longitude]` pairs for this run of the route. */
     points: [number, number][];
     color: string;
@@ -89,7 +89,7 @@ export function haversine(aLat: number, aLon: number, bLat: number, bLon: number
     return 2 * EARTH_RADIUS_M * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
-export interface ReplayPosition {
+interface ReplayPosition {
     /** Index of the fix the marker has most recently passed. */
     index: number;
     latitude: number;

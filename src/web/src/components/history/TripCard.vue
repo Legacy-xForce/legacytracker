@@ -22,7 +22,6 @@ const chips = computed(() => [
     <div
         class="bg-surface-container relative rounded-md px-3.5 pt-3.5 pb-3 transition hover:brightness-110"
         :class="{ 'ring-primary ring-2': playing }"
-        data-trip
     >
         <!-- The whole card replays; the content lets clicks through so delete can sit on top. -->
         <button class="absolute inset-0 rounded-md" aria-label="Replay this trip" data-play @click="emit('play')" />
