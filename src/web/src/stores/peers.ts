@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref, shallowRef } from 'vue';
+import { computed, ref, shallowRef, triggerRef } from 'vue';
 import { ApiError, requestStreamTicket, trackerFetch } from '../api/tracker';
 import { StreamClient, type StreamStatus } from '../api/stream';
 import { applyMessage, type Peer } from '../lib/peers';
@@ -32,8 +32,9 @@ export const usePeersStore = defineStore('peers', () => {
             viewers.value = announced;
             return;
         }
-        const next = new Map(peers.value);
-        if (applyMessage(next, message)) peers.value = next;
+        // Updated in place: peers that did not change keep their object, and only a real change
+        // notifies, instead of cloning the whole roster per message.
+        if (applyMessage(peers.value, message)) triggerRef(peers);
         if (typeof message === 'object' && message !== null && (message as { type?: unknown }).type === 'snapshot') {
             loaded.value = true;
         }

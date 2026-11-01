@@ -72,7 +72,9 @@ class RemoteBackend implements Backend {
       return;
     }
     try {
-      _channel!.sink.add(jsonEncode({'type': 'map_active', 'active': _mapActive}));
+      _channel!.sink.add(
+        jsonEncode({'type': 'map_active', 'active': _mapActive}),
+      );
     } catch (_) {
       // Best-effort; the current state is resent on the next successful
       // connect, so a dropped send here just means a brief delay.
@@ -278,8 +280,7 @@ class RemoteBackend implements Backend {
     }
     final lastSeenRaw = payload['last_seen_at'] as String?;
     if (lastSeenRaw != null) {
-      profile.lastSeenAt =
-          DateTime.tryParse(lastSeenRaw) ?? profile.lastSeenAt;
+      profile.lastSeenAt = DateTime.tryParse(lastSeenRaw) ?? profile.lastSeenAt;
     }
     profile.locationTrackingPaused =
         payload['location_tracking_paused'] as bool? ??
@@ -310,9 +311,23 @@ class RemoteBackend implements Backend {
       }
     }
     _peerCache[remoteUserId] = profile;
-    _peerController.add(
-      List<UserProfile>.unmodifiable(_peerCache.values.toList()),
-    );
+    _publishPeers();
+  }
+
+  bool _publishScheduled = false;
+
+  /// One roster event per incoming frame: a snapshot or a batch of updates
+  /// touches many peers but listeners rebuild once, after all of them.
+  void _publishPeers() {
+    if (_publishScheduled) return;
+    _publishScheduled = true;
+    scheduleMicrotask(() {
+      _publishScheduled = false;
+      if (_disposed) return;
+      _peerController.add(
+        List<UserProfile>.unmodifiable(_peerCache.values.toList()),
+      );
+    });
   }
 
   double? _parseDouble(dynamic value) {

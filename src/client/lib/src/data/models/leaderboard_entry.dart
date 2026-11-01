@@ -1,3 +1,5 @@
+import '../../core/formatters.dart';
+
 /// One person's travel over the leaderboard's period.
 class LeaderboardEntry {
   const LeaderboardEntry({
@@ -26,9 +28,9 @@ class LeaderboardEntry {
 
   Duration get duration => Duration(seconds: durationSeconds.round());
 
-  double get avgSpeedKmh => avgSpeed * 3.6;
+  double get avgSpeedKmh => msToKmh(avgSpeed);
 
-  double get topSpeedKmh => topSpeed * 3.6;
+  double get topSpeedKmh => msToKmh(topSpeed);
 
   static LeaderboardEntry? fromJson(Map<String, dynamic> json) {
     final userId = json['user_id'];

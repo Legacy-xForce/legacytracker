@@ -32,6 +32,7 @@ import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
 import 'tracking_users_drawer.dart';
 import '../../../core/palette.dart';
+import '../../../core/formatters.dart';
 
 /// Zoomed out further, checkpoint names would pile up into noise; circles stay.
 const double _checkpointLabelsFromZoom = 13;
@@ -855,7 +856,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
             isSelected: widget.selectedUserId == member.value.profile.id,
             isSelf: member.value.isSelf,
             isMoving: member.value.profile.lastLocation?.isMoving ?? false,
-            speedKmh: (member.value.profile.lastLocation?.speed ?? 0) * 3.6,
+            speedKmh: msToKmh(member.value.profile.lastLocation?.speed ?? 0),
             batteryLevel: member.value.profile.batteryLevel,
             isCharging: member.value.profile.isCharging ?? false,
           ),

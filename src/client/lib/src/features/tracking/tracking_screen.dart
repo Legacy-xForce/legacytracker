@@ -132,18 +132,19 @@ class _TrackingScreenState extends State<TrackingScreen> {
             }
           },
           child: Scaffold(
-            body: Consumer2<TrackingController, MapSettings>(
-              builder: (context, controller, mapSettings, child) {
-                return IndexedStack(
-                  index: _selectedIndex,
-                  children: [
-                    TrackingMapTab(
+            // Each tab listens to what it shows: a location fix rebuilds the
+            // map and profile, not the travel leaderboard.
+            body: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                Consumer2<TrackingController, MapSettings>(
+                  builder: (context, controller, mapSettings, child) {
+                    return TrackingMapTab(
                       key: _mapTabKey,
                       isActive: _selectedIndex == _mapTab,
                       center: controller.mapCenter,
                       centerIsKnown: controller.hasKnownLocation,
-                      selectedLayer:
-                          _layerOverride ?? mapSettings.defaultLayer,
+                      selectedLayer: _layerOverride ?? mapSettings.defaultLayer,
                       lightPreset: resolveMapPreset(
                         mapSettings.mapVariant,
                         _now,
@@ -163,18 +164,21 @@ class _TrackingScreenState extends State<TrackingScreen> {
                         setState(() => _selectedUserId = user.id);
                       },
                       onSelectionCleared: _clearSelection,
-                    ),
-                    TravelTab(
-                      isActive: _selectedIndex == _travelTab,
-                      selfId: controller.selfProfile.id,
-                      baseUrl: controller.baseUrl,
-                      getAccessToken: () =>
-                          context.read<AuthProvider>().accessToken,
-                    ),
-                    TrackingProfileTab(controller: controller),
-                  ],
-                );
-              },
+                    );
+                  },
+                ),
+                TravelTab(
+                  isActive: _selectedIndex == _travelTab,
+                  selfId: context.read<TrackingController>().selfProfile.id,
+                  baseUrl: context.read<TrackingController>().baseUrl,
+                  getAccessToken: () =>
+                      context.read<AuthProvider>().accessToken,
+                ),
+                Consumer<TrackingController>(
+                  builder: (context, controller, child) =>
+                      TrackingProfileTab(controller: controller),
+                ),
+              ],
             ),
             bottomNavigationBar: NavigationBar(
               selectedIndex: _selectedIndex,

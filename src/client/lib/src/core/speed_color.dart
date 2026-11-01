@@ -1,6 +1,7 @@
 import 'dart:ui';
 
 import 'palette.dart';
+import 'formatters.dart';
 
 /// Speed (km/h) at which a replay line is fully green.
 ///
@@ -15,7 +16,9 @@ const int _speedColorSteps = 16;
 /// Colour for a recorded speed in metres per second: red when slow, green when
 /// fast. Speeds are clamped to the 0-[speedColorMaxKmh] range.
 Color speedColor(double speedMps) {
-  final kmh = speedMps.isFinite ? speedMps.clamp(0.0, double.infinity) * 3.6 : 0.0;
+  final kmh = speedMps.isFinite
+      ? msToKmh(speedMps.clamp(0.0, double.infinity))
+      : 0.0;
   final ratio = (kmh / speedColorMaxKmh).clamp(0.0, 1.0);
   final step = (ratio * _speedColorSteps).round() / _speedColorSteps;
 
