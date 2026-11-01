@@ -89,3 +89,18 @@ export function formatShortDate(time: number | Date, now: Date = new Date()): st
     const day = `${date.getDate()} ${MONTH_NAMES[date.getMonth()].slice(0, 3)}`;
     return date.getFullYear() === now.getFullYear() ? day : `${day} ${date.getFullYear()}`;
 }
+
+/** Metres per second as whole km/h. */
+export function formatSpeed(metersPerSecond: number): string {
+    return `${Math.round(msToKmh(metersPerSecond))} km/h`;
+}
+
+/** Metres per second to kilometres per hour. */
+export function msToKmh(metersPerSecond: number): number {
+    return metersPerSecond * 3.6;
+}
+
+/** "1 trip", "3 trips". */
+export function plural(count: number, singular: string, pluralForm = `${singular}s`): string {
+    return `${count} ${count === 1 ? singular : pluralForm}`;
+}

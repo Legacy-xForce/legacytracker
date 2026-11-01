@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { computed, ref, shallowRef } from 'vue';
+import { computed, onScopeDispose, ref, shallowRef } from 'vue';
 import * as legacy from '../api/auth';
 import { AuthError, AuthRejectedError } from '../api/auth';
 import * as oidc from '../api/oidc';
@@ -293,13 +293,16 @@ export const useSessionStore = defineStore('session', () => {
 
     // Another tab signed out (or the grant was cleared): follow it.
     if (typeof window !== 'undefined') {
-        window.addEventListener('storage', (event) => {
+        // Only the grant's own key: an unrelated localStorage.clear() must not drop the token.
+        const onStorage = (event: StorageEvent) => {
             if (event.storageArea !== localStorage) return;
-            if ((event.key === STORAGE_KEY || event.key === null) && event.newValue === null && !legacyMode.value) {
+            if (event.key === STORAGE_KEY && event.newValue === null && !legacyMode.value) {
                 tracker.value = null;
                 calendar.value = null;
             }
-        });
+        };
+        window.addEventListener('storage', onStorage);
+        onScopeDispose(() => window.removeEventListener('storage', onStorage));
     }
 
     return {

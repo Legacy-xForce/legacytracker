@@ -8,6 +8,7 @@ import PeerMarker from './map/PeerMarker.vue';
 import { centerShowing, framePadding, holdAt, NO_INSETS, visibleCenter, type Insets } from '../lib/camera';
 import { CLUSTER, clusterAnchor, clusterWidth, groupByDistance, PEER_MARKER_SIZE } from '../lib/clusters';
 import { boundsOf, centroid as meanLatLng, type LatLng } from '../lib/geo';
+import { msToKmh } from '../lib/format';
 import { insetsKey, mapKey } from '../lib/mapContext';
 import { Motion } from '../lib/motion';
 import { hasPosition, isMoving, isStale, type Peer } from '../lib/peers';
@@ -105,7 +106,7 @@ function markerProps(peer: Peer) {
         stale: isStale(peer, props.now),
         moving: isMoving(peer),
         heading: peer.heading,
-        speedKmh: peer.speed * 3.6,
+        speedKmh: msToKmh(peer.speed),
         battery: peer.batteryLevel,
         charging: peer.isCharging === true
     };

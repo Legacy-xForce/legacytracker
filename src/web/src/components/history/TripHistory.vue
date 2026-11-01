@@ -6,7 +6,7 @@ import ConfirmDialog from '../ui/ConfirmDialog.vue';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
 import type { HistorySession } from '../../api/history';
-import { formatClock, formatDistance, formatLongDay, formatTripDuration } from '../../lib/format';
+import { formatClock, formatDistance, formatLongDay, formatTripDuration, plural } from '../../lib/format';
 import { addMonths } from '../../lib/dates';
 import { useHistoryStore } from '../../stores/history';
 
@@ -61,7 +61,7 @@ const overview = computed(() => {
 const daySummary = computed(() => {
     const day = selectedInMonth.value ? history.days.get(selectedInMonth.value.getDate()) : undefined;
     if (!day) return null;
-    return `${day.trips} ${day.trips === 1 ? 'trip' : 'trips'} · ${formatDistance(day.distanceMeters)} · ${formatTripDuration(day.durationSeconds)}`;
+    return `${plural(day.trips, 'trip')} · ${formatDistance(day.distanceMeters)} · ${formatTripDuration(day.durationSeconds)}`;
 });
 </script>
 

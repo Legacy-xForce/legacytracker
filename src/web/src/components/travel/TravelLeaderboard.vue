@@ -5,7 +5,7 @@ import UserAvatar from '../UserAvatar.vue';
 import Icon from '../ui/Icon.vue';
 import Spinner from '../ui/Spinner.vue';
 import { moveFocus } from '../../lib/focus';
-import { formatDistance, formatTripDuration } from '../../lib/format';
+import { formatDistance, formatSpeed, formatTripDuration } from '../../lib/format';
 import { formatPeriod, fromDateInput, MAX_PERIOD_DAYS, toDateInput, type PeriodKind } from '../../lib/periods';
 import { addDays } from '../../lib/dates';
 import { useLeaderboardStore } from '../../stores/leaderboard';
@@ -51,7 +51,7 @@ const totals = computed(() => ({
 }));
 
 function kmh(metersPerSecond: number): string {
-    return `${Math.round(metersPerSecond * 3.6)} km/h`;
+    return formatSpeed(metersPerSecond);
 }
 
 // Arrow keys move between periods and select as they go (automatic activation).

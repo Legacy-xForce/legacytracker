@@ -9,7 +9,7 @@ import StatCard from '../ui/StatCard.vue';
 import Switch from '../ui/Switch.vue';
 import { fetchSessions, type HistorySession } from '../../api/history';
 import { metersBetween } from '../../lib/clusters';
-import { formatDistance, formatUpdatedAgo } from '../../lib/format';
+import { formatDistance, formatSpeed, formatUpdatedAgo, msToKmh } from '../../lib/format';
 import { batteryIcon } from '../../lib/icons';
 import { directionsUrl } from '../../lib/navigation';
 import { hasPosition, isStale, type Peer } from '../../lib/peers';
@@ -72,8 +72,9 @@ const summary = computed(() => {
     const seconds = sessions.reduce((sum, s) => sum + s.durationSeconds, 0);
     return {
         trips: sessions.length,
-        topKmh: Math.max(0, ...sessions.map((s) => s.topSpeed)) * 3.6,
-        avgKmh: seconds > 0 ? (sessions.reduce((sum, s) => sum + s.avgSpeed * s.durationSeconds, 0) / seconds) * 3.6 : 0
+        topKmh: msToKmh(Math.max(0, ...sessions.map((s) => s.topSpeed))),
+        avgKmh:
+            seconds > 0 ? msToKmh(sessions.reduce((sum, s) => sum + s.avgSpeed * s.durationSeconds, 0) / seconds) : 0
     };
 });
 
@@ -181,7 +182,7 @@ async function changeSharing(enabled: boolean) {
             {{ peer.name }} isn't sharing their location with you.
         </p>
         <div v-else-if="hasPosition(peer)" class="mt-[18px] grid grid-cols-3 gap-2.5">
-            <StatCard icon="speed" label="Speed" :value="`${Math.round(peer.speed * 3.6)} km/h`" />
+            <StatCard icon="speed" label="Speed" :value="formatSpeed(peer.speed)" />
             <StatCard
                 :icon="charging ? 'batteryCharging' : batteryIcon(battery, false)"
                 :label="charging ? 'Charging' : 'Battery'"
