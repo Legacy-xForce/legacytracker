@@ -15,7 +15,7 @@ import 'tracking_engine.dart';
 ///
 /// Notification permission is deliberately *not* requested: on Android 13+
 /// the trip-recording foreground service runs fine without it — its
-/// notification just isn't shown. The status card lets the user opt in.
+/// notification just isn't shown.
 class TrackingPermissions {
   TrackingPermissions._();
 
@@ -97,9 +97,4 @@ class TrackingPermissions {
 
   static Future<void> requestIgnoreBatteryOptimizations() =>
       Permission.ignoreBatteryOptimizations.request();
-
-  static Future<void> requestNotifications() async {
-    final status = await Permission.notification.request();
-    if (status.isPermanentlyDenied) await openAppSettings();
-  }
 }

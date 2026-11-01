@@ -68,7 +68,6 @@ class TrackingStatus {
     this.backgroundLocation = true,
     this.activityRecognition = true,
     this.batteryOptimizationIgnored = true,
-    this.notificationsEnabled = false,
     this.issues = const [],
   });
 
@@ -99,7 +98,6 @@ class TrackingStatus {
       activityRecognition: map['activityRecognition'] as bool? ?? true,
       batteryOptimizationIgnored:
           map['batteryOptimizationIgnored'] as bool? ?? true,
-      notificationsEnabled: map['notificationsEnabled'] as bool? ?? false,
       issues: TrackingIssue.parse(map['issues']),
     );
   }
@@ -118,7 +116,6 @@ class TrackingStatus {
   final bool backgroundLocation;
   final bool activityRecognition;
   final bool batteryOptimizationIgnored;
-  final bool notificationsEnabled;
 
   /// Phone settings currently blocking location updates, as the engine reports
   /// them to the server with each upload.

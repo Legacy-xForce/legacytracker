@@ -16,7 +16,6 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
-import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.google.android.gms.location.ActivityRecognition
 import com.google.android.gms.location.ActivityTransition
@@ -911,7 +910,6 @@ class TrackingEngine private constructor(context: Context) {
             "backgroundLocation" to hasBackgroundLocation(),
             "activityRecognition" to hasActivityRecognition(),
             "batteryOptimizationIgnored" to power.isIgnoringBatteryOptimizations(app.packageName),
-            "notificationsEnabled" to NotificationManagerCompat.from(app).areNotificationsEnabled(),
             "issues" to TrackingIssues.detect(app),
         )
     }
