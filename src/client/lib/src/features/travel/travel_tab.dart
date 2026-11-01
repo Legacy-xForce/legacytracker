@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/formatters.dart';
+import '../../core/widgets.dart';
 import '../../core/periods.dart';
 import '../../data/models/leaderboard_entry.dart';
 import '../../data/models/user_model.dart';
@@ -196,7 +197,7 @@ class _TravelTabState extends State<TravelTab> {
             ),
             const SizedBox(height: 20),
             if (_failed)
-              _Message(
+              MessageState(
                 icon: Icons.cloud_off_rounded,
                 text: 'Couldn\'t load the leaderboard.',
                 action: TextButton(
@@ -210,7 +211,7 @@ class _TravelTabState extends State<TravelTab> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (trips == 0)
-              const _Message(
+              const MessageState(
                 icon: Icons.directions_car_rounded,
                 text: 'Nobody travelled in this period.',
               )
@@ -445,11 +446,11 @@ class _EntryCard extends StatelessWidget {
                   spacing: 6,
                   runSpacing: 6,
                   children: [
-                    _StatChip(
+                    StatChip(
                       icon: Icons.speed_outlined,
                       label: '${entry.avgSpeedKmh.round()} km/h avg',
                     ),
-                    _StatChip(
+                    StatChip(
                       icon: Icons.speed_rounded,
                       label: '${entry.topSpeedKmh.round()} km/h top',
                     ),
@@ -459,63 +460,6 @@ class _EntryCard extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: AppShape.full,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 5),
-          Text(label, style: theme.textTheme.labelMedium),
-        ],
-      ),
-    );
-  }
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          Icon(icon, size: 32, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(height: 10),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          ?action,
-        ],
       ),
     );
   }

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../location/tracking_engine.dart';
+import '../../core/dialogs.dart';
 
 class DebugLogScreen extends StatefulWidget {
   const DebugLogScreen({super.key});
@@ -69,24 +70,14 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
   }
 
   Future<void> _clear() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear activity log?'),
-        content: const Text('This removes all recorded events.'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Clear'),
-          ),
-        ],
-      ),
+    final confirmed = await confirmAction(
+      context,
+      title: 'Clear activity log?',
+      message: 'This removes all recorded events.',
+      actionLabel: 'Clear',
+      destructive: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await TrackingEngine.clearLogs();
       _load();
     }
@@ -131,14 +122,18 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
                     height: 48,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 4,
+                      ),
                       children: [
                         Padding(
                           padding: const EdgeInsets.only(right: 8),
                           child: ChoiceChip(
                             label: const Text('All'),
                             selected: _categoryFilter == null,
-                            onSelected: (_) => setState(() => _categoryFilter = null),
+                            onSelected: (_) =>
+                                setState(() => _categoryFilter = null),
                           ),
                         ),
                         for (final cat in categories)
@@ -147,7 +142,8 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
                             child: ChoiceChip(
                               label: Text(cat),
                               selected: _categoryFilter == cat,
-                              onSelected: (_) => setState(() => _categoryFilter = cat),
+                              onSelected: (_) =>
+                                  setState(() => _categoryFilter = cat),
                             ),
                           ),
                       ],
@@ -165,7 +161,9 @@ class _DebugLogScreenState extends State<DebugLogScreen> {
                               final entry = visible[index];
                               return ListTile(
                                 dense: true,
-                                leading: _CategoryBadge(category: entry.category),
+                                leading: _CategoryBadge(
+                                  category: entry.category,
+                                ),
                                 title: Text(entry.message),
                                 subtitle: Text(_formatTimestamp(entry.time)),
                               );
@@ -220,10 +218,7 @@ class _SummaryHeader extends StatelessWidget {
     child: Row(
       children: [
         SizedBox(width: 96, child: Text(label, style: style)),
-        Text(
-          value,
-          style: style?.copyWith(fontWeight: FontWeight.bold),
-        ),
+        Text(value, style: style?.copyWith(fontWeight: FontWeight.bold)),
       ],
     ),
   );

@@ -7,6 +7,7 @@ import '../../data/network/api_client.dart';
 import '../tracking/widgets/tracking_map_layer.dart';
 import 'checkpoint_editor_screen.dart';
 import 'checkpoints_provider.dart';
+import '../../core/dialogs.dart';
 
 class CheckpointsScreen extends StatefulWidget {
   const CheckpointsScreen({
@@ -50,32 +51,16 @@ class _CheckpointsScreenState extends State<CheckpointsScreen> {
   Future<void> _delete(Checkpoint checkpoint) async {
     final provider = context.read<CheckpointsProvider>();
     final messenger = ScaffoldMessenger.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Delete checkpoint?'),
-        content: Text(
+    final confirmed = await confirmAction(
+      context,
+      title: 'Delete checkpoint?',
+      message:
           '"${checkpoint.name}" will be removed for everyone. Locations '
           'inside it go back to showing the street name.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 40),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
+      actionLabel: 'Delete',
+      destructive: true,
     );
-    if (confirmed != true) return;
+    if (!confirmed) return;
     try {
       await provider.delete(checkpoint.id);
     } on ApiException catch (e) {

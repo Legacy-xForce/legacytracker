@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/formatters.dart';
+import '../../../core/widgets.dart';
 import '../../../data/models/location_session.dart';
 import '../../../data/models/user_model.dart';
 import '../../../data/network/history_service.dart';
@@ -8,6 +9,7 @@ import 'session_replay_screen.dart';
 import 'tracking_location_street_label.dart';
 import '../../../core/tokens.dart';
 import '../../../core/palette.dart';
+import '../../../core/dialogs.dart';
 
 /// A user's trips: a month calendar marking the days with trips first, then
 /// the selected day's trips, each opening a replay.
@@ -105,31 +107,13 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
 
   bool _deleting = false;
 
-  Future<bool> _confirmDelete(String title, String message) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 40),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Delete'),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
+  Future<bool> _confirmDelete(String title, String message) => confirmAction(
+    context,
+    title: title,
+    message: message,
+    actionLabel: 'Delete',
+    destructive: true,
+  );
 
   /// Erases [from]..[to] of your own history; on success the cached month and
   /// day are dropped so the calendar and the list reload without it.
@@ -237,7 +221,7 @@ class _LocationHistoryScreenState extends State<LocationHistoryScreen> {
               ),
               const SizedBox(height: 20),
               if (snapshot.hasError)
-                _Message(
+                MessageState(
                   icon: Icons.cloud_off_rounded,
                   text: 'Couldn\'t load this month\'s trips.',
                   action: TextButton(
@@ -548,7 +532,7 @@ class _MonthOverview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (days.isEmpty) {
-      return const _Message(
+      return const MessageState(
         icon: Icons.event_busy_rounded,
         text: 'No trips this month.',
       );
@@ -711,14 +695,14 @@ class _DayTrips extends StatelessWidget {
               );
             }
             if (snapshot.hasError) {
-              return const _Message(
+              return const MessageState(
                 icon: Icons.cloud_off_rounded,
                 text: 'Couldn\'t load this day\'s trips.',
               );
             }
             final trips = snapshot.data ?? const [];
             if (trips.isEmpty) {
-              return const _Message(
+              return const MessageState(
                 icon: Icons.event_busy_rounded,
                 text: 'No trips on this day.',
               );
@@ -839,15 +823,15 @@ class _TripCard extends StatelessWidget {
                       spacing: 6,
                       runSpacing: 6,
                       children: [
-                        _StatChip(
+                        StatChip(
                           icon: Icons.timelapse_rounded,
                           label: formatTripDuration(session.duration),
                         ),
-                        _StatChip(
+                        StatChip(
                           icon: Icons.straighten_rounded,
                           label: formatDistance(session.distanceMeters),
                         ),
-                        _StatChip(
+                        StatChip(
                           icon: Icons.speed_rounded,
                           label: '${session.topSpeedKmh.round()} km/h top',
                         ),
@@ -915,63 +899,6 @@ class _TimelineRail extends StatelessWidget {
             ),
           ),
           dot(AppPalette.arrival),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatChip extends StatelessWidget {
-  const _StatChip({required this.icon, required this.label});
-
-  final IconData icon;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest,
-        borderRadius: AppShape.full,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(icon, size: 14, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(width: 5),
-          Text(label, style: theme.textTheme.labelMedium),
-        ],
-      ),
-    );
-  }
-}
-
-class _Message extends StatelessWidget {
-  const _Message({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 24),
-      child: Column(
-        children: [
-          Icon(icon, size: 32, color: theme.colorScheme.onSurfaceVariant),
-          const SizedBox(height: 10),
-          Text(
-            text,
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodyMedium?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          ?action,
         ],
       ),
     );

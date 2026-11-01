@@ -20,6 +20,7 @@ import 'tracking_map_layer.dart';
 import 'tracking_status_card.dart';
 import 'user_avatar.dart';
 import '../../../core/tokens.dart';
+import '../../../core/dialogs.dart';
 
 class TrackingProfileTab extends StatelessWidget {
   const TrackingProfileTab({super.key, required this.controller});
@@ -149,32 +150,16 @@ class TrackingProfileTab extends StatelessWidget {
   }
 
   Future<void> _confirmSignOut(BuildContext context, AuthProvider auth) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sign out?'),
-        content: const Text(
+    final confirmed = await confirmAction(
+      context,
+      title: 'Sign out?',
+      message:
           'Your location stops being shared from this phone until you sign '
           'back in.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 40),
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Sign out'),
-          ),
-        ],
-      ),
+      actionLabel: 'Sign out',
+      destructive: true,
     );
-    if (confirmed == true) await auth.logout();
+    if (confirmed) await auth.logout();
   }
 
   Future<void> _showAvatarOptions(
