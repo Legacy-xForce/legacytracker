@@ -67,6 +67,10 @@ reload its tiles.
 - **Live map** over the tracker websocket (one-time ticket, backoff reconnect).
   The map tab is reported as active only while visible, so phones leave live
   mode when every browser tab is hidden; returning to the tab reconnects.
+  After ten minutes without pointer, keyboard or wheel input it is reported
+  inactive too, and an "Are you still watching?" screensaver covers the page:
+  a map left open on a desk stops making every phone stream. **I'm still here**
+  wakes it, reconnects the stream and refreshes events.
   Markers glide between fixes over about the time between them, as in the app,
   and a selected person stays centred in the uncovered part of the map until
   you pan away. Being selected is the same thing as being looked at: a pan you
