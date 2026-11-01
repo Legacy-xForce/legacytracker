@@ -33,7 +33,7 @@ npx vitest run src/test/peers.test.ts   # single test file
 npm run format:check             # prettier; `npm run format` to fix
 npm run build                    # vue-tsc -b && vite build
 ```
-Production services are used unless overridden by `VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL` (see `.env.example`). `VITE_MAPBOX_TOKEN` is required for production builds.
+Production services are used unless overridden by `VITE_BACKEND_URL`, `VITE_AUTH_URL`, `VITE_CALENDAR_URL`, `VITE_CALENDAR_WEB_URL`, `VITE_OIDC_CLIENT_ID` (see `.env.example`). `VITE_MAPBOX_TOKEN` is required for production builds.
 
 Client (`src/client`; Flutter 3.44, Dart ^3.12):
 ```bash
@@ -46,7 +46,7 @@ flutter run -t lib/main_mapcheck.dart -d <device> \
   --dart-define=MAPBOX_TOKEN=pk.…                            # standalone map spike, no login/backend
 cd android && ./gradlew testDebugUnitTest                    # Kotlin engine tests (PathSampler, StopDetector, DriveSimulation)
 ```
-`test-location.mjs` (repo root) simulates a GPS drive against a server (`--server http://localhost:3000`).
+`scripts/simulate-drive.mjs` simulates a GPS drive: `node scripts/simulate-drive.mjs --server http://localhost:3000 --token <write API token>` (`--server` is required, there is no production default).
 
 Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`, then run the `Release Android and iOS` workflow (or `scripts/release-android.sh`). The workflow publishes the APK and IPA that CI already built for the commit being tagged — waiting for a CI run that is still going, and building either binary only when there is nothing to reuse — and its only added step is signing the APK with `apksigner`, which replaces CI's debug key. It also attaches the unsigned IPA together with the AltStore/SideStore source feed the script generates from it (`--ipa PATH` locally, `--apk PATH` plus `ANDROID_KEYSTORE*` env for a CI-built APK); both are uploaded under fixed names so `releases/latest/download/...` never moves. Phones only install a higher build number, and every Android release must be signed with the same key (`android/release-signing-cert.sha256`). Sideloaded iOS builds get no push — see `docs/app-updates.md`.
 

@@ -1,15 +1,25 @@
 # Moving Legacy Tracker to OAuth2 / OpenID Connect
 
-Status (2026-10-22): Phase 1 (server) and Phase 2 (web) committed on `oidc-migration`; Phase 3 (app) written but
-uncommitted, with Flutter tests and analyze green. Still open: Phase 0 on the legacy-auth side (legacy-auth#8), a
-real end-to-end run against a local OP, the calendar-side test, and Phase 4. Tracks the legacytracker part of
-[legacy-auth#4](https://github.com/Legacy-xForce/legacy-auth/issues/4) (Phases 2 and 3).
-Snapshot: legacytracker `3669a0f`, legacy-auth `db691ff` (OP merged in #5, clients seeded **disabled**),
-legacy-calendar `c02297e`.
+Status (2026-11-01): **shipped.** Phases 1-3 are live: the web app and the phone sign in with Authorization Code +
+PKCE (`tracker-spa`, `tracker-mobile`) and the server authorises OP access tokens by `scope`. **Remaining: Phase 4**
+(cleanup once old builds are gone), listed with file and line below. Tracks the legacytracker part of
+[legacy-auth#4](https://github.com/Legacy-xForce/legacy-auth/issues/4).
 
-## Where we are
+## Still-live legacy branches (delete at Phase 4)
 
-Both clients sign in with ROPC: they post the password (or a passkey assertion) to
+Each carries a `// Phase 4 (docs/oidc-migration.md)` marker in the code.
+
+| Where | What | Removal |
+|---|---|---|
+| `src/server/src/services/access-token.ts` | accepts non-`at+jwt` tokens (`payload.type === "access"` + `hasTrackerScope`, `services/tracker-scope.ts`) | after `min_supported_code` passes the pre-OIDC builds |
+| `src/server/src/app.ts` (`clientId !== null &&` on `/api/v1/mapbox/token` and `/api/v1/devices`) | exempts legacy-shaped tokens from the mobile-only rule | drop the `!== null` |
+| `src/server/src/app.ts` (`purgeApiTokens` for a legacy JWT without `scopes.tracker`) | duplicates the OP back-channel signal | delete |
+| `src/server/src/services/fcm-service.ts` (`pacing` field), `app.ts` (`X-Pacing-Mode`) | read only by pre-OIDC app builds and the simulator | delete with the minimum raised |
+| `src/web/src/api/auth.ts` (`AccountDisabledError`) | **still used by the OIDC path**, keep | n/a |
+
+## Where we were (before the migration)
+
+Historical snapshot. Both clients signed in with ROPC: they post the password (or a passkey assertion) to
 `auth.legacy-group.tech/auth/login` and get a Legacy Auth access + refresh token.
 
 | Piece | Today |
@@ -182,7 +192,7 @@ frame-ancestors 'none'`. Check against every tile layer and Nominatim before shi
 
 2.7 **Cleanup in `src/web/src`**
 - Delete `views/AccessDeniedView.vue`, the `access-denied` route, the form in `views/LoginView.vue`,
-  `AccountDisabledError`/`markForbidden`, scope decoding in `lib/jwt.ts` (keep `sub`/`username` reads).
+  `markForbidden` (keep `AccountDisabledError`, the OIDC path uses it), scope decoding in `lib/jwt.ts` (keep `sub`/`username` reads).
 - `LoginView` becomes a card: brand, "Sign in with Legacy", the `access_denied` message.
 - `api/tracker.ts`: 401 → one refresh + retry (as now), then sign-in; 403 → sign-out (access lost).
 - `DocsView`/`openapi.ts`: "session" = an OP access token for the tracker; integrators use API tokens.
@@ -190,8 +200,8 @@ frame-ancestors 'none'`. Check against every tile layer and Nominatim before shi
 - Tests (vitest): PKCE/callback (`state` mismatch, `access_denied`), cross-tab refresh (two stores sharing a
   fake `localStorage` and a fake lock), calendar refusal keeps the session, legacy session migration.
 
-2.8 **Rollback:** `VITE_AUTH_MODE=legacy` keeps today's flow for one release (the server accepts both token
-shapes until Phase 4), so reverting is a rebuild of the web app.
+2.8 **Rollback:** none any more. The `VITE_AUTH_MODE=legacy` switch was never kept; revert by redeploying a
+previous web build (the server still accepts both token shapes until Phase 4).
 
 ## Phase 3: mobile app
 
@@ -249,7 +259,7 @@ refusal), provider state transitions, legacy-session migration. Manual: emulator
 
 - Raise `min_supported_code` to the OIDC release.
 - Server: stop accepting legacy ROPC tokens (no `client_id`) and the `scopes` object.
-- Clients: delete the legacy refresh path, `VITE_AUTH_MODE=legacy` and the old storage migration.
+- Clients: delete the legacy refresh path and the old storage migration.
 - Close PR #56 as superseded (the OP sets `aud` per resource). Tell legacy-auth that the tracker no longer
   calls `/auth/login`, `/auth/refresh`, `/auth/passkey/*`, so `REQUIRE_AUDIENCE=true` and ROPC removal are unblocked
   for the tracker.
@@ -262,7 +272,7 @@ refusal), provider state transitions, legacy-session migration. Manual: emulator
 |---|---|---|---|
 | 0 | legacy-auth Phase 0 PR, client config | nothing | `OIDC_ENABLED=false` |
 | 1 | server Phase 1 | nothing | redeploy previous image |
-| 2 | web Phase 2 | web: redirect sign-in, passkeys on the web, SSO with calendar | rebuild with `VITE_AUTH_MODE=legacy` |
+| 2 | web Phase 2 | web: redirect sign-in, passkeys on the web, SSO with calendar | redeploy the previous web build |
 | 3 | app release (OIDC + min-version screen) | app: browser sign-in at next sign-in | old APK still works (ROPC alive) |
 | 4 | cleanup | old builds forced to update | raise/lower `min_supported_code` |
 

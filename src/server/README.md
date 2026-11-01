@@ -170,6 +170,30 @@ precedence over `Authorization`.
 | `GET`   | `/api/v1/profile`  | Fetch the current user's profile   |
 | `PATCH` | `/api/v1/profile`  | Update `name` and/or `avatar_url`  |
 
+### Sharing
+
+Everyone sees everyone by default; a user can hide their location from individual people.
+
+| Method | Path                           | Description |
+|--------|--------------------------------|-------------|
+| `GET`  | `/api/v1/sharing`              | `{ "hidden_from": ["<userId>", …] }`: who you currently hide your location from. |
+| `PUT`  | `/api/v1/sharing/:viewerId`    | Body `{ "enabled": boolean }`. `false` hides you from that person, `true` shows you again. `400` if `enabled` is not a boolean or `viewerId` is you, `404` for an unknown user. |
+
+### Checkpoints (named places)
+
+Shared circular places. A person inside one is shown as "at <name>" instead of a street.
+
+| Method   | Path                       | Description |
+|----------|----------------------------|-------------|
+| `GET`    | `/api/v1/checkpoints`      | Every checkpoint, newest first, each with `can_edit` for the caller. |
+| `POST`   | `/api/v1/checkpoints`      | Body `{ "name", "latitude", "longitude", "radius_m" }` (radius 10-250 m). `201` with the checkpoint, `400` on invalid input, `409` if the name is taken. |
+| `PATCH`  | `/api/v1/checkpoints/:id`  | Same fields, all optional. Only the creator may edit: `403` otherwise, `404` if it does not exist, `409` on a name clash. |
+| `DELETE` | `/api/v1/checkpoints/:id`  | Creator only. `{ "deleted": true }`, `403`, or `404`. |
+
+### Health
+
+`GET /health` returns `200 {"status":"ok"}`; it is the container healthcheck and needs no auth.
+
 ### Devices
 
 The app's native tracking engine uploads while the app is closed, so it uses a
@@ -254,7 +278,8 @@ is kept for older builds.
 ### Tracking commands (FCM)
 
 Data-only messages sent to every registered token when live mode changes:
-`{ "type": "tracking_command", "lt_cmd": "live" | "idle", "lt_ttl": "600", "pacing": … }`.
+`{ "type": "tracking_command", "lt_cmd": "live" | "idle" | "refresh" | "update", "lt_ttl": "600", "pacing": … }`.
+`refresh` asks one device for a fresh fix (`location-refresh`); `update` announces a new Android release.
 `live` goes out at high priority (60 s TTL) when the first viewer opens the
 map and is renewed every 4 min; `idle` follows 45 s after the last viewer
 leaves. iOS uses background pushes (`apns-push-type: background`, priority 5).
@@ -337,19 +362,10 @@ disabled), the user's API tokens are deleted and all of their streams close.
 
 ```
 src/
-  app.ts                  # Fastify app, routes, startup
-  config/db.ts            # PostgreSQL connection pool
-  db/schema.sql           # Database schema (apply once)
-  services/
-    api-tokens.ts         # personal API tokens (X-API-Token) and their scopes
-    api-token-requests.ts # persistent request trail for API tokens
-    connection-manager.ts # WebSocket client registry & broadcast
-    device-auth.ts        # device tokens for background uploads
-    dwell-tracker.ts      # "here since" for each user's current stay
-    fcm-service.ts        # tracking commands via FCM
-    live-controller.ts    # live-mode state (debounce, renewal, TTL)
-    session-builder.ts    # trips for history/replay
-    history-range.ts      # from/to validation for deleting history
-    leaderboard.ts        # travel totals and ranking for the leaderboard
-test/                     # node:test unit tests (npm test)
+  app.ts       # Fastify app, routes, startup
+  config/      # PostgreSQL connection pool
+  db/          # schema.sql
+  services/    # one module per concern: auth and tokens, live mode, FCM,
+               # dwell and trips, sharing, checkpoints, app releases, ...
+test/          # node:test unit tests (npm test)
 ```

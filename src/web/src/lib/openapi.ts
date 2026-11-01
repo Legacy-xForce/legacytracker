@@ -906,6 +906,29 @@ export const openApiDocument = {
                 }
             }
         },
+        '/health': {
+            get: {
+                tags: ['Devices and app updates'],
+                operationId: 'health',
+                summary: 'Liveness probe',
+                description: 'The container healthcheck. Always `200 {"status":"ok"}` while the process is up.',
+                security: [],
+                responses: {
+                    '200': {
+                        description: 'The server is up.',
+                        content: {
+                            'application/json': {
+                                schema: {
+                                    type: 'object',
+                                    required: ['status'],
+                                    properties: { status: { type: 'string', enum: ['ok'] } }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         '/api/v1/app/android/latest': {
             get: {
                 tags: ['Devices and app updates'],
@@ -1322,7 +1345,22 @@ export const openApiDocument = {
                         description: '`live` points are broadcast but never stored.'
                     },
                     battery_level: { type: 'integer', minimum: 0, maximum: 100 },
-                    is_charging: { type: 'boolean' }
+                    is_charging: { type: 'boolean' },
+                    tracking_issues: {
+                        type: 'array',
+                        description:
+                            'Phone settings that currently block or delay location updates, sent on the newest point of an upload. `[]` means nothing is wrong; leaving the field out keeps the last report. Unknown codes are dropped.',
+                        items: {
+                            type: 'string',
+                            enum: [
+                                'location_services_off',
+                                'location_permission',
+                                'background_location',
+                                'precise_location',
+                                'battery_optimization'
+                            ]
+                        }
+                    }
                 }
             },
             LocationUploadResult: {
@@ -1333,7 +1371,7 @@ export const openApiDocument = {
                     stored: { type: 'integer' },
                     pacing: {
                         type: 'string',
-                        enum: ['PASSIVE', 'ACTIVE'],
+                        enum: ['PASSIVE', 'ACTIVE', 'AGGRESSIVE'],
                         description: 'How often the phone should keep reporting.'
                     },
                     live_ttl_s: {
