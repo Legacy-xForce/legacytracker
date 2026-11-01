@@ -78,7 +78,9 @@ Future<void> openToday(
     ),
   );
   await tester.pumpAndSettle();
-  await tester.tap(find.text('${DateTime.now().day}'));
+  // The month overview below can show the same number (e.g. "1" day with
+  // trips on the 1st); the calendar is above it.
+  await tester.tap(find.text('${DateTime.now().day}').first);
   await tester.pumpAndSettle();
 }
 

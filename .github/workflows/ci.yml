@@ -25,14 +25,15 @@ jobs:
         working-directory: src/client
       - name: Cache Gradle
         uses: ./.github/actions/gradle-cache
-      # The native tracking engine's safety net: PathSampler, StopDetector and
-      # the drive simulation. :app only, plugin modules ship tests of their own.
-      - name: Engine unit tests (Kotlin)
-        run: ./gradlew :app:testDebugUnitTest
-        working-directory: src/client/android
       - name: Build release APK
         run: flutter build apk --release
         working-directory: src/client
+      # The native tracking engine's safety net: PathSampler, StopDetector,
+      # the drive simulation and the shared vectors. :app only, plugin modules ship
+      # tests of their own. After the APK build: that is what generates gradlew.
+      - name: Engine unit tests (Kotlin)
+        run: ./gradlew :app:testDebugUnitTest
+        working-directory: src/client/android
       # No key.properties on CI, so Gradle falls back to the runner's debug key.
       # The release workflow re-signs this APK with the release key; publishing
       # it as it is here would be refused by every installed phone.
@@ -63,6 +64,37 @@ jobs:
         with:
           name: ios-unsigned-ipa
           path: src/client/build/ios/ipa/LegacyTracker.ipa
+
+      # The Swift engine replays the vectors the Kotlin tests write
+      # (src/client/test/fixtures/tracking-vectors.json). A simulator build
+      # is slow, so only when either engine or the vectors changed.
+      - name: Did either tracking engine change?
+        id: engine
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = pull_request ]; then
+            files=$(gh pr diff ${{ github.event.pull_request.number }} --name-only -R ${{ github.repository }})
+          else
+            files=$(gh api "repos/${{ github.repository }}/compare/${{ github.event.before }}...${{ github.sha }}" -q '.files[].filename' || echo src/client/ios/)
+          fi
+          if grep -qE '^(src/client/ios/|src/client/test/fixtures/tracking-vectors\.json|src/client/android/app/src/main/kotlin/com/legacy/legacytracker/tracking/)' <<<"$files"; then
+            echo changed=true >> "$GITHUB_OUTPUT"
+          fi
+      - name: Engine unit tests (Swift)
+        if: steps.engine.outputs.changed == 'true'
+        working-directory: src/client
+        run: |
+          set -o pipefail
+          flutter build ios --config-only --simulator --debug
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          devices = json.load(sys.stdin)["devices"]
+          print(next(d["udid"] for runtime, ds in devices.items() if "iOS" in runtime for d in ds if d["name"].startswith("iPhone")))
+          ')
+          xcodebuild test -workspace ios/Runner.xcworkspace -scheme Runner \
+            -destination "id=$udid" -only-testing:RunnerTests/TrackingVectorsTests \
+            CODE_SIGNING_ALLOWED=NO | tail -n 80
 
   web:
     name: Check web app

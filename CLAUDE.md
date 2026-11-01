@@ -44,7 +44,8 @@ flutter test test/sharing_test.dart
 flutter run --dart-define=BACKEND_URL=http://10.0.2.2:3000   # debug/profile only
 flutter run -t lib/main_mapcheck.dart -d <device> \
   --dart-define=MAPBOX_TOKEN=pk.…                            # standalone map spike, no login/backend
-cd android && ./gradlew testDebugUnitTest                    # Kotlin engine tests (PathSampler, StopDetector, DriveSimulation)
+cd android && ./gradlew testDebugUnitTest                    # Kotlin engine tests (PathSampler, StopDetector, DriveSimulation, shared vectors)
+UPDATE_TRACKING_VECTORS=1 ./gradlew :app:testDebugUnitTest   # after an intended engine change: rewrite test/fixtures/tracking-vectors.json, then make the Swift engine match (ios RunnerTests/TrackingVectorsTests)
 ```
 `scripts/simulate-drive.mjs` simulates a GPS drive: `node scripts/simulate-drive.mjs --server http://localhost:3000 --token <write API token>` (`--server` is required, there is no production default).
 
@@ -53,7 +54,7 @@ Releasing Android: bump the build number after `+` in `src/client/pubspec.yaml`,
 ## Architecture
 
 ### Tracking pipeline (spans client, server, FCM)
-- The engine is native (`android/.../tracking/`, `ios/Runner/TrackingEngine.swift`) and runs with no Flutter engine: stationary (no GPS) -> moving (GPS, `PathSampler` line simplification -> local queue) -> stationary (`StopDetector`). It uploads in batches with a long-lived **device token**, immediately while "live". Dart's `tracking_engine.dart` is just the method/event-channel bridge for the UI.
+- The engine is native (`android/.../tracking/`, `ios/Runner/Tracking/`, one Swift file per Kotlin one) and runs with no Flutter engine: stationary (no GPS) -> moving (GPS, `PathSampler` line simplification -> local queue) -> stationary (`StopDetector`). It uploads in batches with a long-lived **device token**, immediately while "live". Dart's `tracking_engine.dart` is just the method/event-channel bridge for the UI.
 - **Live mode**: devices stream in realtime only while some viewer has a map open. Clients send `{type:"map_active"}` over the WebSocket; `live-controller.ts` debounces/renews that state and `fcm-service.ts` pushes `lt_cmd: live|idle` data messages to all registered devices. `POST /api/v1/location` replies with `live_ttl_s`. `source: "live"` points are broadcast but **never stored**; inserts are idempotent on `(user_id, recorded_at)`.
 - Server keeps per-user state in memory (last location, "here since" via `dwell-tracker.ts`, viewer presence) but WebSocket snapshots fall back to stored rows so a restart is safe. `session-builder.ts` turns stored points into trips for history/replay.
 - Auth is Legacy Auth (separate service, `auth.legacy-group.tech`, an OpenID Provider): the server verifies JWTs against its JWKS and takes identity from `sub`. Clients sign in with Authorization Code + PKCE (`tracker-spa` on the web, `tracker-mobile` in the app); there is no login form. OP access tokens (`typ: at+jwt`, `aud: tracker`) are authorized by `scope` (`tracker.read` / `tracker.write`) in `services/access-token.ts`; legacy password-login tokens are still accepted until the cleanup phase (`docs/oidc-migration.md`). Legacy Auth signs sessions out through `POST /auth/backchannel-logout`. WebSocket access uses single-use tickets (`POST /api/v1/streams/ticket`), not the JWT.

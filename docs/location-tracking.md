@@ -47,7 +47,7 @@ How Legacy Tracker records, stores and shares positions. Supersedes
 ```
 
 The engine is **native** (`android/app/src/main/kotlin/.../tracking/`,
-`ios/Runner/TrackingEngine.swift`) and runs without any Flutter engine, so OS
+`ios/Runner/Tracking/`, one Swift file per Kotlin one) and runs without any Flutter engine, so OS
 wake-ups cost milliseconds of native code instead of booting Dart.
 
 ### States and triggers
@@ -56,11 +56,14 @@ wake-ups cost milliseconds of native code instead of booting Dart.
 |---|---|---|
 | Stationary → moving | Geofence exit (150 m around the parking spot, `INITIAL_TRIGGER_EXIT` on re-arm); Activity Recognition `IN_VEHICLE`/`ON_BICYCLE`/`RUNNING` enter; balanced-power fix > 150 m away (15 min, piggybacks other apps); app open & moved > 60 m | Region exit (150 m) — relaunches a terminated app; significant-location-change; visit departure; app open & moved > 60 m |
 | Moving | FLP high accuracy, 2 s (batched 30 s), 1 s while live/visible, 5 s in battery saver; foreground service | Standard updates, best accuracy, `pausesLocationUpdatesAutomatically = false` |
-| Moving → stationary | Every fix within 40 m (or 1.5× accuracy) of the stop's first fix *and* centre for 5 min (2 min if activity says STILL); or no fix for 5 min | Same |
+| Moving → stationary | Every fix within 40 m (or 1.5× accuracy) of the stop's first fix *and* centre for 5 min (2 min if activity says STILL); or no fix for 5 min | Same, with 2 min after 2 min of GPS speeds under 0.5 m/s standing in for STILL |
+| App on screen, parked | 1 s high accuracy until the app-open fix (or a ping, or while live), then balanced power every 10 s / 25 m | Best accuracy until that fix, then hundred-metre accuracy with a 25 m filter |
 | Wake-up safety net | WorkManager watchdog every 30 min (re-arm, resume a killed trip, heartbeat, flush); boot/app-update receiver | BGAppRefresh (opportunistic) |
 
 Walking does not start a trip by itself (that would run GPS for every walk
-around the house); leaving the 150 m geofence does.
+around the house); leaving the 150 m geofence does. A trip that never got
+150 m from where it started is GPS wander and is dropped before upload (both
+engines; a trip resumed after a relaunch is always kept).
 
 ### The Android notification
 
@@ -260,8 +263,11 @@ drawer. Admins get no exception.
 
 ## On-device checklist
 
-The Kotlin engine is compiled and its sampling/stop logic unit-tested; the
-Swift engine has not been compiled (needs Xcode). Verify on real devices:
+Both engines are compiled by CI. The Kotlin sampling/stop logic is unit-tested
+and writes `src/client/test/fixtures/tracking-vectors.json`; the Swift
+`TrackingVectorsTests` replays that file, so the two copies must store the same
+points (CI runs it on a simulator when either engine changes). Verify on real
+devices:
 
 - [ ] iOS: builds; "Always" prompt flow; drive with the app swiped away →
       trip recorded and uploaded; parked overnight → resumes next morning.

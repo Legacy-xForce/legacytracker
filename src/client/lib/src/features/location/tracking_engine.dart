@@ -138,7 +138,7 @@ class TrackingLogEntry {
 }
 
 /// Dart side of the native tracking engine
-/// (android/.../tracking/TrackingEngine.kt, ios/Runner/TrackingEngine.swift).
+/// (android/.../tracking/TrackingEngine.kt, ios/Runner/Tracking/TrackingEngine.swift).
 ///
 /// The engine records, stores and uploads entirely in native code, with no
 /// Flutter engine running, so tracking continues while the app is closed.
