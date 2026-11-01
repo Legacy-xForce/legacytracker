@@ -999,10 +999,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
     // Created here, not lazily: a detail pane for someone who does not share
     // with you never references it in build(), and disposing an uncreated
     // `late final` controller used to build it too late (in dispose()).
-    _spin = AnimationController(
-      vsync: this,
-      duration: AppMotion.spin,
-    );
+    _spin = AnimationController(vsync: this, duration: AppMotion.spin);
     _todaySessions = _loadTodaySessions();
   }
 
@@ -1242,7 +1239,7 @@ class _UserDetailPaneState extends State<_UserDetailPane>
                 child: _StatCard(
                   icon: Icons.speed_rounded,
                   label: 'Speed',
-                  value: '${(loc.speed * 3.6).round()} km/h',
+                  value: '${msToKmh(loc.speed).round()} km/h',
                 ),
               ),
               const SizedBox(width: 10),

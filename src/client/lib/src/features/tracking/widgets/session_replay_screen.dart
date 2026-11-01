@@ -93,11 +93,7 @@ class SessionReplayScreen extends StatefulWidget {
 /// One point on the replay clock: which recorded fix was last passed, where
 /// the marker is between it and the next, and which way it is facing.
 class ReplayFix {
-  const ReplayFix({
-    required this.index,
-    required this.point,
-    this.heading,
-  });
+  const ReplayFix({required this.index, required this.point, this.heading});
 
   final int index;
   final LatLng point;
@@ -280,9 +276,10 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
       headings: [for (final point in _route) point.heading],
     );
     _scene.polylines = _buildRouteLines();
-    _playController = AnimationController(vsync: this, duration: _track.duration)
-      ..addListener(_handleTick)
-      ..addStatusListener(_handleStatus);
+    _playController =
+        AnimationController(vsync: this, duration: _track.duration)
+          ..addListener(_handleTick)
+          ..addStatusListener(_handleStatus);
     _displayedPoint = _latLngs.isNotEmpty ? _latLngs.first : null;
     _displayedHeading = _route.isNotEmpty ? _route.first.heading : null;
     _syncReadout();
@@ -320,7 +317,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     final current = _route[index];
     final currentPoint = _displayedPoint ?? _latLngs[index];
     final moving = current.isMoving;
-    final speedKmh = current.speed * 3.6;
+    final speedKmh = msToKmh(current.speed);
     final speedBucket = moving ? (speedKmh / 5).round() * 5 : -1;
     final heading = _displayedHeading ?? current.heading;
     final showBeam = moving && heading != null && heading.isFinite;
@@ -444,10 +441,9 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
   /// the playhead where it is and only alters the rate.
   void _applySpeed() {
     _playController.duration = Duration(
-      milliseconds:
-          (_track.durationMs / (_playbackSpeed * _baseSpeed))
-              .round()
-              .clamp(1, 1 << 31),
+      milliseconds: (_track.durationMs / (_playbackSpeed * _baseSpeed))
+          .round()
+          .clamp(1, 1 << 31),
     );
   }
 
@@ -517,7 +513,7 @@ class _SessionReplayScreenState extends State<SessionReplayScreen>
     if (_route.isEmpty) return;
     final current = _route[_currentIndex.clamp(0, _route.length - 1)];
     final clock = formatClock(current.timestamp);
-    final speed = '${(current.speed * 3.6).round()} km/h';
+    final speed = '${(msToKmh(current.speed)).round()} km/h';
     if (clock == _clockText && speed == _speedText) return;
     if (mounted) {
       setState(() {

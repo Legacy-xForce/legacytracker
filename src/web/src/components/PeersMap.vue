@@ -54,6 +54,8 @@ interface Entry {
     peer: Peer;
     view: VueMarker<ReturnType<typeof markerProps>>;
     motion: Motion;
+    props: ReturnType<typeof markerProps>;
+    z: number;
 }
 interface Group {
     ids: string[];
@@ -109,6 +111,10 @@ function markerProps(peer: Peer) {
     };
 }
 
+function sameProps(a: Record<string, unknown>, b: Record<string, unknown>): boolean {
+    return Object.keys(b).every((key) => a[key] === b[key]);
+}
+
 interface Showable {
     addTo(map: MapboxMap): void;
 }
@@ -133,16 +139,26 @@ function sync() {
             ]);
             view.onClick(() => emit('select', peer.id));
             view.setLabel(markerLabel(peer));
-            entry = { peer, view, motion: new Motion(at) };
+            entry = { peer, view, motion: new Motion(at), props: markerProps(peer), z: -1 };
             entries.set(peer.id, entry);
         } else {
             entry.peer = peer;
-            entry.view.update(markerProps(peer));
-            entry.view.setLabel(markerLabel(peer));
+            // Re-render the marker only when something it shows changed: most passes are the
+            // staleness tick, which touches at most `stale`.
+            const next = markerProps(peer);
+            if (!sameProps(entry.props, next)) {
+                entry.props = next;
+                entry.view.update(next);
+                entry.view.setLabel(markerLabel(peer));
+            }
             glideTo(entry, at, now);
         }
         // Whoever is selected draws over everyone else.
-        entry.view.setZIndex(peer.id === props.selectedId ? 1000 : 2);
+        const z = peer.id === props.selectedId ? 1000 : 2;
+        if (entry.z !== z) {
+            entry.z = z;
+            entry.view.setZIndex(z);
+        }
     }
     for (const [id, entry] of entries) {
         if (present.has(id)) continue;

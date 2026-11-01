@@ -58,6 +58,11 @@ const VIEW_3D_KEY = 'legacytracker.view3d';
 const STYLE_KEY = 'legacytracker.mapStyle';
 const EVENTS_REFRESH_MS = 5 * 60_000;
 const SHEET_HEADER = 68;
+const TAB_OPTIONS = [
+    { id: 'people', icon: 'group', label: 'People' },
+    { id: 'travel', icon: 'directionsCar', label: 'Travel' },
+    { id: 'places', icon: 'place', label: 'Checkpoints' }
+] as const;
 let eventsTimer: ReturnType<typeof setInterval> | undefined;
 
 const mapView = ref<InstanceType<typeof PeersMap> | null>(null);
@@ -106,6 +111,9 @@ const people = computed(() =>
 );
 const onMap = computed(() => people.value.filter(hasPosition));
 const self = computed(() => peers.peers.get(selfId.value) ?? null);
+const selfPosition = computed(() =>
+    self.value && hasPosition(self.value) ? { lat: self.value.latitude!, lng: self.value.longitude! } : null
+);
 const selected = computed(() => (selectedId.value ? (peers.peers.get(selectedId.value) ?? null) : null));
 const replaying = computed(() => history.playing !== null);
 
@@ -475,11 +483,7 @@ watch(replaying, (isReplaying) => {
                         @keydown="onTabKey"
                     >
                         <button
-                            v-for="option in [
-                                { id: 'people', icon: 'group', label: 'People' },
-                                { id: 'travel', icon: 'directionsCar', label: 'Travel' },
-                                { id: 'places', icon: 'place', label: 'Checkpoints' }
-                            ] as const"
+                            v-for="option in TAB_OPTIONS"
                             :key="option.id"
                             class="flex h-11 w-12 items-center justify-center rounded-full transition-colors"
                             :class="
@@ -547,7 +551,7 @@ watch(replaying, (isReplaying) => {
                     :peer="selected"
                     :self="selected.id === selfId"
                     :now="now"
-                    :viewer="self && hasPosition(self) ? { lat: self.latitude!, lng: self.longitude! } : null"
+                    :viewer="selfPosition"
                     @history="openHistory"
                 />
                 <div v-else class="px-3 pb-4">

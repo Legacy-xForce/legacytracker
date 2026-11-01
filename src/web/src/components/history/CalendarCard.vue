@@ -93,7 +93,11 @@ function ariaLabel(cell: Cell): string {
                 <span v-for="(letter, i) in WEEKDAYS" :key="i">{{ letter }}</span>
             </div>
             <div class="mt-1.5 grid grid-cols-7">
-                <div v-for="(cell, i) in cells" :key="i" class="flex h-[46px] items-center justify-center">
+                <div
+                    v-for="(cell, i) in cells"
+                    :key="cell ? cell.date.getTime() : `blank-${i}`"
+                    class="flex h-[46px] items-center justify-center"
+                >
                     <button
                         v-if="cell"
                         class="flex h-10 min-w-10 flex-col items-center justify-center rounded-full px-1 whitespace-nowrap transition-colors"

@@ -115,8 +115,18 @@ function applyUpdate(peers: Map<string, Peer>, payload: Record<string, unknown>)
         }
     }
 
+    // A repeat of what we already hold (a roster refresh, a presence ping) changes nothing.
+    if (existing && samePeer(existing, peer)) return false;
     peers.set(id, peer);
     return true;
+}
+
+function samePeer(a: Peer, b: Peer): boolean {
+    for (const key of Object.keys(a) as (keyof Peer)[]) {
+        if (key === 'trackingIssues') continue;
+        if (a[key] !== b[key]) return false;
+    }
+    return JSON.stringify(a.trackingIssues) === JSON.stringify(b.trackingIssues);
 }
 
 /**

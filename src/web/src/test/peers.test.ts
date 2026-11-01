@@ -15,6 +15,22 @@ function roster(...users: Record<string, unknown>[]) {
 }
 
 describe('applyMessage', () => {
+    it('reports no change for an update that repeats what is held', () => {
+        const update = {
+            user_id: 'a',
+            username: 'Ada',
+            latitude: 45.1,
+            longitude: 9.2,
+            recorded_at: '2026-10-14T11:00:00Z'
+        };
+        const peers = roster(update);
+        const held = peers.get('a');
+        expect(applyMessage(peers, update)).toBe(false);
+        expect(peers.get('a')).toBe(held);
+        expect(applyMessage(peers, { ...update, latitude: 45.2 })).toBe(true);
+        expect(peers.get('a')).not.toBe(held);
+    });
+
     it('builds the roster from a snapshot, including people who never reported a position', () => {
         const peers = roster(
             {

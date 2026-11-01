@@ -1,4 +1,5 @@
 import 'location_model.dart';
+import '../../core/formatters.dart';
 
 class LocationSession {
   final DateTime startAt;
@@ -21,11 +22,9 @@ class LocationSession {
 
   Duration get duration => Duration(seconds: durationSeconds.round());
 
-  double get distanceKm => distanceMeters / 1000;
+  double get avgSpeedKmh => msToKmh(avgSpeed);
 
-  double get avgSpeedKmh => avgSpeed * 3.6;
-
-  double get topSpeedKmh => topSpeed * 3.6;
+  double get topSpeedKmh => msToKmh(topSpeed);
 
   LocationPoint? get startPoint => points.isNotEmpty ? points.first : null;
 

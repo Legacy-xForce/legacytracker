@@ -58,6 +58,9 @@ String formatDayKilometers(double meters) {
   return '${km < 1 ? 1 : km}km';
 }
 
+/// Metres per second to kilometres per hour.
+double msToKmh(double metersPerSecond) => metersPerSecond * 3.6;
+
 const monthNames = [
   'January', 'February', 'March', 'April', 'May', 'June', 'July', //
   'August', 'September', 'October', 'November', 'December',
