@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dynamic_color/dynamic_color.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +17,7 @@ import 'src/data/network/oidc_service.dart';
 import 'src/data/network/event_geocoder.dart';
 import 'src/data/network/place_search_service.dart';
 import 'src/data/network/profile_service.dart';
+import 'src/data/network/fcm_token_service.dart';
 import 'src/data/network/remote_backend.dart';
 import 'src/data/network/sharing_service.dart';
 import 'src/features/auth/auth_provider.dart';
@@ -218,6 +221,7 @@ class AuthenticatedApp extends StatefulWidget {
 class _AuthenticatedAppState extends State<AuthenticatedApp> {
   TrackingController? _trackingController;
   late final AuthProvider _auth;
+  StreamSubscription<String>? _fcmRefresh;
 
   @override
   void initState() {
@@ -230,30 +234,21 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
     try {
       final token = await FirebaseMessaging.instance.getToken();
       if (token == null) return;
-
-      final baseUrl = AppConstants.backendBaseUrl;
-      final backend = RemoteBackend(
-        baseUrl: baseUrl,
-        getAccessToken: () => _auth.accessToken ?? '',
-        selfId: widget.selfId,
-      );
-      await backend.registerFcmToken(token);
-      await backend.dispose();
-
+      await _sendFcmToken(token);
       // Re-register when the token rotates.
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
-        final b = RemoteBackend(
-          baseUrl: baseUrl,
-          getAccessToken: () => _auth.accessToken ?? '',
-          selfId: widget.selfId,
-        );
-        await b.registerFcmToken(newToken);
-        await b.dispose();
-      });
+      _fcmRefresh = FirebaseMessaging.instance.onTokenRefresh.listen(
+        _sendFcmToken,
+      );
     } catch (_) {
       // Firebase not configured — skip silently.
     }
   }
+
+  Future<void> _sendFcmToken(String token) => registerFcmToken(
+    baseUrl: AppConstants.backendBaseUrl,
+    accessToken: _auth.accessToken ?? '',
+    token: token,
+  );
 
   @override
   void didChangeDependencies() {
@@ -286,6 +281,7 @@ class _AuthenticatedAppState extends State<AuthenticatedApp> {
 
   @override
   void dispose() {
+    _fcmRefresh?.cancel();
     _trackingController?.dispose();
     super.dispose();
   }

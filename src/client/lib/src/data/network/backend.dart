@@ -11,10 +11,6 @@ abstract class Backend {
 
   Future<void> initialize();
 
-  /// Register a device FCM token so the server can push tracking commands
-  /// (e.g. "someone opened the map — stream live").
-  Future<void> registerFcmToken(String token);
-
   /// Tell the server whether the live map tab is currently in the
   /// foreground. Every viewer sees every driver's pin on the same map, so
   /// the server only asks devices to stream live while some map is actually

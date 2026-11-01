@@ -7,6 +7,7 @@ import 'package:http/testing.dart';
 
 import 'package:legacytracker/src/core/theme.dart';
 import 'package:legacytracker/src/data/models/api_token.dart';
+import 'package:legacytracker/src/data/network/api_client.dart';
 import 'package:legacytracker/src/data/network/api_token_service.dart';
 import 'package:legacytracker/src/features/auth/api_tokens_screen.dart';
 
@@ -183,7 +184,7 @@ void main() {
       expect(
         service.create('jwt', name: '', scope: ApiTokenScope.read),
         throwsA(
-          isA<ApiTokenException>().having(
+          isA<ApiException>().having(
             (e) => e.message,
             'message',
             'You already have 25 API tokens.',
@@ -282,7 +283,7 @@ void main() {
       expect(
         service.updateAllowedIps('jwt', 'tok-1', ['nope']),
         throwsA(
-          isA<ApiTokenException>().having(
+          isA<ApiException>().having(
             (e) => e.message,
             'message',
             '`nope` is not an IP address',

@@ -2,32 +2,22 @@ import 'dart:convert';
 
 import 'package:http/http.dart' as http;
 
-/// A request the server refused, with a message safe to show to the user.
-class SharingException implements Exception {
-  SharingException(this.message);
-
-  final String message;
-
-  @override
-  String toString() => message;
-}
+import 'api_client.dart';
 
 /// Which users the signed-in user has switched location sharing off for.
 /// Sharing is on by default, so the server only tracks the exceptions.
 class SharingService {
   SharingService({required String baseUrl, http.Client? httpClient})
-    : _baseUri = Uri.parse(baseUrl),
-      _httpClient = httpClient ?? http.Client();
+    : _api = ApiClient(baseUrl: baseUrl, httpClient: httpClient);
 
-  final Uri _baseUri;
-  final http.Client _httpClient;
+  final ApiClient _api;
 
   /// Ids of the users we are not sharing our location with.
   Future<Set<String>> fetchHiddenFrom(String accessToken) async {
-    final response = await _send(
-      () => _httpClient.get(
-        _baseUri.replace(path: '/api/v1/sharing'),
-        headers: _headers(accessToken),
+    final response = await _api.send(
+      () => _api.httpClient.get(
+        _api.uri('/api/v1/sharing'),
+        headers: _api.headers(accessToken),
       ),
     );
     _check(response);
@@ -40,12 +30,10 @@ class SharingService {
     String viewerId, {
     required bool enabled,
   }) async {
-    final response = await _send(
-      () => _httpClient.put(
-        _baseUri.replace(
-          path: '/api/v1/sharing/${Uri.encodeComponent(viewerId)}',
-        ),
-        headers: _headers(accessToken),
+    final response = await _api.send(
+      () => _api.httpClient.put(
+        _api.uri('/api/v1/sharing/${Uri.encodeComponent(viewerId)}'),
+        headers: _api.headers(accessToken, json: true),
         body: jsonEncode({'enabled': enabled}),
       ),
     );
@@ -58,28 +46,13 @@ class SharingService {
     return (body['hidden_from'] as List<dynamic>).cast<String>().toSet();
   }
 
-  Map<String, String> _headers(String accessToken) => {
-    'content-type': 'application/json',
-    'authorization': 'Bearer $accessToken',
-  };
-
-  Future<http.Response> _send(Future<http.Response> Function() request) async {
-    try {
-      return await request().timeout(const Duration(seconds: 15));
-    } on Exception {
-      throw SharingException(
-        'Unable to reach the server. Check your connection and try again.',
-      );
-    }
-  }
-
   void _check(http.Response response) {
     if (response.statusCode == 200) return;
     switch (response.statusCode) {
       case 404:
-        throw SharingException('This user no longer exists.');
+        throw ApiException('This user no longer exists.');
       default:
-        throw SharingException(
+        throw ApiException(
           'Something went wrong (${response.statusCode}). Try again.',
         );
     }

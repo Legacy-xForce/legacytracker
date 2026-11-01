@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:legacytracker/src/data/models/checkpoint.dart';
 import 'package:legacytracker/src/data/models/location_model.dart';
+import 'package:legacytracker/src/data/network/api_client.dart';
 import 'package:legacytracker/src/data/network/checkpoint_service.dart';
 import 'package:legacytracker/src/features/checkpoints/checkpoints_provider.dart';
 import 'package:legacytracker/src/features/tracking/widgets/tracking_location_street_label.dart';
@@ -57,7 +58,7 @@ void main() {
       final service = serviceFor(409);
       await expectLater(
         service.create('t', name: 'Home', latitude: 1, longitude: 1, radiusM: 50),
-        throwsA(isA<CheckpointException>().having((e) => e.nameTaken, 'nameTaken', true)),
+        throwsA(isA<ApiException>().having((e) => e.status, 'status', 409)),
       );
     });
 
