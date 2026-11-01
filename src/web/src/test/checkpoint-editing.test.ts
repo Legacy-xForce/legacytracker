@@ -154,6 +154,19 @@ describe('places panel', () => {
         wrapper.unmount();
     });
 
+    it('draws the radius slider as the themed M3 one, filled to the chosen radius', async () => {
+        const wrapper = await mountPanel();
+        await wrapper.findAll('[data-checkpoint] button')[0].trigger('click');
+        const slider = wrapper.find('.m3-slider input[type="range"]');
+        expect(slider.exists()).toBe(true);
+        const fill = () => (wrapper.find('.m3-slider').element as HTMLElement).style.getPropertyValue('--fill');
+        const before = fill();
+        await slider.setValue('300');
+        const after = fill();
+        expect(parseFloat(after)).toBeGreaterThan(parseFloat(before));
+        wrapper.unmount();
+    });
+
     it('follows the crosshair while editing', async () => {
         const wrapper = await mountPanel();
         await wrapper.find('[data-add]').trigger('click');

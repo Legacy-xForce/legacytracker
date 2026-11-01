@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app_updater.dart';
 import '../../core/tokens.dart';
+import '../../core/wavy_progress_indicator.dart';
 
 /// A small "update available" banner for screens shown before sign-in.
 ///
@@ -167,10 +168,11 @@ class _AppUpdateBannerState extends State<AppUpdateBanner>
             if (status.downloading)
               Padding(
                 padding: const EdgeInsets.fromLTRB(34, 8, 4, 2),
-                child: LinearProgressIndicator(
-                  value: status.progress,
+                child: WavyLinearProgressIndicator(
+                  value: status.progress ?? 0,
                   color: foreground,
-                  backgroundColor: foreground.withValues(alpha: 0.15),
+                  trackColor: foreground.withValues(alpha: 0.24),
+                  semanticsLabel: 'Download progress',
                 ),
               ),
           ],

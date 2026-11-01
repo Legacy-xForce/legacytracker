@@ -2,6 +2,7 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import ConfirmDialog from '../ui/ConfirmDialog.vue';
 import Icon from '../ui/Icon.vue';
+import Slider from '../ui/Slider.vue';
 import Spinner from '../ui/Spinner.vue';
 import TextField from '../ui/TextField.vue';
 import { searchPlaces, type PlaceResult } from '../../lib/places';
@@ -244,15 +245,14 @@ onBeforeUnmount(() => {
 
             <label class="type-label-lg block px-2">
                 Radius: {{ Math.round(radius) }} m
-                <input
-                    v-model.number="radius"
-                    type="range"
+                <Slider
+                    v-model="radius"
                     :min="MIN_RADIUS_M"
                     :max="MAX_RADIUS_M"
-                    step="1"
                     :disabled="readOnly"
-                    class="accent-primary mt-2 w-full"
-                    aria-label="Radius in metres"
+                    :value-label="`${Math.round(radius)} m`"
+                    label="Radius in metres"
+                    class="mt-1"
                 />
             </label>
 

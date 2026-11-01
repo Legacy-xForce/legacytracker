@@ -4,6 +4,7 @@ import { Marker } from 'mapbox-gl';
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import PeerMarker from './map/PeerMarker.vue';
 import Icon from './ui/Icon.vue';
+import Slider from './ui/Slider.vue';
 import UserAvatar from './UserAvatar.vue';
 import type { HistorySession } from '../api/history';
 import { framePadding, holdAt, visibleCenter, type Insets } from '../lib/camera';
@@ -27,9 +28,6 @@ const playing = ref(false);
 const speed = ref<number>(1);
 const position = computed(() => props.track.positionAt(elapsed.value));
 const current = computed(() => props.track.points[position.value.index]);
-const progress = computed(() =>
-    props.track.points.length > 1 ? (position.value.index / (props.track.points.length - 1)) * 100 : 0
-);
 
 const ROUTE_SOURCE = 'lt-replay-route';
 const EDGE_SOURCE = 'lt-replay-edge';
@@ -243,9 +241,9 @@ function stop() {
     cancelAnimationFrame(frame);
 }
 
-function seek(event: Event) {
+function seek(index: number) {
     stop();
-    elapsed.value = props.track.starts[Number((event.target as HTMLInputElement).value)] ?? 0;
+    elapsed.value = props.track.starts[index] ?? 0;
     follow = true;
     render();
 }
@@ -303,16 +301,15 @@ onBeforeUnmount(() => {
                 <span data-testid="replay-time">{{ formatClock(current.recordedAt) }}</span>
                 <span>{{ formatSpeed(current.speed) }}</span>
             </div>
-            <input
-                type="range"
-                class="m3-slider my-3"
-                aria-label="Position in the trip"
-                min="0"
+            <Slider
+                class="my-1"
+                label="Position in the trip"
+                :value-label="formatClock(current.recordedAt)"
+                :min="0"
                 :max="track.points.length - 1"
-                :value="position.index"
+                :model-value="position.index"
                 :disabled="track.points.length < 2"
-                :style="{ '--progress': `${progress}%` }"
-                @input="seek"
+                @update:model-value="seek"
             />
             <div class="flex items-center gap-4">
                 <div

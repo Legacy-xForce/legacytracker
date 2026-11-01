@@ -82,8 +82,12 @@ void main() {
 
   test('the four durations are 100, 200, 300 and 500 ms', () {
     expect(
-      [AppMotion.short, AppMotion.medium, AppMotion.long, AppMotion.extraLong]
-          .map((d) => d.inMilliseconds),
+      [
+        AppMotion.short,
+        AppMotion.medium,
+        AppMotion.long,
+        AppMotion.extraLong,
+      ].map((d) => d.inMilliseconds),
       [100, 200, 300, 500],
     );
   });
@@ -95,7 +99,9 @@ void main() {
       if (file.path.endsWith('core/tokens.dart')) continue;
       final lines = file.readAsLinesSync();
       for (var i = 0; i < lines.length; i++) {
-        if (RegExp(r'duration: const Duration\(milliseconds').hasMatch(lines[i])) {
+        if (RegExp(
+          r'duration: const Duration\(milliseconds',
+        ).hasMatch(lines[i])) {
           offenders.add('${file.path}:${i + 1}');
         }
       }

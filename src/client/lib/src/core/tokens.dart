@@ -42,6 +42,12 @@ abstract final class AppMotion {
   /// duration that does not collapse.
   static const spin = Duration(milliseconds: 900);
 
+  /// A wavy progress bar's wave travelling one wavelength (M3 Expressive: 40
+  /// dp at about 20 dp/s). Like [spin] it is looping decoration, not a
+  /// transition, so it does not collapse - reduced motion freezes the wave
+  /// instead, see `WavyLinearProgressIndicator`.
+  static const wave = Duration(seconds: 2);
+
   static const standard = Cubic(0.2, 0, 0, 1);
   static const emphasized = Curves.easeInOutCubicEmphasized;
   static const emphasizedDecelerate = Cubic(0.05, 0.7, 0.1, 1);
