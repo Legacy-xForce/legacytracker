@@ -61,8 +61,7 @@ export type ApiTokenInput =
   | { ok: false; error: string };
 
 export type AllowedIpsInput =
-  | { ok: true; value: string[] }
-  | { ok: false; error: string };
+  { ok: true; value: string[] } | { ok: false; error: string };
 
 interface ApiTokenRow {
   id: string;
@@ -125,7 +124,7 @@ export function validateApiTokenInput(body: unknown): ApiTokenInput {
   const input = (body ?? {}) as Record<string, unknown>;
   const scope = input.scope;
   if (scope !== "read" && scope !== "write") {
-    return { ok: false, error: "`scope` must be \"read\" or \"write\"" };
+    return { ok: false, error: '`scope` must be "read" or "write"' };
   }
   if (input.name !== undefined && typeof input.name !== "string") {
     return { ok: false, error: "`name` must be a string" };
@@ -301,8 +300,7 @@ export function parseAllowedIps(value: unknown): AllowedIpsInput {
   }
   const entries: string[] = [];
   for (const item of value) {
-    const entry =
-      typeof item === "string" ? parseCidr(item) : null;
+    const entry = typeof item === "string" ? parseCidr(item) : null;
     if (!entry) {
       return {
         ok: false,

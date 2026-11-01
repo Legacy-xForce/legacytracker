@@ -1,6 +1,5 @@
 export type HistoryRangeResult =
-  | { ok: true; from: Date; to: Date }
-  | { ok: false; error: string };
+  { ok: true; from: Date; to: Date } | { ok: false; error: string };
 
 /**
  * Validates the `from`/`to` of a history deletion. Both are required and the

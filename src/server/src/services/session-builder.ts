@@ -45,12 +45,16 @@ function haversineMeters(a: HistoryPoint, b: HistoryPoint): number {
   const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
 
   const h =
-    Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
 
 function minutesBetween(a: HistoryPoint, b: HistoryPoint): number {
-  return (new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()) / 60000;
+  return (
+    (new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime()) /
+    60000
+  );
 }
 
 function summarize(points: HistoryPoint[]): LocationSession | null {
@@ -65,7 +69,10 @@ function summarize(points: HistoryPoint[]): LocationSession | null {
   for (let i = 0; i < points.length; i += 1) {
     speedSum += points[i].speed;
     topSpeed = Math.max(topSpeed, points[i].speed);
-    extentMeters = Math.max(extentMeters, haversineMeters(points[0], points[i]));
+    extentMeters = Math.max(
+      extentMeters,
+      haversineMeters(points[0], points[i]),
+    );
     if (i > 0) {
       distanceMeters += haversineMeters(points[i - 1], points[i]);
     }
@@ -93,7 +100,10 @@ function summarize(points: HistoryPoint[]): LocationSession | null {
     distanceMeters,
     // Points are recorded adaptively (dense in turns, sparse on straights),
     // so a per-sample mean would be biased towards slow, twisty stretches.
-    avgSpeed: durationSeconds > 0 ? distanceMeters / durationSeconds : speedSum / points.length,
+    avgSpeed:
+      durationSeconds > 0
+        ? distanceMeters / durationSeconds
+        : speedSum / points.length,
     topSpeed,
     pointCount: points.length,
     points,

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildSessions, type HistoryPoint } from "../src/services/session-builder";
+import {
+  buildSessions,
+  type HistoryPoint,
+} from "../src/services/session-builder";
 
 const T0 = Date.parse("2026-10-01T08:00:00.000Z");
 

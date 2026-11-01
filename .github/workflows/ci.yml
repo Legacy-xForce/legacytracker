@@ -12,14 +12,11 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
+      - uses: actions/setup-java@v6
         with:
-          channel: stable
-          flutter-version: 3.44.0
-          cache: true
-      - name: Install Flutter dependencies
-        run: flutter pub get
-        working-directory: src/client
+          distribution: temurin
+          java-version: '21'
+      - uses: ./.github/actions/flutter-env
       - name: Analyze
         run: flutter analyze
         working-directory: src/client
@@ -27,14 +24,12 @@ jobs:
         run: flutter test
         working-directory: src/client
       - name: Cache Gradle
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('src/client/android/**/*.gradle*', 'src/client/android/**/gradle-wrapper.properties', 'src/client/pubspec.lock') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+        uses: ./.github/actions/gradle-cache
+      # The native tracking engine's safety net: PathSampler, StopDetector and
+      # the drive simulation. :app only, plugin modules ship tests of their own.
+      - name: Engine unit tests (Kotlin)
+        run: ./gradlew :app:testDebugUnitTest
+        working-directory: src/client/android
       - name: Build release APK
         run: flutter build apk --release
         working-directory: src/client
@@ -52,21 +47,9 @@ jobs:
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.44.0
-          cache: true
-      - name: Install Flutter dependencies
-        run: flutter pub get
-        working-directory: src/client
+      - uses: ./.github/actions/flutter-env
       - name: Cache Swift Package Manager
-        uses: actions/cache@v6
-        with:
-          path: ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('src/client/pubspec.lock', 'src/client/ios/Runner.xcodeproj/project.pbxproj') }}
-          restore-keys: |
-            spm-${{ runner.os }}-
+        uses: ./.github/actions/spm-cache
       - name: Build iOS release app without code signing
         run: flutter build ios --release --no-codesign
         working-directory: src/client
@@ -74,12 +57,7 @@ jobs:
       # Flutter cannot export an IPA with --no-codesign. Package the unsigned
       # app using the standard IPA Payload layout for artifact handoff.
       - name: Package unsigned IPA
-        run: |
-          mkdir -p build/ios/ipa/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
-          cd build/ios/ipa
-          ditto -c -k --sequesterRsrc --keepParent Payload LegacyTracker.ipa
-        working-directory: src/client
+        uses: ./.github/actions/package-ipa
       - name: Upload unsigned iOS IPA artifact
         uses: actions/upload-artifact@v7
         with:
@@ -108,6 +86,25 @@ jobs:
           # Public Mapbox token, restricted to the app's origins. The build
           # fails clearly when it is missing (see docs/mapbox.md).
           VITE_MAPBOX_TOKEN: ${{ secrets.MAPBOX_TOKEN_WEB }}
+
+  server:
+    name: Check server
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: src/server/package-lock.json
+      - run: npm ci
+        working-directory: src/server
+      - run: npm run format:check
+        working-directory: src/server
+      - run: npm run build
+        working-directory: src/server
+      - run: npm test
+        working-directory: src/server
 
   server-docker-meta:
     name: Prepare server image metadata

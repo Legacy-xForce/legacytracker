@@ -4,11 +4,17 @@ import { test } from "node:test";
 import { hasTrackerScope, isForTracker } from "../src/services/tracker-scope";
 
 test("a token granting the tracker scope is accepted", () => {
-  assert.equal(hasTrackerScope({ scopes: { calendar: false, tracker: true } }), true);
+  assert.equal(
+    hasTrackerScope({ scopes: { calendar: false, tracker: true } }),
+    true,
+  );
 });
 
 test("a token without the tracker scope is refused", () => {
-  assert.equal(hasTrackerScope({ scopes: { calendar: true, tracker: false } }), false);
+  assert.equal(
+    hasTrackerScope({ scopes: { calendar: true, tracker: false } }),
+    false,
+  );
   assert.equal(hasTrackerScope({ scopes: { calendar: true } }), false);
   assert.equal(hasTrackerScope({ scopes: {} }), false);
 });

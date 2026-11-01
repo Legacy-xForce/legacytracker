@@ -35,12 +35,18 @@ test("invalid names are refused", () => {
     validateCheckpointInput({ ...valid, name: "x".repeat(61) }).ok,
     false,
   );
-  assert.equal(validateCheckpointInput({ ...valid, name: "x".repeat(60) }).ok, true);
+  assert.equal(
+    validateCheckpointInput({ ...valid, name: "x".repeat(60) }).ok,
+    true,
+  );
 });
 
 test("coordinates must be in range", () => {
   assert.equal(validateCheckpointInput({ ...valid, latitude: 91 }).ok, false);
-  assert.equal(validateCheckpointInput({ ...valid, longitude: -181 }).ok, false);
+  assert.equal(
+    validateCheckpointInput({ ...valid, longitude: -181 }).ok,
+    false,
+  );
   assert.equal(validateCheckpointInput({ ...valid, latitude: "45" }).ok, false);
   assert.equal(validateCheckpointInput({ ...valid, latitude: NaN }).ok, false);
 });
@@ -51,7 +57,10 @@ test("the radius is limited to 10-250 whole metres", () => {
   assert.equal(validateCheckpointInput({ ...valid, radius_m: 250 }).ok, true);
   assert.equal(validateCheckpointInput({ ...valid, radius_m: 251 }).ok, false);
   assert.equal(validateCheckpointInput({ ...valid, radius_m: 50.5 }).ok, false);
-  assert.equal(validateCheckpointInput({ ...valid, radius_m: undefined }).ok, false);
+  assert.equal(
+    validateCheckpointInput({ ...valid, radius_m: undefined }).ok,
+    false,
+  );
 });
 
 test("a non-object body is refused", () => {

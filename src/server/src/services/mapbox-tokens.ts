@@ -64,7 +64,12 @@ export class MapboxTokenRequestError extends Error {
   }
 }
 
-function bounded(value: number | undefined, fallback: number, min: number, max: number): number {
+function bounded(
+  value: number | undefined,
+  fallback: number,
+  min: number,
+  max: number,
+): number {
   if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
   return Math.min(max, Math.max(min, Math.floor(value)));
 }
@@ -112,7 +117,10 @@ export class MapboxTokenService {
     }
     const cached = this.cache.get(userId);
     if (cached && cached.refreshAt > this.now()) {
-      return { token: cached.token, expiresAt: new Date(cached.expiresAt).toISOString() };
+      return {
+        token: cached.token,
+        expiresAt: new Date(cached.expiresAt).toISOString(),
+      };
     }
 
     let request = this.pending.get(userId);
@@ -124,7 +132,10 @@ export class MapboxTokenService {
     }
     const minted = await request;
     this.cache.set(userId, minted);
-    return { token: minted.token, expiresAt: new Date(minted.expiresAt).toISOString() };
+    return {
+      token: minted.token,
+      expiresAt: new Date(minted.expiresAt).toISOString(),
+    };
   }
 
   private async mint(): Promise<CachedToken> {
@@ -155,16 +166,21 @@ export class MapboxTokenService {
       );
     }
 
-    const body = (await response.json().catch(() => null)) as
-      | { token?: unknown; expires?: unknown }
-      | null;
+    const body = (await response.json().catch(() => null)) as {
+      token?: unknown;
+      expires?: unknown;
+    } | null;
     if (!body || typeof body.token !== "string" || body.token.length === 0) {
-      throw new MapboxTokenRequestError("Mapbox token response did not contain a token");
+      throw new MapboxTokenRequestError(
+        "Mapbox token response did not contain a token",
+      );
     }
 
     const reportedExpiry =
       typeof body.expires === "string" ? Date.parse(body.expires) : Number.NaN;
-    const actualExpiry = Number.isFinite(reportedExpiry) ? reportedExpiry : expiresAt;
+    const actualExpiry = Number.isFinite(reportedExpiry)
+      ? reportedExpiry
+      : expiresAt;
     const refreshAt = Math.max(
       issuedAt + 1000,
       actualExpiry - this.refreshMarginSeconds * 1000,

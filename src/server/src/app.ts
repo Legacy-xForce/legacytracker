@@ -26,10 +26,7 @@ import {
   canModifyCheckpoint,
   validateCheckpointInput,
 } from "./services/checkpoints";
-import {
-  CLOUDFLARE_CIDRS,
-  clientAddressOf,
-} from "./services/client-address";
+import { CLOUDFLARE_CIDRS, clientAddressOf } from "./services/client-address";
 import ConnectionManager from "./services/connection-manager";
 import { DeviceAuth } from "./services/device-auth";
 import {
@@ -48,7 +45,10 @@ import {
   sendRefreshCommand,
   sendTrackingCommand,
 } from "./services/fcm-service";
-import { LiveController, type TrackingCommand } from "./services/live-controller";
+import {
+  LiveController,
+  type TrackingCommand,
+} from "./services/live-controller";
 import { LocationRefreshCoordinator } from "./services/location-refresh";
 import {
   MapboxNotConfiguredError,
@@ -63,11 +63,7 @@ import {
   type TravelTotals,
 } from "./services/leaderboard";
 import { buildSessions, type HistoryPoint } from "./services/session-builder";
-import {
-  messageFor,
-  redactedEntry,
-  SharingRegistry,
-} from "./services/sharing";
+import { messageFor, redactedEntry, SharingRegistry } from "./services/sharing";
 import {
   verifyAccessToken,
   verifyLogoutToken,
@@ -98,7 +94,8 @@ const AUTH_ALLOWED_CLIENTS = (
   .map((client) => client.trim())
   .filter((client) => client.length > 0);
 // Android builds older than this must update before they can be used.
-const ANDROID_MIN_SUPPORTED_CODE = Number(process.env.ANDROID_MIN_SUPPORTED_CODE ?? 0) || 0;
+const ANDROID_MIN_SUPPORTED_CODE =
+  Number(process.env.ANDROID_MIN_SUPPORTED_CODE ?? 0) || 0;
 // The only client that may register devices (mint device tokens) and ask for
 // Mapbox temporary tokens. The web uses a URL-restricted public token instead.
 const AUTH_MOBILE_CLIENT = process.env.AUTH_MOBILE_CLIENT ?? "tracker-mobile";
@@ -264,7 +261,9 @@ app.register(cors, {
   methods: ["GET", "POST", "PUT", "PATCH", "DELETE"],
 });
 if (CORS_ALLOWED_ORIGINS.length === 0) {
-  app.log.warn("[cors] CORS_ALLOWED_ORIGINS not set — any web origin may call this API");
+  app.log.warn(
+    "[cors] CORS_ALLOWED_ORIGINS not set — any web origin may call this API",
+  );
 }
 app.register(websocket);
 
@@ -332,7 +331,10 @@ async function sendLiveCommand(
   const sent = await pushToAllDevices((tokens) =>
     sendTrackingCommand(tokens, command, ttlSeconds),
   );
-  app.log.info({ command, ttlSeconds, ...sent }, "[live] sent tracking command");
+  app.log.info(
+    { command, ttlSeconds, ...sent },
+    "[live] sent tracking command",
+  );
 }
 
 // Every connected viewer sees every driver's pin on the same live map —
@@ -1094,7 +1096,8 @@ async function ingestPoints(
 
   const lastSeenAt = new Date().toISOString();
   // Only when the device reported them: a missing field means "unchanged".
-  const issues = trackingIssues === null ? {} : { tracking_issues: trackingIssues };
+  const issues =
+    trackingIssues === null ? {} : { tracking_issues: trackingIssues };
   const update =
     isNewer && !isSamePosition(newest, previous)
       ? {
@@ -1459,7 +1462,9 @@ app.post("/api/v1/mapbox/token", async (request, reply) => {
         { userId: identity.userId, status: error.status, error: error.message },
         "[mapbox] unable to mint a temporary token",
       );
-      return reply.code(503).send({ error: "Map rendering is temporarily unavailable" });
+      return reply
+        .code(503)
+        .send({ error: "Map rendering is temporarily unavailable" });
     }
     throw error;
   }
@@ -1630,7 +1635,15 @@ app.patch("/api/v1/checkpoints/:id", async (request, reply) => {
            updated_at = now()
        WHERE id = $1 AND ($6 OR created_by = $7)
        RETURNING ${CHECKPOINT_COLUMNS}`,
-      [id, name, latitude, longitude, radiusM, role === "admin", identity.userId],
+      [
+        id,
+        name,
+        latitude,
+        longitude,
+        radiusM,
+        role === "admin",
+        identity.userId,
+      ],
     );
     if (rows.length > 0) {
       return reply.send(checkpointResponse(rows[0], true));
@@ -1828,10 +1841,7 @@ app.get("/api/v1/api-tokens/:id/requests", async (request, reply) => {
   const requested = /^\d+$/.test(rawLimit)
     ? Number(rawLimit)
     : DEFAULT_API_TOKEN_REQUEST_LIMIT;
-  const limit = Math.min(
-    Math.max(requested, 1),
-    MAX_API_TOKEN_REQUEST_LIMIT,
-  );
+  const limit = Math.min(Math.max(requested, 1), MAX_API_TOKEN_REQUEST_LIMIT);
   const rawBefore = typeof query.before === "string" ? query.before : null;
   if (rawBefore !== null && !/^\d+$/.test(rawBefore)) {
     return reply.code(400).send({ error: "`before` must be a request id" });
@@ -2361,7 +2371,10 @@ const start = async (): Promise<void> => {
     }, HEARTBEAT_INTERVAL_MS).unref();
     if (androidReleases) {
       void announceNewAndroidRelease();
-      setInterval(() => void announceNewAndroidRelease(), RELEASE_CHECK_INTERVAL_MS).unref();
+      setInterval(
+        () => void announceNewAndroidRelease(),
+        RELEASE_CHECK_INTERVAL_MS,
+      ).unref();
     }
   } catch (error) {
     app.log.error(error);

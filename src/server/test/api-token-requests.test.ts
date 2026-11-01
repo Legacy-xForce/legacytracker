@@ -23,7 +23,10 @@ const entry: ApiTokenRequestEntry = {
 };
 
 test("query strings stay out of the audit trail", () => {
-  assert.equal(requestPath("/api/v1/history?since=2026-10-01"), "/api/v1/history");
+  assert.equal(
+    requestPath("/api/v1/history?since=2026-10-01"),
+    "/api/v1/history",
+  );
   assert.equal(requestPath("/api/v1/history"), "/api/v1/history");
   assert.equal(requestPath("/api/v1/history?"), "/api/v1/history");
 });
@@ -96,10 +99,10 @@ test("a page of requests is newest first and points at the next one", async () =
     },
   } as unknown as Pool;
 
-  const page = await new ApiTokenRequests(pool).listForToken(
-    entry.tokenId,
-    { limit: 2, before: null },
-  );
+  const page = await new ApiTokenRequests(pool).listForToken(entry.tokenId, {
+    limit: 2,
+    before: null,
+  });
 
   assert.ok(page);
   assert.equal(page.requests.length, 2);
@@ -137,10 +140,10 @@ test("a token that does not exist or is deleted has no trail", async () => {
     query: async () => ({ rows: [], rowCount: 0 }),
   } as unknown as Pool;
 
-  const page = await new ApiTokenRequests(pool).listForToken(
-    entry.tokenId,
-    { limit: DEFAULT_API_TOKEN_REQUEST_LIMIT, before: null },
-  );
+  const page = await new ApiTokenRequests(pool).listForToken(entry.tokenId, {
+    limit: DEFAULT_API_TOKEN_REQUEST_LIMIT,
+    before: null,
+  });
 
   assert.equal(page, null);
 });

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { LiveController, type TrackingCommand } from "../src/services/live-controller";
+import {
+  LiveController,
+  type TrackingCommand,
+} from "../src/services/live-controller";
 
 function harness() {
   const sent: Array<[TrackingCommand, number]> = [];
@@ -45,7 +48,10 @@ test("idle follows the debounce and stops renewals", (t) => {
   const { controller, sent } = harness();
   controller.update(2);
   t.mock.timers.tick(240_000);
-  assert.deepEqual(sent, [["live", 600], ["live", 600]]);
+  assert.deepEqual(sent, [
+    ["live", 600],
+    ["live", 600],
+  ]);
 
   controller.update(0);
   t.mock.timers.tick(44_999);

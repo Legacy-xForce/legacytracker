@@ -176,7 +176,11 @@ class ConnectionManager {
     return users;
   }
 
-  private close(userId: string, entries: ClientEntry[], message: unknown): number {
+  private close(
+    userId: string,
+    entries: ClientEntry[],
+    message: unknown,
+  ): number {
     const text = JSON.stringify(message);
     for (const entry of entries) {
       try {
@@ -191,7 +195,11 @@ class ConnectionManager {
   }
 
   /** True when at least one of the user's connections took the message. */
-  private deliver(userId: string, entries: ClientEntry[], text: string): boolean {
+  private deliver(
+    userId: string,
+    entries: ClientEntry[],
+    text: string,
+  ): boolean {
     let delivered = false;
     for (const entry of [...entries]) {
       try {
