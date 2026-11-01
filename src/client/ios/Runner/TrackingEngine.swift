@@ -102,6 +102,8 @@ enum GeoMath {
 
 enum Tuning {
     static let geofenceRadius: Double = 150
+    /// A trip that never got this far from its start is GPS wander, not a trip.
+    static let minTripExtent: Double = geofenceRadius
     static let geofenceMaxRadius: Double = 500
     static let heartbeatInterval: TimeInterval = 25 * 60
     static let refreshInterval: TimeInterval = 30 * 60
@@ -398,12 +400,14 @@ final class TrackingStore {
         return sqlite3_exec(db, sql, nil, nil, nil) == SQLITE_OK
     }
 
-    func insert(_ fix: Fix, source: String, battery: Int?, charging: Bool?) {
-        guard let db = handle() else { return }
+    /// Returns the new row's id, or 0 when nothing was stored.
+    @discardableResult
+    func insert(_ fix: Fix, source: String, battery: Int?, charging: Bool?) -> Int64 {
+        guard let db = handle() else { return 0 }
         var stmt: OpaquePointer?
         let sql = "INSERT INTO points (ts, lat, lon, acc, speed, heading, alt, source, battery, charging) " +
             "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return 0 }
         defer { sqlite3_finalize(stmt) }
         sqlite3_bind_int64(stmt, 1, fix.time)
         sqlite3_bind_double(stmt, 2, fix.lat)
@@ -415,12 +419,37 @@ final class TrackingStore {
         sqlite3_bind_text(stmt, 8, source, -1, TrackingStore.transient)
         if let battery = battery { sqlite3_bind_int(stmt, 9, Int32(battery)) } else { sqlite3_bind_null(stmt, 9) }
         if let charging = charging { sqlite3_bind_int(stmt, 10, charging ? 1 : 0) } else { sqlite3_bind_null(stmt, 10) }
-        sqlite3_step(stmt)
+        guard sqlite3_step(stmt) == SQLITE_DONE else { return 0 }
+        let rowId = sqlite3_last_insert_rowid(db)
         insertsSincePrune += 1
         if insertsSincePrune >= 500 {
             insertsSincePrune = 0
             exec("DELETE FROM points WHERE id <= (SELECT MAX(id) FROM points) - \(Tuning.maxStoredPoints)")
         }
+        return rowId
+    }
+
+    func hasPoint(_ id: Int64) -> Bool {
+        guard let db = handle() else { return false }
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT 1 FROM points WHERE id = ? LIMIT 1", -1, &stmt, nil) == SQLITE_OK else { return false }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, id)
+        return sqlite3_step(stmt) == SQLITE_ROW
+    }
+
+    /// Drops a trip's not-yet-uploaded points, keeping liveness rows of the given sources.
+    func deleteTripFrom(_ id: Int64, keepSources: [String]) {
+        guard let db = handle() else { return }
+        let marks = keepSources.map { _ in "?" }.joined(separator: ",")
+        var stmt: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "DELETE FROM points WHERE id >= ? AND source NOT IN (\(marks))", -1, &stmt, nil) == SQLITE_OK else { return }
+        defer { sqlite3_finalize(stmt) }
+        sqlite3_bind_int64(stmt, 1, id)
+        for (index, source) in keepSources.enumerated() {
+            sqlite3_bind_text(stmt, Int32(index) + 2, source, -1, TrackingStore.transient)
+        }
+        sqlite3_step(stmt)
     }
 
     private func bindOptional(_ stmt: OpaquePointer?, _ index: Int32, _ value: Double?) {
@@ -565,12 +594,19 @@ final class EngineState {
 
     var mode: TrackingMode {
         get { TrackingMode(rawValue: defaults.string(forKey: prefix + "mode") ?? "") ?? .off }
-        set { defaults.set(newValue.rawValue, forKey: prefix + "mode") }
+        set {
+            defaults.set(newValue.rawValue, forKey: prefix + "mode")
+            // iOS ends backgrounded processes right after a state change; commit now, like Android.
+            defaults.synchronize()
+        }
     }
 
     var anchor: Fix? {
         get { readFix("anchor") }
-        set { writeFix("anchor", newValue) }
+        set {
+            writeFix("anchor", newValue)
+            defaults.synchronize()
+        }
     }
 
     var lastRecorded: Fix? {
@@ -762,9 +798,19 @@ final class Uploader {
 }
 
 enum Battery {
+    private static var cached: (at: Date, level: Int?, charging: Bool?)?
+
+    /// The battery reading, at most a minute old, like the Android engine's.
     static func read() -> (Int?, Bool?) {
+        if let cached = cached, Date().timeIntervalSince(cached.at) < 60 { return (cached.level, cached.charging) }
+        let (level, charging) = readNow()
+        cached = (Date(), level, charging)
+        return (level, charging)
+    }
+
+    private static func readNow() -> (Int?, Bool?) {
         let device = UIDevice.current
-        device.isBatteryMonitoringEnabled = true
+        if !device.isBatteryMonitoringEnabled { device.isBatteryMonitoringEnabled = true }
         let level: Int? = device.batteryLevel >= 0 ? Int((device.batteryLevel * 100).rounded()) : nil
         switch device.batteryState {
         case .charging, .full: return (level, true)
@@ -794,9 +840,38 @@ private final class Session {
     var lastLiveAt: Date?
     var liveSoon = false
 
+    // Jitter filter: how far the trip got from its start, and its first stored row, so a trip that
+    // went nowhere can be dropped before upload. Resumed trips are never discarded (their start is
+    // not known).
+    private var discardable = false
+    private var origin: Fix?
+    private var extentM = 0.0
+    private(set) var firstRowId: Int64 = 0
+
     init(kind: SessionKind, reason: String) {
         self.kind = kind
         self.reason = reason
+    }
+
+    func prepareNewTrip(anchor: Fix?) {
+        discardable = kind == .trip
+        origin = anchor
+        sampler.startTrip(departureAnchor: anchor)
+    }
+
+    func noteStored(_ rowId: Int64) {
+        if firstRowId == 0 && rowId > 0 { firstRowId = rowId }
+    }
+
+    func noteExtent(_ fix: Fix) {
+        let start = origin ?? fix
+        origin = start
+        extentM = max(extentM, GeoMath.distance(start, fix))
+    }
+
+    func wasJitter(store: TrackingStore) -> Bool {
+        discardable && kind == .trip && firstRowId > 0 &&
+            extentM < Tuning.minTripExtent && store.hasPoint(firstRowId)
     }
 
     func currentStop() -> Fix? {
@@ -1001,7 +1076,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             return
         }
         let trip = Session(kind: .trip, reason: reason)
-        trip.sampler.startTrip(departureAnchor: state.anchor)
+        trip.prepareNewTrip(anchor: state.anchor)
         beginTrip(trip, reason)
     }
 
@@ -1017,7 +1092,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
 
     private func convertToTrip(_ current: Session, _ reason: String) {
         current.kind = .trip
-        current.sampler.startTrip(departureAnchor: state.anchor)
+        current.prepareNewTrip(anchor: state.anchor)
         state.mode = .moving
         disarmRegion()
         log("state", "Moving (\(reason))")
@@ -1044,7 +1119,13 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         beginBackgroundWork()
         session = nil
         stopTick()
-        for (fix, source) in trip.sampler.finishTrip(stop: stop) { record(fix, source) }
+        for (fix, source) in trip.sampler.finishTrip(stop: stop) { trip.noteStored(record(fix, source)) }
+        if trip.wasJitter(store: store) {
+            // Never got anywhere: GPS wander while parked, not a trip. Drop it unless part of it
+            // already reached the server (the server filters those the same way).
+            store.deleteTripFrom(trip.firstRowId, keepSources: [TrackingEngine.sourcePing, TrackingEngine.sourceHeartbeat])
+            log("state", "Discarded a trip that never left \(Int(Tuning.minTripExtent)) m")
+        }
         state.lastRecorded = nil
         if let stop = stop { state.anchor = stop }
         if state.mode != .off { state.mode = .stationary }
@@ -1151,7 +1232,8 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         let maxAccuracy = trip.sampler.tuning == SamplerTuning.saver ? Tuning.maxRecordAccuracySaver : Tuning.maxRecordAccuracy
         if fix.accuracy <= maxAccuracy {
             trip.lastAccepted = fix
-            for (stored, source) in trip.sampler.offer(fix) { record(stored, source) }
+            trip.noteExtent(fix)
+            for (stored, source) in trip.sampler.offer(fix) { trip.noteStored(record(stored, source)) }
         }
         if isLive || trip.liveSoon { maybeSendLive(trip, fix) }
         maybeFlush()
@@ -1385,13 +1467,15 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
 
     // MARK: Recording and uploading
 
-    private func record(_ fix: Fix, _ source: String) {
+    @discardableResult
+    private func record(_ fix: Fix, _ source: String) -> Int64 {
         let (battery, charging) = Battery.read()
-        store.insert(fix, source: source, battery: battery, charging: charging)
+        let rowId = store.insert(fix, source: source, battery: battery, charging: charging)
         if pendingSince == nil { pendingSince = Date() }
         if source != TrackingEngine.sourcePing && source != TrackingEngine.sourceHeartbeat {
             state.lastRecorded = fix
         }
+        return rowId
     }
 
     private func heartbeatIfDue() {
