@@ -54,7 +54,7 @@ const sharing = useSharingStore();
 const leaderboard = useLeaderboardStore();
 const router = useRouter();
 // Nobody watching a map left open should keep every phone in realtime mode.
-const screensaver = useScreensaver();
+const { active: screensaverActive, wake: wakeFromScreensaverTimer } = useScreensaver();
 
 const CHECKPOINTS_KEY = 'legacytracker.showCheckpoints';
 const ORIENTATION_LOCK_KEY = 'legacytracker.orientationLocked';
@@ -230,7 +230,7 @@ function chooseStyle(style: MapStyle) {
 // A hidden tab is not a map anyone is looking at: tell the server so phones can stop streaming.
 function onVisibility() {
     const visible = document.visibilityState === 'visible';
-    peers.setMapActive(visible && !screensaver.active);
+    peers.setMapActive(visible && !screensaverActive.value);
     // Nothing tells a browser its socket died silently; coming back always starts fresh.
     if (visible) {
         peers.reconnect();
@@ -239,12 +239,12 @@ function onVisibility() {
 }
 
 // The screensaver means nobody is watching, even if the tab stayed visible.
-watch(screensaver.active, (asleep) => {
+watch(screensaverActive, (asleep) => {
     peers.setMapActive(!asleep && document.visibilityState === 'visible');
 });
 
 function wakeFromScreensaver() {
-    screensaver.wake();
+    wakeFromScreensaverTimer();
     // The socket may have died silently while the map sat unattended; waking starts fresh.
     peers.reconnect();
     void events.refresh();
@@ -604,6 +604,6 @@ watch(replaying, (isReplaying) => {
 
         <AppearanceDialog v-model="appearanceOpen" />
         <ApiTokensDialog v-if="apiTokensOpen" @close="apiTokensOpen = false" />
-        <ScreensaverOverlay v-if="screensaver.active" @wake="wakeFromScreensaver" />
+        <ScreensaverOverlay v-if="screensaverActive" @wake="wakeFromScreensaver" />
     </div>
 </template>

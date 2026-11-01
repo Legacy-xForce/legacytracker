@@ -12,7 +12,7 @@ useModal(panel);
 
 <template>
     <Teleport to="body">
-        <div class="bg-scrim/70 fixed inset-0 z-[2500] flex items-center justify-center p-6">
+        <div class="bg-scrim/60 fixed inset-0 z-[2500] flex items-center justify-center p-6 backdrop-blur-2xl">
             <section
                 ref="panel"
                 tabindex="-1"
