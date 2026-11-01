@@ -32,9 +32,12 @@ sharing without anyone opening the app.
 **Silent installs.** On Android 12+ the app installs its own updates with no
 prompt, provided the user has allowed it to install apps (Settings → Apps →
 Legacy Tracker → *Install unknown apps*). The profile tab's *App updates* card
-links there. Without that permission, or on Android 8–11, the app posts an
-"Update ready — tap to install" notification instead, and Android asks for one
-confirmation tap. Android itself requires the confirmation in those cases.
+links there. Without that permission, or on Android 8–11, Android needs one
+confirmation tap: the app posts an "Update ready — tap to install"
+notification if notifications are allowed, otherwise the update waits until
+the user installs it from the *App updates* card (or the banner on the sign-in
+screen). The app never asks for notification permission and Android 13+ starts
+with it off, so on those phones it is usually the card.
 
 **Security.** Android only installs an update signed with the same key as the
 installed app. A compromised server, GitHub account or download can therefore

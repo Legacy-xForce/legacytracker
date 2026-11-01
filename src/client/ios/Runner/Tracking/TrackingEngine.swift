@@ -914,7 +914,6 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             // Android-only concepts; nothing for the user to fix on iOS.
             "activityRecognition": true,
             "batteryOptimizationIgnored": true,
-            "notificationsEnabled": false,
             "issues": trackingIssues(access),
         ]
         if state.lastUploadOkAt > 0 { map["lastUploadAt"] = NSNumber(value: Int64(state.lastUploadOkAt * 1000)) }
