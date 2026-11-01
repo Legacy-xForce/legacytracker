@@ -14,6 +14,7 @@ const DEFAULT_TOKEN_NAME = "API token";
 // Integrations may poll or upload every few seconds; caching keeps each call
 // from costing a lookup. Rotation, deletion and allowlist edits drop the
 // cached entry, so a change applies to the next request at once.
+const MAX_CACHE_ENTRIES = 1000;
 const CACHE_TTL_MS = 60_000;
 const NEGATIVE_CACHE_TTL_MS = 30_000;
 const TOUCH_INTERVAL_MS = 60_000;
@@ -563,6 +564,11 @@ export class ApiTokens {
           allowedIps: row.allowed_ips,
         }
       : null;
+    // Bounded: forged-looking tokens must not grow this map forever.
+    if (this.cache.size >= MAX_CACHE_ENTRIES) {
+      const oldest = this.cache.keys().next().value;
+      if (oldest !== undefined) this.cache.delete(oldest);
+    }
     this.cache.set(hash, {
       identity,
       expiresAt: now + (identity ? CACHE_TTL_MS : NEGATIVE_CACHE_TTL_MS),
