@@ -25,14 +25,15 @@ jobs:
         working-directory: src/client
       - name: Cache Gradle
         uses: ./.github/actions/gradle-cache
-      # The native tracking engine's safety net: PathSampler, StopDetector and
-      # the drive simulation. :app only, plugin modules ship tests of their own.
-      - name: Engine unit tests (Kotlin)
-        run: ./gradlew :app:testDebugUnitTest
-        working-directory: src/client/android
       - name: Build release APK
         run: flutter build apk --release
         working-directory: src/client
+      # The native tracking engine's safety net: PathSampler, StopDetector,
+      # the drive simulation and the shared vectors. :app only, plugin modules ship
+      # tests of their own. After the APK build: that is what generates gradlew.
+      - name: Engine unit tests (Kotlin)
+        run: ./gradlew :app:testDebugUnitTest
+        working-directory: src/client/android
       # No key.properties on CI, so Gradle falls back to the runner's debug key.
       # The release workflow re-signs this APK with the release key; publishing
       # it as it is here would be refused by every installed phone.
