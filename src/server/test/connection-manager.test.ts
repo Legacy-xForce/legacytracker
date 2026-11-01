@@ -176,7 +176,10 @@ test("a user-wide logout spares API-token streams unless access was lost", () =>
   manager.add("a", browser, "sid-web");
   manager.add("a", script, null);
 
-  assert.equal(manager.closeUser("a", { type: "signed_out" }, { sessionsOnly: true }), 1);
+  assert.equal(
+    manager.closeUser("a", { type: "signed_out" }, { sessionsOnly: true }),
+    1,
+  );
   assert.equal(browser.closed, true);
   assert.equal(script.closed, false);
 

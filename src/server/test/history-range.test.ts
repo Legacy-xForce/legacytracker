@@ -4,7 +4,10 @@ import { test } from "node:test";
 import { parseHistoryRange } from "../src/services/history-range";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const valid = { from: "2026-10-15T00:00:00.000Z", to: "2026-10-15T23:59:59.999Z" };
+const valid = {
+  from: "2026-10-15T00:00:00.000Z",
+  to: "2026-10-15T23:59:59.999Z",
+};
 
 test("a from/to pair inside the limit is accepted", () => {
   const result = parseHistoryRange(valid, 30 * DAY_MS);
@@ -22,11 +25,17 @@ test("both ends are required, so an empty request never matches everything", () 
 });
 
 test("unparseable timestamps are refused", () => {
-  assert.equal(parseHistoryRange({ from: "yesterday", to: valid.to }, 30 * DAY_MS).ok, false);
+  assert.equal(
+    parseHistoryRange({ from: "yesterday", to: valid.to }, 30 * DAY_MS).ok,
+    false,
+  );
 });
 
 test("a reversed range is refused", () => {
-  assert.equal(parseHistoryRange({ from: valid.to, to: valid.from }, 30 * DAY_MS).ok, false);
+  assert.equal(
+    parseHistoryRange({ from: valid.to, to: valid.from }, 30 * DAY_MS).ok,
+    false,
+  );
 });
 
 test("a window longer than the limit is refused", () => {
@@ -36,5 +45,8 @@ test("a window longer than the limit is refused", () => {
 });
 
 test("a single instant is a valid range (a trip of one point)", () => {
-  assert.equal(parseHistoryRange({ from: valid.from, to: valid.from }, 30 * DAY_MS).ok, true);
+  assert.equal(
+    parseHistoryRange({ from: valid.from, to: valid.from }, 30 * DAY_MS).ok,
+    true,
+  );
 });

@@ -10,8 +10,7 @@ export type CheckpointInput = {
 };
 
 export type CheckpointInputResult =
-  | { ok: true; value: CheckpointInput }
-  | { ok: false; error: string };
+  { ok: true; value: CheckpointInput } | { ok: false; error: string };
 
 /** Trims and collapses internal whitespace, so "Home  " and "Home" collide. */
 export function normalizeCheckpointName(name: string): string {

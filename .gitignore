@@ -10,8 +10,8 @@
 *.iml
 *.ipr
 *.iws
-# Uncomment to ignore VS Code settings (optional)
-# .vscode/
+.vscode/
+.qoder/
 
 # Monorepo: ignore build and tool artifacts across packages (src/, server/)
 src/**/.dart_tool/

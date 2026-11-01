@@ -1,7 +1,11 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { advanceDwell, type Dwell, type DwellPoint } from "../src/services/dwell-tracker";
+import {
+  advanceDwell,
+  type Dwell,
+  type DwellPoint,
+} from "../src/services/dwell-tracker";
 
 const T0 = Date.parse("2026-10-01T08:00:00.000Z");
 
@@ -22,7 +26,10 @@ function point(
 }
 
 function fold(points: DwellPoint[], start: Dwell | null = null): Dwell | null {
-  return points.reduce<Dwell | null>((dwell, p) => advanceDwell(dwell, p), start);
+  return points.reduce<Dwell | null>(
+    (dwell, p) => advanceDwell(dwell, p),
+    start,
+  );
 }
 
 const at = (seconds: number) => new Date(T0 + seconds * 1000).toISOString();

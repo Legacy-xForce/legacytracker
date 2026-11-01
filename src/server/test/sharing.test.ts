@@ -56,10 +56,15 @@ test("an update reaches everyone except the viewers it is hidden from", () => {
   const sent: Record<string, string[]> = { a: [], b: [], c: [] };
   const manager = new ConnectionManager();
   for (const id of Object.keys(sent)) {
-    manager.add(id, { send: (text: string) => sent[id].push(text), close() {} });
+    manager.add(id, {
+      send: (text: string) => sent[id].push(text),
+      close() {},
+    });
   }
 
-  manager.broadcastEach(messageFor(registry, "a", { user_id: "a", latitude: 1 }));
+  manager.broadcastEach(
+    messageFor(registry, "a", { user_id: "a", latitude: 1 }),
+  );
 
   assert.equal(sent.a.length, 1);
   assert.equal(sent.b.length, 0);

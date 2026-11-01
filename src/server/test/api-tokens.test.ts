@@ -156,8 +156,9 @@ test("a bad entry is named, and a long list is refused", () => {
   assert.equal(parseAllowedIps(undefined).ok, false);
   assert.equal(
     parseAllowedIps(
-      Array.from({ length: MAX_ALLOWED_IPS_PER_TOKEN + 1 }, (_, i) =>
-        `203.0.113.${i}`,
+      Array.from(
+        { length: MAX_ALLOWED_IPS_PER_TOKEN + 1 },
+        (_, i) => `203.0.113.${i}`,
       ),
     ).ok,
     false,
@@ -184,7 +185,10 @@ test("addresses and prefixes match by their leading bits", () => {
   assert.equal(ipMatchesAllowlist("2001:db8:1::5", ["2001:db8::/32"]), true);
   assert.equal(ipMatchesAllowlist("2001:db9:1::5", ["2001:db8::/32"]), false);
   // 2001:db8::/64 is the first /64 only: word 4 must still be zero.
-  assert.equal(ipMatchesAllowlist("2001:db8::1:2:3:4", ["2001:db8::/64"]), true);
+  assert.equal(
+    ipMatchesAllowlist("2001:db8::1:2:3:4", ["2001:db8::/64"]),
+    true,
+  );
   assert.equal(ipMatchesAllowlist("2001:db8:1::2", ["2001:db8::/64"]), false);
 });
 

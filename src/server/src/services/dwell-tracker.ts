@@ -16,7 +16,10 @@ export const DWELL_RADIUS_METERS = 100;
 export const DWELL_MAX_SPEED = 2.0;
 
 // Recorded trip points: the device itself decided it was on the move.
-export const TRIP_SOURCES: ReadonlySet<string> = new Set(["move", "trip_start"]);
+export const TRIP_SOURCES: ReadonlySet<string> = new Set([
+  "move",
+  "trip_start",
+]);
 
 export interface DwellPoint {
   latitude: number;
@@ -78,7 +81,8 @@ export function advanceDwell(
     return {
       ...current,
       since: refinesSince ? point.recordedAt : current.since,
-      lastAt: point.recordedAt > current.lastAt ? point.recordedAt : current.lastAt,
+      lastAt:
+        point.recordedAt > current.lastAt ? point.recordedAt : current.lastAt,
     };
   }
 

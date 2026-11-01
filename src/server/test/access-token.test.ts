@@ -92,7 +92,10 @@ function logoutToken(claims: JWTPayload = {}, typ = "logout+jwt") {
 }
 
 test("the OP scope string maps to read or write", () => {
-  assert.equal(trackerScopeOf({ scope: "tracker.read tracker.write" }), "write");
+  assert.equal(
+    trackerScopeOf({ scope: "tracker.read tracker.write" }),
+    "write",
+  );
   assert.equal(trackerScopeOf({ scope: "openid tracker.read" }), "read");
   assert.equal(trackerScopeOf({ scope: "calendar.read" }), null);
   assert.equal(trackerScopeOf({}), null);
@@ -194,7 +197,12 @@ test("ID tokens, refresh tokens and logout tokens are not access tokens", async 
 
 test("a token signed with another key or issuer is refused", async () => {
   const forged = await sign(
-    { sub: "user-1", aud: "tracker", client_id: "tracker-spa", scope: "tracker.write" },
+    {
+      sub: "user-1",
+      aud: "tracker",
+      client_id: "tracker-spa",
+      scope: "tracker.write",
+    },
     { typ: "at+jwt", key: otherKey },
   );
   assert.equal((await verifyAccessToken(forged, config)).ok, false);
@@ -237,7 +245,11 @@ test("malformed logout tokens are refused", async () => {
     ["neither sub nor sid", logoutToken({ sub: undefined, sid: undefined })],
   ];
   for (const [name, token] of cases) {
-    assert.equal((await verifyLogoutToken(await token, config)).ok, false, name);
+    assert.equal(
+      (await verifyLogoutToken(await token, config)).ok,
+      false,
+      name,
+    );
   }
 });
 

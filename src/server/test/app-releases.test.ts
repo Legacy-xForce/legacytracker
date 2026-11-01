@@ -62,7 +62,9 @@ test("skips releases without a complete, verifiable APK", () => {
 });
 
 test("keeps pre-release suffixes in the version name", () => {
-  const latest = pickLatestAndroidRelease([release("android-v1.2.0-beta.1+42")]);
+  const latest = pickLatestAndroidRelease([
+    release("android-v1.2.0-beta.1+42"),
+  ]);
   assert.equal(latest?.versionName, "1.2.0-beta.1");
   assert.equal(latest?.versionCode, 42);
 });

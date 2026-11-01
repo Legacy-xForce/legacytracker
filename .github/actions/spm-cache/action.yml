@@ -1,0 +1,11 @@
+name: Swift Package Manager cache
+description: Cache SwiftPM downloads for the iOS build.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v6
+      with:
+        path: ~/Library/Caches/org.swift.swiftpm
+        key: spm-${{ runner.os }}-${{ hashFiles('src/client/pubspec.lock', 'src/client/ios/Runner.xcodeproj/project.pbxproj') }}
+        restore-keys: |
+          spm-${{ runner.os }}-

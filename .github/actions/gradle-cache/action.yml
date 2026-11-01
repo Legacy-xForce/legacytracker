@@ -1,0 +1,13 @@
+name: Gradle cache
+description: Cache the Gradle distribution and dependency caches for the Android build.
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@v6
+      with:
+        path: |
+          ~/.gradle/caches
+          ~/.gradle/wrapper
+        key: gradle-${{ runner.os }}-${{ hashFiles('src/client/android/**/*.gradle*', 'src/client/android/**/gradle-wrapper.properties', 'src/client/pubspec.lock') }}
+        restore-keys: |
+          gradle-${{ runner.os }}-

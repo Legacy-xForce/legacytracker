@@ -1,6 +1,6 @@
-import admin from 'firebase-admin';
+import admin from "firebase-admin";
 
-import type { TrackingCommand } from './live-controller';
+import type { TrackingCommand } from "./live-controller";
 
 let messaging: admin.messaging.Messaging | null = null;
 
@@ -12,8 +12,8 @@ const COMMAND_TTL_SECONDS = 60;
 const UPDATE_NOTICE_TTL_SECONDS = 24 * 60 * 60;
 
 const INVALID_TOKEN_CODES = new Set([
-  'messaging/registration-token-not-registered',
-  'messaging/invalid-registration-token',
+  "messaging/registration-token-not-registered",
+  "messaging/invalid-registration-token",
 ]);
 
 export function initializeFcm(): boolean {
@@ -23,7 +23,9 @@ export function initializeFcm(): boolean {
   }
   try {
     const serviceAccount = JSON.parse(json) as admin.ServiceAccount;
-    const app = admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
+    const app = admin.initializeApp({
+      credential: admin.credential.cert(serviceAccount),
+    });
     messaging = admin.messaging(app);
     return true;
   } catch {
@@ -45,24 +47,26 @@ export async function sendTrackingCommand(
   command: TrackingCommand,
   ttlSeconds: number,
 ): Promise<string[]> {
-  const live = command === 'live';
+  const live = command === "live";
   return sendToTokens(tokens, {
     data: {
-      type: 'tracking_command',
+      type: "tracking_command",
       lt_cmd: command,
       lt_ttl: String(ttlSeconds),
       // Read by older app builds that still poll on a pacing mode.
-      pacing: live ? 'AGGRESSIVE' : 'PASSIVE',
+      pacing: live ? "AGGRESSIVE" : "PASSIVE",
     },
     android: {
-      priority: live ? 'high' : 'normal',
+      priority: live ? "high" : "normal",
       ttl: COMMAND_TTL_SECONDS * 1000,
     },
     apns: {
       headers: {
-        'apns-push-type': 'background',
-        'apns-priority': '5',
-        'apns-expiration': String(Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS),
+        "apns-push-type": "background",
+        "apns-priority": "5",
+        "apns-expiration": String(
+          Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS,
+        ),
       },
       payload: { aps: { contentAvailable: true } },
     },
@@ -77,16 +81,18 @@ export async function sendTrackingCommand(
  */
 export async function sendRefreshCommand(tokens: string[]): Promise<string[]> {
   return sendToTokens(tokens, {
-    data: { type: 'tracking_command', lt_cmd: 'refresh' },
+    data: { type: "tracking_command", lt_cmd: "refresh" },
     android: {
-      priority: 'high',
+      priority: "high",
       ttl: COMMAND_TTL_SECONDS * 1000,
     },
     apns: {
       headers: {
-        'apns-push-type': 'background',
-        'apns-priority': '5',
-        'apns-expiration': String(Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS),
+        "apns-push-type": "background",
+        "apns-priority": "5",
+        "apns-expiration": String(
+          Math.floor(Date.now() / 1000) + COMMAND_TTL_SECONDS,
+        ),
       },
       payload: { aps: { contentAvailable: true } },
     },
@@ -105,12 +111,12 @@ export async function sendAppUpdateNotice(
 ): Promise<string[]> {
   return sendToTokens(tokens, {
     data: {
-      type: 'app_update',
-      lt_cmd: 'update',
+      type: "app_update",
+      lt_cmd: "update",
       lt_version: String(versionCode),
     },
     android: {
-      priority: 'normal',
+      priority: "normal",
       ttl: UPDATE_NOTICE_TTL_SECONDS * 1000,
     },
   });
@@ -118,7 +124,7 @@ export async function sendAppUpdateNotice(
 
 async function sendToTokens(
   tokens: string[],
-  message: Omit<admin.messaging.MulticastMessage, 'tokens'>,
+  message: Omit<admin.messaging.MulticastMessage, "tokens">,
 ): Promise<string[]> {
   if (!messaging || tokens.length === 0) {
     return [];
@@ -128,7 +134,10 @@ async function sendToTokens(
   for (let i = 0; i < tokens.length; i += 500) {
     const chunk = tokens.slice(i, i + 500);
     try {
-      const response = await messaging.sendEachForMulticast({ ...message, tokens: chunk });
+      const response = await messaging.sendEachForMulticast({
+        ...message,
+        tokens: chunk,
+      });
       response.responses.forEach((result, index) => {
         const code = result.error?.code;
         if (!result.success && code && INVALID_TOKEN_CODES.has(code)) {

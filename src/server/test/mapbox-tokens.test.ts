@@ -33,7 +33,10 @@ function service(fetchImpl: typeof fetch, clock: () => number = () => now) {
 test("the service refuses to mint until both credentials are configured", async () => {
   const mint = new MapboxTokenService({ fetch: async () => response({}) });
   assert.equal(mint.configured, false);
-  await assert.rejects(() => mint.getForUser("user-1"), MapboxNotConfiguredError);
+  await assert.rejects(
+    () => mint.getForUser("user-1"),
+    MapboxNotConfiguredError,
+  );
 });
 
 test("mints a scoped temporary token for the configured account", async () => {
@@ -149,7 +152,10 @@ test("caps requested lifetimes at Mapbox's one-hour limit", async () => {
   });
 
   await mint.getForUser("user-1");
-  assert.equal(JSON.parse(String(calls[0].body)).expires, new Date(now + 3600_000).toISOString());
+  assert.equal(
+    JSON.parse(String(calls[0].body)).expires,
+    new Date(now + 3600_000).toISOString(),
+  );
 });
 
 test("surfaces Mapbox failures without leaking the secret", async () => {
@@ -168,7 +174,9 @@ test("surfaces Mapbox failures without leaking the secret", async () => {
 
 test("a network failure is reported without the secret-bearing URL", async () => {
   const mint = service(async () => {
-    throw new Error(`getaddrinfo failed for https://api.mapbox.com?access_token=${secret}`);
+    throw new Error(
+      `getaddrinfo failed for https://api.mapbox.com?access_token=${secret}`,
+    );
   });
   await assert.rejects(
     () => mint.getForUser("user-1"),

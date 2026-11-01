@@ -16,7 +16,7 @@ Design docs live in `docs/` (`location-tracking.md` is the key one; also `app-up
 
 ## Commands
 
-Server (`src/server`; `npm` and `bun` lockfiles both exist, CI/Docker use npm):
+Server (`src/server`; npm only, CI and Docker use `package-lock.json`; `npm run format:check` is enforced in CI):
 ```bash
 npm run dev                      # ts-node src/app.ts
 npm run build && npm start       # tsc -> dist/app.js

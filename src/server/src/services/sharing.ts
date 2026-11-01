@@ -19,7 +19,9 @@ export class SharingRegistry {
   /** Whether `ownerId` has switched off sharing with `viewerId`. */
   isHidden(ownerId: string, viewerId: string): boolean {
     // Your own position is never hidden from you.
-    return ownerId !== viewerId && this.hidden.get(ownerId)?.has(viewerId) === true;
+    return (
+      ownerId !== viewerId && this.hidden.get(ownerId)?.has(viewerId) === true
+    );
   }
 
   /** The viewers `ownerId` is not sharing with. */

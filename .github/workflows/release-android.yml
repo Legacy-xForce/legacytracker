@@ -120,26 +120,15 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Set up Flutter
         if: needs.ci-run.outputs.apk != 'true'
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.44.0
-          cache: true
+        uses: ./.github/actions/flutter-env
 
       - name: Cache Gradle
         if: needs.ci-run.outputs.apk != 'true'
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('src/client/android/**/*.gradle*', 'src/client/android/**/gradle-wrapper.properties', 'src/client/pubspec.lock') }}
-          restore-keys: |
-            gradle-${{ runner.os }}-
+        uses: ./.github/actions/gradle-cache
 
       # No key.properties here: Gradle falls back to the runner's debug key,
       # exactly like the CI job does. The release job replaces that signature
@@ -180,25 +169,11 @@ jobs:
 
       - name: Set up Flutter
         if: needs.ci-run.outputs.ipa != 'true'
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          flutter-version: 3.44.0
-          cache: true
-
-      - name: Install Flutter dependencies
-        if: needs.ci-run.outputs.ipa != 'true'
-        run: flutter pub get
-        working-directory: src/client
+        uses: ./.github/actions/flutter-env
 
       - name: Cache Swift Package Manager
         if: needs.ci-run.outputs.ipa != 'true'
-        uses: actions/cache@v6
-        with:
-          path: ~/Library/Caches/org.swift.swiftpm
-          key: spm-${{ runner.os }}-${{ hashFiles('src/client/pubspec.lock', 'src/client/ios/Runner.xcodeproj/project.pbxproj') }}
-          restore-keys: |
-            spm-${{ runner.os }}-
+        uses: ./.github/actions/spm-cache
 
       - name: Build iOS release app without code signing
         if: needs.ci-run.outputs.ipa != 'true'
@@ -209,12 +184,7 @@ jobs:
       # app using the standard IPA Payload layout for artifact handoff.
       - name: Package unsigned IPA
         if: needs.ci-run.outputs.ipa != 'true'
-        run: |
-          mkdir -p build/ios/ipa/Payload
-          cp -R build/ios/iphoneos/Runner.app build/ios/ipa/Payload/Runner.app
-          cd build/ios/ipa
-          ditto -c -k --sequesterRsrc --keepParent Payload LegacyTracker.ipa
-        working-directory: src/client
+        uses: ./.github/actions/package-ipa
 
       - name: Upload unsigned IPA artifact
         uses: actions/upload-artifact@v7
@@ -240,7 +210,7 @@ jobs:
         uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
 
       - name: Download the APK to sign
         uses: actions/download-artifact@v8
