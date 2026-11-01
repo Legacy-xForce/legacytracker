@@ -3,11 +3,11 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
+import '../../core/widgets.dart';
 import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
 import 'api_token_requests_screen.dart';
 import 'auth_provider.dart';
-import '../../core/tokens.dart';
 
 /// Every live token on the tracker, grouped by owner, with each one's request
 /// history a tap away. Any signed-in user can open it: auditing what
@@ -142,7 +142,7 @@ class _ApiTokensAuditScreenState extends State<ApiTokensAuditScreen> {
             ),
             const SizedBox(height: 16),
             if (_error != null) ...[
-              _Notice(
+              Notice(
                 icon: Icons.cloud_off_rounded,
                 text: _error!,
                 action: TextButton(
@@ -160,7 +160,7 @@ class _ApiTokensAuditScreenState extends State<ApiTokensAuditScreen> {
             else if (_tokens == null)
               const SizedBox.shrink()
             else if (_tokens!.isEmpty)
-              const _Notice(
+              const Notice(
                 icon: Icons.key_off_outlined,
                 text: 'No tokens on the tracker yet.',
               )
@@ -239,7 +239,7 @@ class _AuditTokenTile extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: 8),
-                        _Badge(
+                        AppBadge(
                           text: write ? 'WRITE' : 'READ',
                           background: write
                               ? scheme.errorContainer
@@ -285,60 +285,6 @@ class _AuditTokenTile extends StatelessWidget {
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({
-    required this.text,
-    required this.background,
-    required this.foreground,
-  });
-
-  final String text;
-  final Color background;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: AppShape.sm,
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.labelSmall?.copyWith(color: foreground),
-      ),
-    );
-  }
-}
-
-class _Notice extends StatelessWidget {
-  const _Notice({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(width: 14),
-            Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
-            ?action,
-          ],
         ),
       ),
     );

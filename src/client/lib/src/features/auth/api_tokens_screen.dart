@@ -4,12 +4,14 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
+import '../../core/widgets.dart';
 import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
 import 'api_token_requests_screen.dart';
 import 'api_tokens_audit_screen.dart';
 import 'auth_provider.dart';
 import '../../core/tokens.dart';
+import '../../core/dialogs.dart';
 
 /// Lists the account's personal API tokens and creates, rotates or deletes
 /// them. A token's value is shown once, right after it is created or rotated.
@@ -199,32 +201,13 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
     required String title,
     required String message,
     required String action,
-  }) async {
-    final scheme = Theme.of(context).colorScheme;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancel'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              minimumSize: const Size(0, 40),
-              backgroundColor: scheme.error,
-              foregroundColor: scheme.onError,
-            ),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: Text(action),
-          ),
-        ],
-      ),
-    );
-    return confirmed == true;
-  }
+  }) => confirmAction(
+    context,
+    title: title,
+    message: message,
+    actionLabel: action,
+    destructive: true,
+  );
 
   void _showMessage(String message) {
     ScaffoldMessenger.of(context)
@@ -281,7 +264,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_loadError != null && tokens == null)
-              _Notice(
+              Notice(
                 icon: Icons.cloud_off_rounded,
                 text: _loadError!,
                 action: TextButton(
@@ -290,7 +273,7 @@ class _ApiTokensScreenState extends State<ApiTokensScreen> {
                 ),
               )
             else if (tokens!.isEmpty)
-              const _Notice(
+              const Notice(
                 icon: Icons.key_off_outlined,
                 text: 'No tokens yet. Create one to connect another app.',
               )
@@ -871,32 +854,6 @@ class _AllowedAddressesState extends State<_AllowedAddresses> {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _Notice extends StatelessWidget {
-  const _Notice({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(width: 14),
-            Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
-            ?action,
-          ],
-        ),
       ),
     );
   }

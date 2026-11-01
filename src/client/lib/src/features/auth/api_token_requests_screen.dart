@@ -3,10 +3,10 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants.dart';
 import '../../core/formatters.dart';
+import '../../core/widgets.dart';
 import '../../data/models/api_token.dart';
 import '../../data/network/api_token_service.dart';
 import 'auth_provider.dart';
-import '../../core/tokens.dart';
 
 /// The requests made with one API token, newest first. A page of its own
 /// because the list can grow and the row that opens it is already crowded.
@@ -180,7 +180,7 @@ class _ApiTokenRequestsScreenState extends State<ApiTokenRequestsScreen> {
             ),
             const SizedBox(height: 16),
             if (_error != null) ...[
-              _Notice(
+              Notice(
                 icon: Icons.cloud_off_rounded,
                 text: _error!,
                 action: TextButton(
@@ -198,7 +198,7 @@ class _ApiTokenRequestsScreenState extends State<ApiTokenRequestsScreen> {
             else if (requests == null)
               const SizedBox.shrink()
             else if (requests.isEmpty)
-              const _Notice(
+              const Notice(
                 icon: Icons.history_toggle_off_rounded,
                 text:
                     'No requests yet. Anything using this token will show up '
@@ -255,13 +255,17 @@ class _RequestTile extends StatelessWidget {
           children: [
             Row(
               children: [
-                _Badge(
+                AppBadge(
+                  mono: true,
+                  verticalPadding: 2,
                   text: request.method,
                   background: scheme.surfaceContainerHighest,
                   foreground: scheme.onSurface,
                 ),
                 const SizedBox(width: 6),
-                _Badge(
+                AppBadge(
+                  mono: true,
+                  verticalPadding: 2,
                   text: '${request.statusCode}',
                   background: failed
                       ? scheme.errorContainer
@@ -298,64 +302,6 @@ class _RequestTile extends StatelessWidget {
                   color: scheme.onSurfaceVariant,
                 ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _Badge extends StatelessWidget {
-  const _Badge({
-    required this.text,
-    required this.background,
-    required this.foreground,
-  });
-
-  final String text;
-  final Color background;
-  final Color foreground;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: AppShape.sm,
-      ),
-      child: Text(
-        text,
-        style: theme.textTheme.labelSmall?.copyWith(
-          color: foreground,
-          fontFamily: 'monospace',
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
-
-class _Notice extends StatelessWidget {
-  const _Notice({required this.icon, required this.text, this.action});
-
-  final IconData icon;
-  final String text;
-  final Widget? action;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 8, 14),
-        child: Row(
-          children: [
-            Icon(icon, size: 20, color: theme.colorScheme.onSurfaceVariant),
-            const SizedBox(width: 14),
-            Expanded(child: Text(text, style: theme.textTheme.bodyMedium)),
-            ?action,
           ],
         ),
       ),

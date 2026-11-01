@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import 'app_updater.dart';
+import '../../core/dialogs.dart';
 
 /// Installed version, update state, and the one setting that makes updates
 /// silent. Renders nothing where the app can't update itself (iOS).
@@ -61,28 +62,16 @@ class _AppUpdatesCardState extends State<AppUpdatesCard>
   }
 
   Future<void> _install(AppUpdateStatus status) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Install ${status.availableVersionName}?'),
-        content: const Text(
+    final confirmed = await confirmAction(
+      context,
+      title: 'Install ${status.availableVersionName}?',
+      message:
           'Legacy Tracker closes for a few seconds while it updates. Open it '
           'again afterwards — location sharing carries on by itself.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Later'),
-          ),
-          FilledButton(
-            style: FilledButton.styleFrom(minimumSize: const Size(0, 40)),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Install'),
-          ),
-        ],
-      ),
+      actionLabel: 'Install',
+      cancelLabel: 'Later',
     );
-    if (confirmed != true || !mounted) return;
+    if (!confirmed || !mounted) return;
     setState(() => _installing = true);
     final result = await AppUpdater.install();
     if (!mounted) return;
