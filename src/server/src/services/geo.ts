@@ -3,7 +3,8 @@ export interface LatLng {
   longitude: number;
 }
 
-const EARTH_RADIUS_M = 6_371_000;
+// The IUGG mean Earth radius, the same value the web app and the phone use.
+const EARTH_RADIUS_M = 6_371_008.8;
 
 /** Great-circle distance in metres. */
 export function haversineMeters(a: LatLng, b: LatLng): number {

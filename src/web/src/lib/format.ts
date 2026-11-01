@@ -75,9 +75,9 @@ export function formatMonth(date: Date): string {
     return `${MONTH_NAMES[date.getMonth()]} ${date.getFullYear()}`;
 }
 
-/** A trip's length in whole minutes: "1h 5m", "2h", "12m" (never under "1m"). */
+/** A trip's length in whole minutes, truncated like the phone: "1h 5m", "2h", "12m" (never under "1m"). */
 export function formatTripDuration(seconds: number): string {
-    const minutes = Math.max(1, Math.round(seconds / 60));
+    const minutes = Math.max(1, Math.floor(seconds / 60));
     const hours = Math.floor(minutes / 60);
     if (hours === 0) return `${minutes}m`;
     return minutes % 60 > 0 ? `${hours}h ${minutes % 60}m` : `${hours}h`;

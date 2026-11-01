@@ -8,7 +8,7 @@ import Icon from '../ui/Icon.vue';
 import StatCard from '../ui/StatCard.vue';
 import Switch from '../ui/Switch.vue';
 import { fetchSessions, type HistorySession } from '../../api/history';
-import { metersBetween } from '../../lib/clusters';
+import { metersBetween } from '../../lib/geo';
 import { formatDistance, formatSpeed, formatUpdatedAgo, msToKmh } from '../../lib/format';
 import { batteryIcon } from '../../lib/icons';
 import { directionsUrl } from '../../lib/navigation';
