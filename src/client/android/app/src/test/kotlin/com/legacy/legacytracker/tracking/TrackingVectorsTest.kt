@@ -22,7 +22,7 @@ class TrackingVectorsTest {
         val file = vectorsFile()
         val generated = generate()
         if (System.getenv("UPDATE_TRACKING_VECTORS") == "1" || !file.exists()) {
-            file.parentFile.mkdirs()
+            file.parentFile?.mkdirs()
             file.writeText(generated)
             return
         }
@@ -34,9 +34,10 @@ class TrackingVectorsTest {
     }
 
     private fun vectorsFile(): File {
-        var dir: File? = File(System.getProperty("user.dir")).absoluteFile
+        val workingDir = checkNotNull(System.getProperty("user.dir")) { "user.dir is not set" }
+        var dir: File? = File(workingDir).absoluteFile
         while (dir != null && !File(dir, "pubspec.yaml").exists()) dir = dir.parentFile
-        checkNotNull(dir) { "src/client not found above ${System.getProperty("user.dir")}" }
+        checkNotNull(dir) { "src/client not found above $workingDir" }
         return File(dir, "test/fixtures/tracking-vectors.json")
     }
 
