@@ -72,6 +72,14 @@ strips that signature and signs the same bytes with the release key. If CI
 never ran for the commit, or ran red, the workflow builds what is missing on
 its own runners. Locally, pass `--ipa PATH` to attach an existing IPA.
 
+Both published binaries get a GitHub artifact attestation, which records the
+commit and workflow run that produced them: `gh attestation verify
+LegacyTracker.ipa --owner Legacy-xForce` says whether a downloaded file really
+came from this repository's CI. CI attests its own APK and IPA as it uploads
+them, and the server image it pushes to ghcr is attested by digest, so
+`gh attestation verify oci://ghcr.io/legacy-xforce/legacytracker:latest
+--owner Legacy-xForce` works on a pulled image.
+
 To try a build on a few phones first, pass `--prerelease`. The server ignores
 prereleases, so you can install the APK from the release page by hand. Roll it
 out with `gh release edit <tag> --prerelease=false`.

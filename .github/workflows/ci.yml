@@ -10,6 +10,10 @@ jobs:
   android:
     name: Build Android
     runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-java@v6
@@ -34,6 +38,13 @@ jobs:
       - name: Engine unit tests (Kotlin)
         run: ./gradlew :app:testDebugUnitTest
         working-directory: src/client/android
+      # Fork PRs get a read-only workflow token with no OIDC access, so an
+      # attestation cannot be minted there; every other run attests the APK.
+      - name: Attest APK
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/attest@v4
+        with:
+          subject-path: src/client/build/app/outputs/flutter-apk/*.apk
       # No key.properties on CI, so Gradle falls back to the runner's debug key.
       # The release workflow re-signs this APK with the release key; publishing
       # it as it is here would be refused by every installed phone.
@@ -46,6 +57,12 @@ jobs:
   ios:
     name: Build iOS
     runs-on: macos-latest
+    permissions:
+      contents: read
+      # The engine-change probe below reads the pull request diff through the API.
+      pull-requests: read
+      id-token: write
+      attestations: write
     steps:
       - uses: actions/checkout@v7
       - uses: ./.github/actions/flutter-env
@@ -59,6 +76,13 @@ jobs:
       # app using the standard IPA Payload layout for artifact handoff.
       - name: Package unsigned IPA
         uses: ./.github/actions/package-ipa
+      # The IPA ships unsigned, so this attestation covers the bytes phones
+      # download from the release, not just a handoff copy.
+      - name: Attest unsigned IPA
+        if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/attest@v4
+        with:
+          subject-path: src/client/build/ios/ipa/LegacyTracker.ipa
       - name: Upload unsigned iOS IPA artifact
         uses: actions/upload-artifact@v7
         with:
@@ -170,6 +194,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     env:
       IMAGE_NAME: ${{ needs.server-docker-meta.outputs.image }}
     strategy:
@@ -202,6 +229,14 @@ jobs:
           outputs: type=image,name=${{ env.IMAGE_NAME }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha,scope=tracker-${{ matrix.arch }}
           cache-to: type=gha,mode=max,scope=tracker-${{ matrix.arch }}
+      # Provenance for the single-arch image, so a consumer pinning this digest
+      # can verify it.
+      - name: Attest ${{ matrix.arch }} image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
@@ -223,6 +258,9 @@ jobs:
     permissions:
       contents: read
       packages: write
+      id-token: write
+      attestations: write
+      artifact-metadata: write
     env:
       IMAGE_NAME: ${{ needs.server-docker-meta.outputs.image }}
     steps:
@@ -252,7 +290,19 @@ jobs:
           for digest in *; do
             args+=("${IMAGE_NAME}@sha256:${digest}")
           done
-          docker buildx imagetools create "${args[@]}"
+          # The metadata file holds the manifest list descriptor, whose digest is
+          # what consumers resolve when they pull a tag; that is the subject
+          # attested below, alongside the per-architecture digests of the build job.
+          docker buildx imagetools create --metadata-file /tmp/manifest-metadata.json "${args[@]}"
+      - name: Read manifest list digest
+        id: subject
+        run: echo "digest=$(jq -re '."containerimage.descriptor".digest' /tmp/manifest-metadata.json)" >> "$GITHUB_OUTPUT"
+      - name: Attest multi-arch image
+        uses: actions/attest@v4
+        with:
+          subject-name: ${{ env.IMAGE_NAME }}
+          subject-digest: ${{ steps.subject.outputs.digest }}
+          push-to-registry: true
 
       - name: Trigger Coolify deployment
         env:

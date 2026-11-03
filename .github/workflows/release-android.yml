@@ -198,6 +198,10 @@ jobs:
     name: Sign the APK and publish
     needs: [android, ios]
     runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Check out source
         uses: actions/checkout@v7
@@ -268,3 +272,13 @@ jobs:
             args+=(--prerelease)
           fi
           scripts/release-android.sh "${args[@]}"
+
+      # What phones download, so this is the provenance worth having: the CI APK
+      # was re-signed here, which changed its bytes, and the script has already
+      # checked these files against the digests GitHub reports for the assets.
+      - name: Attest the published binaries
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            src/client/build/legacytracker-*.apk
+            src/client/build/LegacyTracker.ipa
