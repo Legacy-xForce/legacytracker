@@ -7,6 +7,11 @@ export type CheckpointInput = {
   latitude: number;
   longitude: number;
   radiusM: number;
+  /**
+   * One emoji, or an empty string for none. `null` means the body omitted it:
+   * a PATCH then keeps the stored emoji instead of clearing it.
+   */
+  emoji: string | null;
 };
 
 export type CheckpointInputResult =
@@ -15,6 +20,37 @@ export type CheckpointInputResult =
 /** Trims and collapses internal whitespace, so "Home  " and "Home" collide. */
 export function normalizeCheckpointName(name: string): string {
   return name.trim().replace(/\s+/g, " ");
+}
+
+const graphemeSegmenter = new Intl.Segmenter(undefined, {
+  granularity: "grapheme",
+});
+
+/** One emoji may be a long grapheme cluster (family, flag, skin tone). */
+function graphemeCount(value: string): number {
+  return [...graphemeSegmenter.segment(value)].length;
+}
+
+/**
+ * Validates the optional emoji. `undefined`/`null` mean "not supplied"; an
+ * empty string is an explicit "no emoji". Anything longer than one grapheme
+ * cluster (or with control characters) is refused.
+ */
+function validateCheckpointEmoji(value: unknown): string | null | undefined {
+  if (value === undefined || value === null) return null;
+  if (typeof value !== "string") return undefined;
+  const emoji = value.trim();
+  if (emoji.length === 0) return value.length === 0 ? "" : undefined;
+  if (graphemeCount(emoji) !== 1) return undefined;
+  // Tab, newline and friends are not emoji even when they fit in a grapheme.
+  if (/\p{Cc}/u.test(emoji)) return undefined;
+  // A single letter is one grapheme too; require an actual pictograph. Flags
+  // are regional indicators and keycaps carry U+20E3, neither of which is
+  // Extended_Pictographic on its own.
+  if (!/[\p{Extended_Pictographic}\p{Regional_Indicator}\u20E3]/u.test(emoji)) {
+    return undefined;
+  }
+  return emoji;
 }
 
 /**
@@ -74,7 +110,12 @@ export function validateCheckpointInput(body: unknown): CheckpointInputResult {
     };
   }
 
-  return { ok: true, value: { name, latitude, longitude, radiusM } };
+  const emoji = validateCheckpointEmoji(raw.emoji);
+  if (emoji === undefined) {
+    return { ok: false, error: "emoji must be a single emoji or empty" };
+  }
+
+  return { ok: true, value: { name, latitude, longitude, radiusM, emoji } };
 }
 
 /** Admins may change any checkpoint; everyone else only their own. */

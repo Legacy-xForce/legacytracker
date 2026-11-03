@@ -824,12 +824,16 @@ async function ensureBackendSchema(): Promise<void> {
       `CREATE TABLE IF NOT EXISTS checkpoints (
          id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
          name text NOT NULL,
+         emoji text NOT NULL DEFAULT '',
          location geography(Point, 4326) NOT NULL,
          radius_m integer NOT NULL CHECK (radius_m BETWEEN 10 AND 250),
          created_by text NOT NULL REFERENCES users(id),
          created_at timestamptz NOT NULL DEFAULT now(),
          updated_at timestamptz NOT NULL DEFAULT now()
        )`,
+    );
+    await pool.query(
+      "ALTER TABLE checkpoints ADD COLUMN IF NOT EXISTS emoji text NOT NULL DEFAULT ''",
     );
     await pool.query(
       `CREATE UNIQUE INDEX IF NOT EXISTS checkpoints_name_uniq
@@ -1552,7 +1556,7 @@ app.delete("/api/v1/devices/:id", async (request, reply) => {
 // Checkpoints: shared named circles. Everyone with the tracker scope can
 // list and create; only the creator or an admin can change or delete one.
 const CHECKPOINT_COLUMNS = `
-  id, name, radius_m, created_by, created_at, updated_at,
+  id, name, emoji, radius_m, created_by, created_at, updated_at,
   ST_Y(location::geometry) AS latitude,
   ST_X(location::geometry) AS longitude`;
 
@@ -1560,6 +1564,7 @@ function checkpointResponse(row: Record<string, unknown>, canEdit: boolean) {
   return {
     id: row.id,
     name: row.name,
+    emoji: row.emoji ?? "",
     latitude: row.latitude,
     longitude: row.longitude,
     radius_m: row.radius_m,
@@ -1645,15 +1650,15 @@ app.post("/api/v1/checkpoints", async (request, reply) => {
   if (!input.ok) {
     return reply.code(400).send({ error: input.error });
   }
-  const { name, latitude, longitude, radiusM } = input.value;
+  const { name, latitude, longitude, radiusM, emoji } = input.value;
 
   await ensureUserExists(identity.userId, identity.displayName);
   try {
     const { rows } = await pool.query(
-      `INSERT INTO checkpoints (name, location, radius_m, created_by)
-       VALUES ($1, ST_SetSRID(ST_MakePoint($3, $2), 4326)::geography, $4, $5)
+      `INSERT INTO checkpoints (name, emoji, location, radius_m, created_by)
+       VALUES ($1, $2, ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography, $5, $6)
        RETURNING ${CHECKPOINT_COLUMNS}`,
-      [name, latitude, longitude, radiusM, identity.userId],
+      [name, emoji ?? "", latitude, longitude, radiusM, identity.userId],
     );
     return reply.code(201).send(checkpointResponse(rows[0], true));
   } catch (error) {
@@ -1672,7 +1677,7 @@ app.patch("/api/v1/checkpoints/:id", async (request, reply) => {
   if (!input.ok) {
     return reply.code(400).send({ error: input.error });
   }
-  const { name, latitude, longitude, radiusM } = input.value;
+  const { name, latitude, longitude, radiusM, emoji } = input.value;
 
   await ensureUserExists(identity.userId, identity.displayName);
   const role = await getUserRole(identity.userId);
@@ -1682,14 +1687,16 @@ app.patch("/api/v1/checkpoints/:id", async (request, reply) => {
     const { rows } = await pool.query(
       `UPDATE checkpoints
        SET name = $2,
-           location = ST_SetSRID(ST_MakePoint($4, $3), 4326)::geography,
-           radius_m = $5,
+           emoji = COALESCE($3, emoji),
+           location = ST_SetSRID(ST_MakePoint($5, $4), 4326)::geography,
+           radius_m = $6,
            updated_at = now()
-       WHERE id = $1 AND ($6 OR created_by = $7)
+       WHERE id = $1 AND ($7 OR created_by = $8)
        RETURNING ${CHECKPOINT_COLUMNS}`,
       [
         id,
         name,
+        emoji,
         latitude,
         longitude,
         radiusM,

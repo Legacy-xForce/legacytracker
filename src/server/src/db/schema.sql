@@ -124,6 +124,7 @@ CREATE INDEX IF NOT EXISTS location_history_location_gist_idx
 CREATE TABLE IF NOT EXISTS checkpoints (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   name text NOT NULL,
+  emoji text NOT NULL DEFAULT '',
   location geography(Point, 4326) NOT NULL,
   radius_m integer NOT NULL CHECK (radius_m BETWEEN 10 AND 250),
   created_by text NOT NULL REFERENCES users(id),

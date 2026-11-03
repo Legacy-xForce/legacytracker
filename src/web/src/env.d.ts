@@ -8,3 +8,14 @@ interface ImportMetaEnv {
     readonly VITE_CALENDAR_WEB_URL?: string;
     readonly VITE_MAPBOX_TOKEN?: string;
 }
+
+declare module 'vue3-emoji-picker' {
+    import { DefineComponent } from 'vue';
+    const component: DefineComponent<object, object, any>;
+    export default component;
+}
+
+declare module 'vue3-emoji-picker/css' {
+    const content: any;
+    export default content;
+}

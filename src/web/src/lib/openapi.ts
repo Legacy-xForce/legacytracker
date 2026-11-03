@@ -25,6 +25,7 @@ const rosterEntry = {
 const checkpoint = {
     id: '6a0c7f7e-3d8b-4a54-9d0e-55f6f1f0c2b1',
     name: 'Office',
+    emoji: '🏢',
     latitude: 45.0703,
     longitude: 7.6869,
     radius_m: 80,
@@ -1450,6 +1451,7 @@ export const openApiDocument = {
                 required: [
                     'id',
                     'name',
+                    'emoji',
                     'latitude',
                     'longitude',
                     'radius_m',
@@ -1461,6 +1463,10 @@ export const openApiDocument = {
                 properties: {
                     id: { type: 'string', format: 'uuid' },
                     name: { type: 'string' },
+                    emoji: {
+                        type: 'string',
+                        description: 'One emoji shown on the map and in checkpoint lists, or an empty string.'
+                    },
                     latitude: { type: 'number' },
                     longitude: { type: 'number' },
                     radius_m: { type: 'integer', minimum: 10, maximum: 250 },
@@ -1481,6 +1487,11 @@ export const openApiDocument = {
                         type: 'string',
                         maxLength: 60,
                         description: 'Up to 60 characters, unique ignoring case.'
+                    },
+                    emoji: {
+                        type: 'string',
+                        description:
+                            'One emoji (or an empty string) shown with the name. Omit it on update to keep the stored emoji.'
                     },
                     latitude: { type: 'number', minimum: -90, maximum: 90 },
                     longitude: { type: 'number', minimum: -180, maximum: 180 },

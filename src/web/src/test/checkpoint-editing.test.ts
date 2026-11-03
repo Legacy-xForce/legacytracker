@@ -8,9 +8,10 @@ import { fakeJwt, jsonResponse, startSession, tokenResponse } from './helpers';
 
 let fetchMock: ReturnType<typeof vi.fn>;
 
-const raw = (id: string, name: string, canEdit: boolean) => ({
+const raw = (id: string, name: string, canEdit: boolean, emoji = '') => ({
     id,
     name,
+    emoji,
     latitude: 45,
     longitude: 9,
     radius_m: 80,
@@ -48,17 +49,18 @@ afterEach(() => vi.unstubAllGlobals());
 
 describe('checkpoint store', () => {
     it('reads who may change a place', () => {
-        const parsed = parseCheckpoints({ checkpoints: [raw('1', 'Home', true), raw('2', 'Work', false)] });
+        const parsed = parseCheckpoints({ checkpoints: [raw('1', 'Home', true, '🏠'), raw('2', 'Work', false)] });
         expect(parsed.map((c) => c.canEdit)).toEqual([true, false]);
+        expect(parsed.map((c) => c.emoji)).toEqual(['🏠', '']);
     });
 
     it('updates with a PATCH of the full place and reloads', async () => {
         const store = useCheckpointsStore();
-        await store.update('1', { name: 'Home 2', latitude: 45.1, longitude: 9.1, radius: 120 });
+        await store.update('1', { name: 'Home 2', emoji: '🏠', latitude: 45.1, longitude: 9.1, radius: 120 });
         expect(writes()[0]).toEqual({
             path: '/api/v1/checkpoints/1',
             method: 'PATCH',
-            body: { name: 'Home 2', latitude: 45.1, longitude: 9.1, radius_m: 120 }
+            body: { name: 'Home 2', emoji: '🏠', latitude: 45.1, longitude: 9.1, radius_m: 120 }
         });
         expect(store.checkpoints).toHaveLength(2);
     });
@@ -66,6 +68,7 @@ describe('checkpoint store', () => {
     it('creates with a POST', async () => {
         await useCheckpointsStore().create({ name: 'Gym', latitude: 1, longitude: 2, radius: 50 });
         expect(writes()[0]).toMatchObject({ path: '/api/v1/checkpoints', method: 'POST' });
+        expect(writes()[0].body).toMatchObject({ emoji: '' });
     });
 
     it('drops a deleted place from the list', async () => {
@@ -113,6 +116,33 @@ describe('places panel', () => {
         wrapper.unmount();
     });
 
+    it('shows a saved emoji in the list', async () => {
+        fetchMock.mockImplementation(async (_url: string, init?: RequestInit) =>
+            init?.method === 'DELETE'
+                ? jsonResponse({})
+                : jsonResponse({ checkpoints: [raw('1', 'Home', true, '🏠'), raw('2', 'Work', false)] })
+        );
+        const wrapper = await mountPanel();
+        expect(wrapper.findAll('[data-checkpoint]')[0].text()).toContain('🏠');
+        wrapper.unmount();
+    });
+
+    it('picks an emoji for the place and saves it', async () => {
+        const wrapper = await mountPanel();
+        await wrapper.findAll('[data-checkpoint] button')[0].trigger('click');
+        await wrapper.find('[data-emoji-trigger]').trigger('click');
+        await flushPromises();
+        const pick = document.querySelector<HTMLButtonElement>('[data-pick-emoji]');
+        expect(pick).not.toBeNull();
+        pick!.click();
+        await flushPromises();
+        expect(wrapper.find('[data-emoji-trigger]').text()).toContain('🏠');
+        await wrapper.find('[data-save]').trigger('click');
+        await flushPromises();
+        expect(writes()[0].body).toMatchObject({ emoji: '🏠' });
+        wrapper.unmount();
+    });
+
     it('edits a place: draws it, saves the new name and radius', async () => {
         const wrapper = await mountPanel();
         await wrapper.findAll('[data-checkpoint] button')[0].trigger('click');
@@ -125,7 +155,7 @@ describe('places panel', () => {
 
         await wrapper.find('[data-save]').trigger('click');
         await flushPromises();
-        expect(writes()[0].body).toEqual({ name: 'Home base', latitude: 45, longitude: 9, radius_m: 150 });
+        expect(writes()[0].body).toEqual({ name: 'Home base', emoji: '', latitude: 45, longitude: 9, radius_m: 150 });
         expect(wrapper.find('[data-place-editor]').exists()).toBe(false);
         expect(wrapper.emitted('draft')?.at(-1)).toEqual([null]);
         wrapper.unmount();

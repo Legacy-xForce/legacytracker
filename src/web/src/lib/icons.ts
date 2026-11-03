@@ -2,6 +2,7 @@
 // "-fill" files are the filled style Flutter's `Icons.*_rounded` draws; the plain files are the
 // outlined style of its `*_outlined` icons.
 import add from '@material-symbols/svg-400/rounded/add.svg?raw';
+import addReaction from '@material-symbols/svg-400/rounded/add_reaction.svg?raw';
 import api from '@material-symbols/svg-400/rounded/api.svg?raw';
 import arrowBack from '@material-symbols/svg-400/rounded/arrow_back.svg?raw';
 import battery1 from '@material-symbols/svg-400/rounded/battery_1_bar-fill.svg?raw';
@@ -72,6 +73,7 @@ import wbTwilight from '@material-symbols/svg-400/rounded/wb_twilight.svg?raw';
 
 const raw = {
     add,
+    addReaction,
     api,
     arrowBack,
     battery1,

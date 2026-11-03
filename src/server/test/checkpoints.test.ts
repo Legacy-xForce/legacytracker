@@ -18,8 +18,33 @@ test("a complete checkpoint body is accepted and normalized", () => {
       latitude: 45.5,
       longitude: 9.2,
       radiusM: 100,
+      emoji: null,
     });
   }
+});
+
+test("an emoji is optional, trimmed and limited to one grapheme", () => {
+  const withEmoji = validateCheckpointInput({ ...valid, emoji: " 🏠 " });
+  assert.equal(withEmoji.ok, true);
+  if (withEmoji.ok) assert.equal(withEmoji.value.emoji, "🏠");
+
+  const family = validateCheckpointInput({ ...valid, emoji: "👨‍👩‍👧‍👦" });
+  assert.equal(family.ok, true);
+  if (family.ok) assert.equal(family.value.emoji, "👨‍👩‍👧‍👦");
+
+  const empty = validateCheckpointInput({ ...valid, emoji: "" });
+  assert.equal(empty.ok, true);
+  if (empty.ok) assert.equal(empty.value.emoji, "");
+
+  assert.equal(validateCheckpointInput({ ...valid, emoji: "🏠🏠" }).ok, false);
+  assert.equal(validateCheckpointInput({ ...valid, emoji: "ab" }).ok, false);
+  assert.equal(validateCheckpointInput({ ...valid, emoji: "a" }).ok, false);
+  assert.equal(validateCheckpointInput({ ...valid, emoji: "\n" }).ok, false);
+  assert.equal(validateCheckpointInput({ ...valid, emoji: 5 }).ok, false);
+
+  const flag = validateCheckpointInput({ ...valid, emoji: "🇮🇹" });
+  assert.equal(flag.ok, true);
+  if (flag.ok) assert.equal(flag.value.emoji, "🇮🇹");
 });
 
 test("names are normalized so case-insensitive duplicates can be detected", () => {

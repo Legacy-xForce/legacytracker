@@ -5,6 +5,7 @@ import Icon from '../ui/Icon.vue';
 import Slider from '../ui/Slider.vue';
 import Spinner from '../ui/Spinner.vue';
 import TextField from '../ui/TextField.vue';
+import EmojiPickerDialog from './EmojiPickerDialog.vue';
 import { searchPlaces, type PlaceResult } from '../../lib/places';
 import {
     CheckpointError,
@@ -37,6 +38,8 @@ const store = useCheckpointsStore();
 const query = ref('');
 const editing = ref<{ checkpoint: Checkpoint | null } | null>(null);
 const name = ref('');
+const emoji = ref('');
+const pickingEmoji = ref(false);
 const radius = ref(DEFAULT_RADIUS_M);
 const point = ref({ latitude: 0, longitude: 0 });
 const nameError = ref<string | null>(null);
@@ -62,6 +65,8 @@ function publish() {
 function open(checkpoint: Checkpoint | null) {
     editing.value = { checkpoint };
     name.value = checkpoint?.name ?? '';
+    emoji.value = checkpoint?.emoji ?? '';
+    pickingEmoji.value = false;
     radius.value = checkpoint?.radius ?? DEFAULT_RADIUS_M;
     point.value = checkpoint
         ? { latitude: checkpoint.latitude, longitude: checkpoint.longitude }
@@ -101,7 +106,7 @@ async function save() {
     nameError.value = null;
     saveError.value = null;
     saving.value = true;
-    const input = { name: trimmed, ...point.value, radius: Math.round(radius.value) };
+    const input = { name: trimmed, emoji: emoji.value, ...point.value, radius: Math.round(radius.value) };
     try {
         if (current.checkpoint) await store.update(current.checkpoint.id, input);
         else await store.create(input);
@@ -232,15 +237,29 @@ onBeforeUnmount(() => {
                 <p class="type-body-sm text-on-surface-variant px-2">Move the map to put the crosshair on the spot.</p>
             </template>
 
-            <TextField
-                v-model="name"
-                label="Name"
-                icon="place"
-                :maxlength="MAX_NAME_LENGTH"
-                :disabled="readOnly"
-                name="checkpoint-name"
-                @input="nameError = null"
-            />
+            <div class="flex items-center gap-2">
+                <button
+                    class="bg-surface-container-high hover:bg-surface-container-highest flex size-14 shrink-0 items-center justify-center rounded-lg disabled:opacity-60"
+                    :aria-label="emoji ? `Change emoji, currently ${emoji}` : 'Choose an emoji'"
+                    :title="emoji ? 'Change emoji' : 'Choose an emoji'"
+                    :disabled="readOnly"
+                    data-emoji-trigger
+                    @click="pickingEmoji = true"
+                >
+                    <span v-if="emoji" class="text-2xl leading-none">{{ emoji }}</span>
+                    <Icon v-else name="addReaction" class="text-on-surface-variant" />
+                </button>
+                <TextField
+                    v-model="name"
+                    label="Name"
+                    icon="place"
+                    :maxlength="MAX_NAME_LENGTH"
+                    :disabled="readOnly"
+                    name="checkpoint-name"
+                    class="flex-1"
+                    @input="nameError = null"
+                />
+            </div>
             <p v-if="nameError" class="type-body-sm text-error px-2" data-name-error>{{ nameError }}</p>
 
             <label class="type-label-lg block px-2">
@@ -304,7 +323,10 @@ onBeforeUnmount(() => {
                         class="flex min-w-0 flex-1 items-center gap-3 px-3 py-2.5 text-left"
                         @click="open(checkpoint)"
                     >
-                        <Icon name="place" class="text-primary" />
+                        <span class="flex size-6 shrink-0 items-center justify-center">
+                            <span v-if="checkpoint.emoji" class="text-xl leading-none">{{ checkpoint.emoji }}</span>
+                            <Icon v-else name="place" class="text-primary" :size="20" />
+                        </span>
                         <span class="min-w-0">
                             <span class="type-title-sm block truncate">{{ checkpoint.name }}</span>
                             <span class="type-body-sm text-on-surface-variant block"
@@ -325,6 +347,8 @@ onBeforeUnmount(() => {
                 </li>
             </ul>
         </template>
+
+        <EmojiPickerDialog v-if="pickingEmoji" :emoji="emoji" @select="emoji = $event" @close="pickingEmoji = false" />
 
         <ConfirmDialog
             v-if="pendingDelete"

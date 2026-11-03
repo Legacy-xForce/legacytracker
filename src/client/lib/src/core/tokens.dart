@@ -62,6 +62,9 @@ abstract final class AppMotion {
 abstract final class AppType {
   static const double labelMd = 12;
   static const double labelSm = 11;
+
+  /// Emoji glyph drawn in map labels and markers, where no text theme is at hand.
+  static const double emojiMd = 14;
 }
 
 /// The design tokens a [ThemeData] carries, for component themes and widgets

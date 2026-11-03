@@ -147,6 +147,7 @@ describe('resolveCheckpoint', () => {
     const place = (id: string, latitude: number, radius: number): Checkpoint => ({
         id,
         name: id,
+        emoji: '',
         latitude,
         longitude: 9,
         radius,

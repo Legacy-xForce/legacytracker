@@ -186,8 +186,8 @@ Shared circular places. A person inside one is shown as "at <name>" instead of a
 | Method   | Path                       | Description |
 |----------|----------------------------|-------------|
 | `GET`    | `/api/v1/checkpoints`      | Every checkpoint, newest first, each with `can_edit` for the caller. |
-| `POST`   | `/api/v1/checkpoints`      | Body `{ "name", "latitude", "longitude", "radius_m" }` (radius 10-250 m). `201` with the checkpoint, `400` on invalid input, `409` if the name is taken. |
-| `PATCH`  | `/api/v1/checkpoints/:id`  | Same fields, all optional. Only the creator may edit: `403` otherwise, `404` if it does not exist, `409` on a name clash. |
+| `POST`   | `/api/v1/checkpoints`      | Body `{ "name", "emoji", "latitude", "longitude", "radius_m" }` (one emoji or `""`, radius 10-250 m). `201` with the checkpoint, `400` on invalid input, `409` if the name is taken. |
+| `PATCH`  | `/api/v1/checkpoints/:id`  | Same fields; omit `emoji` to keep the stored one. Only the creator may edit: `403` otherwise, `404` if it does not exist, `409` on a name clash. |
 | `DELETE` | `/api/v1/checkpoints/:id`  | Creator only. `{ "deleted": true }`, `403`, or `404`. |
 
 ### Health

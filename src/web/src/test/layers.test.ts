@@ -29,7 +29,9 @@ describe('map overlays', () => {
     it('draws saved places as labelled circles', async () => {
         const wrapper = mountMap(() =>
             h(CheckpointsLayer, {
-                checkpoints: [{ id: '1', name: 'Home', latitude: 45, longitude: 9, radius: 100, canEdit: true }]
+                checkpoints: [
+                    { id: '1', name: 'Home', emoji: '', latitude: 45, longitude: 9, radius: 100, canEdit: true }
+                ]
             })
         );
         await wrapper.vm.$nextTick();
@@ -41,7 +43,9 @@ describe('map overlays', () => {
         const picked: string[] = [];
         const wrapper = mountMap(() =>
             h(CheckpointsLayer, {
-                checkpoints: [{ id: 'home', name: 'Home', latitude: 45, longitude: 9, radius: 100, canEdit: true }],
+                checkpoints: [
+                    { id: 'home', name: 'Home', emoji: '🏠', latitude: 45, longitude: 9, radius: 100, canEdit: true }
+                ],
                 onSelect: (id: string) => picked.push(id)
             })
         );

@@ -486,17 +486,27 @@ class MarkerIconFactory extends ChangeNotifier {
     );
   }
 
-  /// The web client's checkpoint name: a dark pill with a pin glyph, shown
-  /// from zoom 13. Sized to the text, so the caller caches it per name.
+  /// The web client's checkpoint name: a dark pill with a pin glyph (or the
+  /// checkpoint's own emoji), shown from zoom 13. Sized to the text, so the
+  /// caller caches it per name and emoji.
   Future<MarkerImage> checkpointLabel(
     String name, {
     required Color accent,
+    String emoji = '',
   }) async {
-    final id = 'label-${_hashed('$name|${accent.toARGB32()}')}';
+    final id = 'label-${_hashed('$name|$emoji|${accent.toARGB32()}')}';
     final cached = _cached(id);
     if (cached != null) return cached;
 
-    final iconPainter = _iconPainter(Icons.place_rounded, 14, accent);
+    final iconPainter = emoji.isEmpty
+        ? _iconPainter(Icons.place_rounded, 14, accent)
+        : (TextPainter(
+            text: TextSpan(
+              text: emoji,
+              style: const TextStyle(fontSize: AppType.emojiMd),
+            ),
+            textDirection: TextDirection.ltr,
+          )..layout());
     final textPainter = TextPainter(
       text: TextSpan(
         text: name,

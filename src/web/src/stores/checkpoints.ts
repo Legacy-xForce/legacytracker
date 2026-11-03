@@ -6,6 +6,8 @@ import { haversine } from '../lib/replay';
 export interface Checkpoint {
     id: string;
     name: string;
+    /** One emoji shown next to the name, or an empty string. */
+    emoji: string;
     latitude: number;
     longitude: number;
     /** Metres. */
@@ -24,6 +26,8 @@ export interface CheckpointInput {
     latitude: number;
     longitude: number;
     radius: number;
+    /** Omitted by older callers and the API's backwards-compatible path. */
+    emoji?: string;
 }
 
 /** A save the server refused, with a message safe to show. `nameTaken` marks the 409. */
@@ -41,7 +45,7 @@ export function parseCheckpoints(body: unknown): Checkpoint[] {
     if (!Array.isArray(list)) return [];
     const parsed: Checkpoint[] = [];
     for (const raw of list as Record<string, unknown>[]) {
-        const { id, name, latitude, longitude, radius_m: radius, can_edit: canEdit } = raw;
+        const { id, name, emoji, latitude, longitude, radius_m: radius, can_edit: canEdit } = raw;
         if (
             (typeof id !== 'string' && typeof id !== 'number') ||
             typeof name !== 'string' ||
@@ -51,7 +55,15 @@ export function parseCheckpoints(body: unknown): Checkpoint[] {
         ) {
             continue;
         }
-        parsed.push({ id: String(id), name, latitude, longitude, radius, canEdit: canEdit === true });
+        parsed.push({
+            id: String(id),
+            name,
+            emoji: typeof emoji === 'string' ? emoji : '',
+            latitude,
+            longitude,
+            radius,
+            canEdit: canEdit === true
+        });
     }
     return parsed;
 }
@@ -77,6 +89,7 @@ export function resolveCheckpoint(latitude: number, longitude: number, checkpoin
 function body(input: CheckpointInput): string {
     return JSON.stringify({
         name: input.name,
+        emoji: input.emoji ?? '',
         latitude: input.latitude,
         longitude: input.longitude,
         radius_m: input.radius
