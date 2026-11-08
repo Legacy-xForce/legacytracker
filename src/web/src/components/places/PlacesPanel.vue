@@ -59,7 +59,10 @@ const visible = computed(() => {
 const readOnly = computed(() => editing.value?.checkpoint != null && !editing.value.checkpoint.canEdit);
 
 function publish() {
-    emit('draft', editing.value ? { ...point.value, radius: radius.value } : null);
+    emit(
+        'draft',
+        editing.value ? { id: editing.value.checkpoint?.id ?? null, ...point.value, radius: radius.value } : null
+    );
 }
 
 function open(checkpoint: Checkpoint | null) {

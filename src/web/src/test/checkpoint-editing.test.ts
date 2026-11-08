@@ -146,12 +146,12 @@ describe('places panel', () => {
     it('edits a place: draws it, saves the new name and radius', async () => {
         const wrapper = await mountPanel();
         await wrapper.findAll('[data-checkpoint] button')[0].trigger('click');
-        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 45, longitude: 9, radius: 80 }]);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ id: '1', latitude: 45, longitude: 9, radius: 80 }]);
         expect(wrapper.emitted('goto')?.[0]).toEqual([45, 9]);
 
         await wrapper.find('input[name="checkpoint-name"]').setValue('  Home   base ');
         await wrapper.find('input[type="range"]').setValue('150');
-        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 45, longitude: 9, radius: 150 }]);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ id: '1', latitude: 45, longitude: 9, radius: 150 }]);
 
         await wrapper.find('[data-save]').trigger('click');
         await flushPromises();
@@ -165,7 +165,7 @@ describe('places panel', () => {
         const wrapper = await mountPanel();
         await wrapper.setProps({ request: '2' });
         expect(wrapper.find('[data-place-editor]').exists()).toBe(true);
-        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 45, longitude: 9, radius: 80 }]);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ id: '2', latitude: 45, longitude: 9, radius: 80 }]);
         expect(wrapper.emitted('handled')).toHaveLength(1);
         wrapper.unmount();
     });
@@ -201,7 +201,7 @@ describe('places panel', () => {
         const wrapper = await mountPanel();
         await wrapper.find('[data-add]').trigger('click');
         await wrapper.setProps({ cursor: { latitude: 11, longitude: 21 } });
-        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 11, longitude: 21, radius: 100 }]);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ id: null, latitude: 11, longitude: 21, radius: 100 }]);
         wrapper.unmount();
     });
 
@@ -222,7 +222,7 @@ describe('places panel', () => {
         expect(wrapper.find('[data-save]').exists()).toBe(false);
         expect(wrapper.find('input[name="checkpoint-name"]').attributes('disabled')).toBeDefined();
         await wrapper.setProps({ cursor: { latitude: 50, longitude: 50 } });
-        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ latitude: 45, longitude: 9, radius: 80 }]);
+        expect(wrapper.emitted('draft')?.at(-1)).toEqual([{ id: '2', latitude: 45, longitude: 9, radius: 80 }]);
         wrapper.unmount();
     });
 

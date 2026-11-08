@@ -10,7 +10,11 @@ import { isStyleNotLoaded } from '../lib/mapbox';
 import { useMap } from '../lib/mapContext';
 import type { Checkpoint } from '../stores/checkpoints';
 
-const props = defineProps<{ checkpoints: Checkpoint[] }>();
+const props = defineProps<{
+    checkpoints: Checkpoint[];
+    /** A place the editor is already drawing, so it is not painted twice. */
+    editingId?: string | null;
+}>();
 const emit = defineEmits<{ select: [id: string] }>();
 const map = useMap();
 const appearance = useAppearanceStore();
@@ -79,12 +83,17 @@ function paint() {
     clearLabels();
     // The circles follow the theme's accent, like the rest of the page.
     const accent = themeColor('primary');
-    if (props.checkpoints.length > 0) {
+    // The draft layer draws the place being edited; leaving it here too would keep the old copy
+    // at its saved spot while the draft follows the crosshair.
+    const shown = props.editingId
+        ? props.checkpoints.filter((checkpoint) => checkpoint.id !== props.editingId)
+        : props.checkpoints;
+    if (shown.length > 0) {
         target.addSource(SOURCE, {
             type: 'geojson',
             data: {
                 type: 'FeatureCollection',
-                features: props.checkpoints.map((checkpoint) => ({
+                features: shown.map((checkpoint) => ({
                     type: 'Feature',
                     properties: { id: checkpoint.id },
                     geometry: {
@@ -116,7 +125,7 @@ function paint() {
                 'line-emissive-strength': 1
             }
         });
-        for (const checkpoint of props.checkpoints) {
+        for (const checkpoint of shown) {
             const el = document.createElement('div');
             el.className = 'checkpoint-label lt-marker';
             el.style.zIndex = `${Z_INDEX}`;
@@ -147,7 +156,7 @@ watch(
     },
     { immediate: true }
 );
-watch(() => props.checkpoints, draw);
+watch(() => [props.checkpoints, props.editingId], draw);
 // Paint cannot read CSS variables, so a new theme redraws the circles with its own accent.
 watch(() => appearance.theme, draw, { flush: 'post' });
 onBeforeUnmount(() => {

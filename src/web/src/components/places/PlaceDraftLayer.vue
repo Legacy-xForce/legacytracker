@@ -10,6 +10,8 @@ import { isStyleNotLoaded } from '../../lib/mapbox';
 import { useInsets, useMap } from '../../lib/mapContext';
 
 export interface PlaceDraft {
+    /** The saved place being edited, or null while a new one is being drawn. */
+    id: string | null;
     latitude: number;
     longitude: number;
     /** Metres. */

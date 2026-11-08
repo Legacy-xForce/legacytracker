@@ -345,6 +345,7 @@ watch(replaying, (isReplaying) => {
             <CheckpointsLayer
                 v-if="(showCheckpoints || view === 'places') && !replaying"
                 :checkpoints="checkpoints.checkpoints"
+                :editing-id="placeDraft?.id ?? null"
                 @select="openCheckpoint"
             />
             <PlaceDraftLayer

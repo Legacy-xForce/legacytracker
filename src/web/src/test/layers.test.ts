@@ -39,6 +39,22 @@ describe('map overlays', () => {
         wrapper.unmount();
     });
 
+    it('hides the saved place the editor is moving, so it cannot appear twice', async () => {
+        const wrapper = mountMap(() =>
+            h(CheckpointsLayer, {
+                checkpoints: [
+                    { id: 'home', name: 'Home', emoji: '', latitude: 45, longitude: 9, radius: 100, canEdit: true },
+                    { id: 'work', name: 'Work', emoji: '', latitude: 46, longitude: 10, radius: 100, canEdit: true }
+                ],
+                editingId: 'home'
+            })
+        );
+        await wrapper.vm.$nextTick();
+        const labels = [...document.querySelectorAll('.checkpoint-label')];
+        expect(labels.map((label) => label.textContent)).toEqual(['Work']);
+        wrapper.unmount();
+    });
+
     it('lets a saved place be picked from its name, which takes the click', async () => {
         const picked: string[] = [];
         const wrapper = mountMap(() =>
@@ -58,7 +74,8 @@ describe('map overlays', () => {
     });
 
     it('draws the place being edited and clears it when the editor closes', async () => {
-        let draft: { latitude: number; longitude: number; radius: number } | null = {
+        let draft: { id: string | null; latitude: number; longitude: number; radius: number } | null = {
+            id: 'home',
             latitude: 45,
             longitude: 9,
             radius: 80
