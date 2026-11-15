@@ -44,6 +44,7 @@ Create a `.env` file (or export variables):
 | `AUTH_ALLOWED_CLIENTS` | `tracker-spa,tracker-mobile` | OIDC clients (`client_id`) whose access tokens are accepted, and the `aud` of back-channel logout tokens. |
 | `AUTH_MOBILE_CLIENT` | `tracker-mobile` | The only OIDC client allowed to register devices and request Mapbox tokens. |
 | `CORS_ALLOWED_ORIGINS` | — | Comma-separated browser origins allowed to call the API. Unset reflects any origin (and logs a warning). |
+| `WEB_APP_URL` | `https://legacytracker.pages.dev` | Web map that a browser opening the API root (`GET /`) is redirected to. |
 | `TRUSTED_PROXY_CIDRS` | Cloudflare's published ranges plus `loopback` and `uniquelocal` | Comma-separated networks whose `X-Forwarded-For` entries are believed. Sets Fastify's `trustProxy`, so it decides what `request.ip` is, which the logs carry. API token address checks resolve their own client address instead (see [API tokens](#api-tokens)); a wrong list here only mislabels logs. |
 | `MAPBOX_SECRET_TOKEN` | — | Mapbox secret token with `tokens:write`, `styles:read` and `fonts:read`. Server-side only; mints the app's temporary tokens. The app cannot show a map until this is set. |
 | `MAPBOX_USERNAME` | — | Mapbox account that owns the temporary tokens. |

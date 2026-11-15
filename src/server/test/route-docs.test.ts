@@ -25,7 +25,11 @@ function routes(): { method: string; path: string }[] {
 }
 
 // Routes deliberately left out of the public API reference.
-const NOT_PUBLIC = new Set<string>(["POST /auth/backchannel-logout"]);
+const NOT_PUBLIC = new Set<string>([
+  "POST /auth/backchannel-logout",
+  // A browser redirect to the web map, not an API endpoint.
+  "GET /",
+]);
 
 describe("route documentation", () => {
   const all = routes().filter(

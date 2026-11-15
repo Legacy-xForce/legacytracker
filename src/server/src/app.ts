@@ -100,6 +100,10 @@ const ANDROID_MIN_SUPPORTED_CODE =
 // The only client that may register devices (mint device tokens) and ask for
 // Mapbox temporary tokens. The web uses a URL-restricted public token instead.
 const AUTH_MOBILE_CLIENT = process.env.AUTH_MOBILE_CLIENT ?? "tracker-mobile";
+// The web map. A browser that opens the API root is sent here: this server has
+// no page at "/", every endpoint lives under /api/v1.
+const WEB_APP_URL =
+  process.env.WEB_APP_URL ?? "https://legacytracker.pages.dev";
 
 const authVerifier = {
   jwks: JWKS,
@@ -2368,6 +2372,10 @@ app.register(async () => {
     connection.socket.send(JSON.stringify(viewersMessage()));
   });
 });
+
+// A browser opening the API root wants the web map, not a 404. Every API path
+// is under /api/v1, so nothing else can be reached from here.
+app.get("/", async (_request, reply) => reply.redirect(WEB_APP_URL, 302));
 
 // Lightweight liveness probe for Docker/Coolify. It answers as soon as the
 // HTTP server is accepting requests; startup work (schema, FCM, sharing) has
