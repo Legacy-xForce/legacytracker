@@ -171,6 +171,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
     super.didUpdateWidget(oldWidget);
     _syncMarkerMotions();
     _jumpToInitialFixIfNeeded(oldWidget);
+    // Motion ticks are skipped while another tab is onstage (IndexedStack
+    // keeps this one mounted). Publish the positions the glides reached on
+    // the way back so the map does not open on stale pins.
+    if (widget.isActive && !oldWidget.isActive) _publishScene();
   }
 
   @override
@@ -196,7 +200,9 @@ class TrackingMapTabState extends State<TrackingMapTab>
     _pendingImages.clear();
     _iconEpoch++;
     _syncAvatarAnimation();
-    _publishScene();
+    // The caches were cleared even offstage, but rebuilding and syncing a
+    // hidden platform view buys nothing; coming back republishes the scene.
+    if (widget.isActive) _publishScene();
   }
 
   /// The map draws markers as bitmaps, so an animated picture only moves if a
@@ -485,7 +491,7 @@ class TrackingMapTabState extends State<TrackingMapTab>
   }
 
   void _handleMotionTick() {
-    if (!mounted) return;
+    if (!mounted || !widget.isActive) return;
     final now = DateTime.now();
     final last = _lastMotionBuild;
     // Native annotation updates cross a platform channel; ~20 fps keeps the
@@ -496,6 +502,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
     }
     _lastMotionBuild = now;
     _publishScene();
+    // Every moving peer has its own ticker. Syncing the follow camera here,
+    // inside the same throttle, turns several setCamera calls per frame into
+    // one per marker update; sheet drags still move it immediately through
+    // onExtentChanged.
     _syncMapCameraToFollowedUser();
   }
 
@@ -794,18 +804,19 @@ class TrackingMapTabState extends State<TrackingMapTab>
         ? checkpointsProvider?.checkpoints ?? const <Checkpoint>[]
         : const <Checkpoint>[];
     final showLabels = _cameraZoom >= _checkpointLabelsFromZoom;
+    // One theme lookup per publish, not one per checkpoint and one per group.
+    final accent = Theme.of(context).colorScheme.primary;
     final overlays = [
       for (final checkpoint in checkpoints)
         MapCheckpointOverlay(
           id: checkpoint.id,
           center: checkpoint.center,
           radiusMeters: checkpoint.radiusM.toDouble(),
-          color: Theme.of(context).colorScheme.primary,
+          color: accent,
         ),
     ];
     if (showLabels) {
       // The web's name pill: a dark label with a pin, under people and events.
-      final accent = Theme.of(context).colorScheme.primary;
       for (final checkpoint in checkpoints) {
         final image = _imageFor(
           'label:${checkpoint.name}:${checkpoint.emoji}:${accent.toARGB32()}',
@@ -881,6 +892,10 @@ class TrackingMapTabState extends State<TrackingMapTab>
     }
 
     final markers = <MapMarker>[];
+    // Theme.of walks the element tree. With several moving people these were
+    // resolved once per group, i.e. dozens of times per 50 ms publish.
+    final colors = _markerColors;
+    final clusterStyle = _clusterStyle;
     _seenSlots.clear();
     for (final group in clusterMarkers(
       entries,
@@ -913,17 +928,16 @@ class TrackingMapTabState extends State<TrackingMapTab>
               '${(person.speedKmh / 5).round() * 5}|${person.batteryLevel}|'
               '${person.isCharging}|${_icons.avatarFrame(person)}',
       ].join(',');
-      final colors = _markerColors;
       final slotId = single
           ? 'user-${group.members.first.value.profile.id}'
           : 'cluster-${group.members.map((m) => m.value.profile.id).join('-')}';
       var image = _imageFor(
         single
             ? 'person:${colors.id}:$signature'
-            : 'cluster:${_clusterStyle.id}:$signature',
+            : 'cluster:${clusterStyle.id}:$signature',
         () => single
             ? _icons.personMarker(persons.first, colors: colors)
-            : _icons.clusterMarker(persons, style: _clusterStyle),
+            : _icons.clusterMarker(persons, style: clusterStyle),
       );
       // A new speed bucket or battery level re-renders asynchronously; keep
       // the slot's previous bitmap on screen until the new one lands, so the

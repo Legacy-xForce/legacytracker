@@ -8,27 +8,32 @@ import '../../../core/constants.dart';
 /// plain projection is enough to decide whether two markers overlap on screen.
 const double _earthRadiusMeters = 6371008.8;
 
-double _clampLatitude(double latitude) =>
-    latitude
-        .clamp(-AppConstants.maxMercatorLatitude, AppConstants.maxMercatorLatitude)
-        .toDouble();
+double _clampLatitude(double latitude) => latitude
+    .clamp(-AppConstants.maxMercatorLatitude, AppConstants.maxMercatorLatitude)
+    .toDouble();
 
 double _latitudeRadians(double latitude) =>
     _clampLatitude(latitude) * math.pi / 180;
 
-/// World-pixel X (0..worldSize) at [zoom].
-double worldX(LatLng point, double zoom) {
-  final scale = 256.0 * math.pow(2.0, zoom);
-  return (point.longitude + 180.0) / 360.0 * scale;
-}
+/// 256 * 2^zoom: the world-pixel size. Clustering projects many points at the
+/// same zoom, so callers that already know it pass [scale] to [_worldX]/[_worldY]
+/// instead of recomputing the power for every point and every centroid.
+double _worldScale(double zoom) => 256.0 * math.pow(2.0, zoom).toDouble();
 
-/// World-pixel Y (0..worldSize) at [zoom].
-double worldY(LatLng point, double zoom) {
-  final scale = 256.0 * math.pow(2.0, zoom);
+double _worldX(LatLng point, double scale) =>
+    (point.longitude + 180.0) / 360.0 * scale;
+
+double _worldY(LatLng point, double scale) {
   final sinLat = math.sin(_latitudeRadians(point.latitude));
   final y = 0.5 - math.log((1 + sinLat) / (1 - sinLat)) / (4 * math.pi);
   return y * scale;
 }
+
+/// World-pixel X (0..worldSize) at [zoom].
+double worldX(LatLng point, double zoom) => _worldX(point, _worldScale(zoom));
+
+/// World-pixel Y (0..worldSize) at [zoom].
+double worldY(LatLng point, double zoom) => _worldY(point, _worldScale(zoom));
 
 /// Great-circle distance in metres.
 double distanceMeters(LatLng a, LatLng b) {
@@ -98,30 +103,50 @@ List<MarkerGroup<T>> clusterMarkers<T>(
     ];
   }
 
+  final scale = _worldScale(zoom);
+  // A negative radius never grouped before (sqrt >= 0), and must still not.
+  final pixelRadiusSquared = pixelRadius >= 0 ? pixelRadius * pixelRadius : -1;
   final groups = <MarkerGroup<T>>[];
+  final centroids = <LatLng>[];
   final screenCentroids = <math.Point<double>>[];
+  // Running sums keep the centroid O(1) per add. Asking each group for
+  // `center` inside the inner loop re-walked every member of every group for
+  // every new marker, turning a dense cluster into quadratic work.
+  final latSums = <double>[];
+  final lngSums = <double>[];
   for (final entry in entries) {
-    final px = math.Point(worldX(entry.point, zoom), worldY(entry.point, zoom));
+    final px = math.Point(
+      _worldX(entry.point, scale),
+      _worldY(entry.point, scale),
+    );
     var target = -1;
     for (var i = 0; i < groups.length; i++) {
-      final centroid = groups[i].center;
       final dx = px.x - screenCentroids[i].x;
       final dy = px.y - screenCentroids[i].y;
-      if (math.sqrt(dx * dx + dy * dy) <= pixelRadius &&
-          distanceMeters(entry.point, centroid) <= maxMeters) {
+      if (dx * dx + dy * dy <= pixelRadiusSquared &&
+          distanceMeters(entry.point, centroids[i]) <= maxMeters) {
         target = i;
         break;
       }
     }
     if (target == -1) {
       groups.add(MarkerGroup<T>([entry]));
+      centroids.add(entry.point);
+      latSums.add(entry.point.latitude);
+      lngSums.add(entry.point.longitude);
       screenCentroids.add(px);
     } else {
       groups[target].members.add(entry);
-      final centroid = groups[target].center;
+      latSums[target] += entry.point.latitude;
+      lngSums[target] += entry.point.longitude;
+      final count = groups[target].members.length;
+      // Same order of summation as averagePosition, so the centroid is
+      // bit-for-bit what MarkerGroup.center would return.
+      final centroid = LatLng(latSums[target] / count, lngSums[target] / count);
+      centroids[target] = centroid;
       screenCentroids[target] = math.Point(
-        worldX(centroid, zoom),
-        worldY(centroid, zoom),
+        _worldX(centroid, scale),
+        _worldY(centroid, scale),
       );
     }
   }

@@ -292,9 +292,25 @@ a pin costs far more than the move. Three rules avoid that:
   owns. Position ticks update the lists and call `markChanged()`; the widget
   listens and diffs the annotations itself. Live tracking never calls
   `setState` for a moving peer, and the camera/sheet callbacks do the same.
-- Motion ticks are throttled to 100 ms, camera publishes to 120 ms and only
-  when the zoom moved ≥ 0.12 or a label threshold was crossed, and every
-  annotation is compared against a spec string before it is written to native.
+- Motion ticks are throttled to 50 ms. The follow camera is moved from that
+  same tick, so several moving peers cannot each send a `setCamera` per frame
+  (a sheet drag still moves it immediately). Camera events republish markers
+  only when the zoom moved ≥ 0.12 or a label threshold was crossed, and then
+  no more often than every 120 ms.
+- While another tab is onstage, `IndexedStack` keeps the map mounted but its
+  motion ticks no longer publish a scene or move the camera; returning to the
+  tab publishes the positions the glides reached.
+- Every annotation is compared against a typed, value-equal spec before a
+  native write. Point annotations and their specs are kept per layer, so a
+  tick buckets the scene into layers once instead of scanning it eight times
+  and building eight prefix strings. Cluster membership is still recomputed
+  on position ticks (people can drift into and out of a group), but the
+  world-pixel scale is computed once per pass and group centroids are running
+  sums rather than a fresh walk of every member inside the inner loop.
+- A route's point count is read without materialising its coordinates. SDK
+  2.31.1 exposes `createMulti`/`deleteMulti` but no batch update, so the
+  per-frame work that remains is the unavoidable one `update` call per moved
+  marker.
 
 ### Profile pictures
 
