@@ -184,6 +184,35 @@ void main() {
     expect(scheme.error, phone.error);
   });
 
+  test('OLED surfaces are neutral, whatever the phone accents are', () {
+    // The ramp used to be green-tinted, which left a green cast over OLED
+    // Adaptive even when the wallpaper's accents were a different hue.
+    for (final seed in [Colors.purple, Colors.teal, Colors.deepOrange]) {
+      final scheme = oledSurfaces(
+        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
+      );
+      for (final role in [
+        scheme.surface,
+        scheme.surfaceDim,
+        scheme.surfaceBright,
+        scheme.surfaceContainerLowest,
+        scheme.surfaceContainerLow,
+        scheme.surfaceContainer,
+        scheme.surfaceContainerHigh,
+        scheme.surfaceContainerHighest,
+        scheme.onSurface,
+        scheme.onSurfaceVariant,
+        scheme.outline,
+        scheme.outlineVariant,
+        scheme.inverseSurface,
+        scheme.onInverseSurface,
+      ]) {
+        expect(role.r, role.g, reason: '$role is not neutral');
+        expect(role.g, role.b, reason: '$role is not neutral');
+      }
+    }
+  });
+
   group('secondary roles follow the theme', () {
     // Counters, tab switchers, segmented buttons and pills are built on the
     // secondary container; Catppuccin's used to be teal in every variant.
