@@ -345,24 +345,29 @@ ThemeData buildAppTheme(ColorScheme scheme) {
 /// [base] with the OLED's pure-black surface ramp pasted over it. The accents
 /// stay whatever [base] was seeded with, which is what lets OLED Adaptive reuse
 /// the same black surfaces under the phone's own palette.
+///
+/// The surfaces are deliberately achromatic (R == G == B): they were once
+/// lifted from the teal palette and carried a green cast that showed through
+/// OLED Adaptive even when the phone's accents were something else entirely.
+/// Neutral greys keep the ramp free of any tint regardless of the seed.
 ColorScheme oledSurfaces(ColorScheme base) {
   const black = Color(0xFF000000);
-  const onSurface = Color(0xFFDDE4E1);
+  const onSurface = Color(0xFFE1E1E1);
   return base.copyWith(
     surface: black,
     surfaceDim: black,
-    surfaceBright: const Color(0xFF1A2120),
+    surfaceBright: const Color(0xFF1E1E1E),
     surfaceContainerLowest: black,
-    surfaceContainerLow: const Color(0xFF070B0A),
-    surfaceContainer: const Color(0xFF0D1312),
-    surfaceContainerHigh: const Color(0xFF151C1A),
-    surfaceContainerHighest: const Color(0xFF1E2624),
+    surfaceContainerLow: const Color(0xFF090909),
+    surfaceContainer: const Color(0xFF111111),
+    surfaceContainerHigh: const Color(0xFF191919),
+    surfaceContainerHighest: const Color(0xFF232323),
     onSurface: onSurface,
-    onSurfaceVariant: const Color(0xFFA8B4B1),
-    outline: const Color(0xFF5C6764),
-    outlineVariant: const Color(0xFF26302E),
+    onSurfaceVariant: const Color(0xFFAFAFAF),
+    outline: const Color(0xFF626262),
+    outlineVariant: const Color(0xFF2C2C2C),
     inverseSurface: onSurface,
-    onInverseSurface: const Color(0xFF0E1513),
+    onInverseSurface: const Color(0xFF121212),
     surfaceTint: Colors.transparent,
   );
 }
