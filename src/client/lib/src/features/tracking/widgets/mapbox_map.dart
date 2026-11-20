@@ -10,6 +10,35 @@ import 'map_geometry.dart';
 import 'marker_icons.dart';
 import 'tracking_map_layer.dart';
 
+/// The last state written to native for one annotation. Records compare by
+/// value, so the ~20 fps marker ticks can detect a changed pin without building
+/// a comma-joined string for every marker on every tick (the old spec strings
+/// were the largest source of short-lived allocations on the animation path).
+typedef _MarkerSpec = ({
+  double latitude,
+  double longitude,
+  String image,
+  double rotation,
+  double size,
+  double offsetX,
+  double offsetY,
+});
+
+typedef _CheckpointSpec = ({
+  double latitude,
+  double longitude,
+  double radius,
+  int color,
+});
+
+typedef _LineSpec = ({
+  int color,
+  double opacity,
+  double emissive,
+  double width,
+  int pointCount,
+});
+
 /// Annotation layers in draw order. Checkpoint names sit under everything,
 /// beams and calendar events under people, checkpoints under all of them but
 /// the route. The person *bitmap* is decoration (`person`, no taps — its box
@@ -211,12 +240,17 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
   final Map<MapMarkerLayer, PointAnnotationManager> _pointManagers = {};
   final List<Cancelable> _tapSubscriptions = [];
 
-  final Map<String, PointAnnotation> _annotations = {};
-  final Map<String, String> _annotationSpecs = {};
+  // Point annotations are keyed by marker id *within* their layer. The old
+  // single map with `layer:id` keys made every sync scan all annotations once
+  // per layer to find its own; eight layers at 20 fps is a lot of throwaway
+  // key lists. Per-layer maps keep each diff local to its own manager.
+  final Map<MapMarkerLayer, Map<String, PointAnnotation>> _pointAnnotations =
+      {};
+  final Map<MapMarkerLayer, Map<String, _MarkerSpec>> _pointSpecs = {};
   final Map<String, PolygonAnnotation> _checkpointAnnotations = {};
-  final Map<String, String> _checkpointSpecs = {};
+  final Map<String, _CheckpointSpec> _checkpointSpecs = {};
   final Map<String, PolylineAnnotation> _lineAnnotations = {};
-  final Map<String, String> _lineSpecs = {};
+  final Map<String, _LineSpec> _lineSpecs = {};
   final Set<String> _addedImages = {};
 
   /// When each style image stopped being used by any marker. An image is only
@@ -275,6 +309,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     if (widget.scene != oldWidget.scene) {
       oldWidget.scene.removeListener(_onSceneChanged);
       widget.scene.addListener(_onSceneChanged);
+      // A different scene has contents the new listener has never seen.
+      _syncAll();
     }
     if (widget.accessToken.isNotEmpty &&
         widget.accessToken != oldWidget.accessToken) {
@@ -295,7 +331,10 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         widget.view3d != oldWidget.view3d) {
       unawaited(_applyView(animate: true));
     }
-    _syncAll();
+    // No unconditional sync here: the scene notifies on every mutation, and
+    // the only prop change that affects annotations is a style reload, which
+    // repopulates from _onStyleLoaded. Peer fixes rebuild the parent often,
+    // and a full annotation diff on every one of those rebuilds was wasted.
   }
 
   @override
@@ -508,8 +547,8 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     for (final manager in _lineManagers.values) {
       await clear(manager.deleteAll);
     }
-    _annotations.clear();
-    _annotationSpecs.clear();
+    _pointAnnotations.clear();
+    _pointSpecs.clear();
     _checkpointAnnotations.clear();
     _checkpointSpecs.clear();
     _lineAnnotations.clear();
@@ -675,8 +714,19 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       }
     }
 
+    // One pass over the scene builds every layer's desired set. Scanning the
+    // marker list separately from inside each of the eight layers only
+    // allocated eight maps with seven of them never changing.
+    final byLayer = <MapMarkerLayer, Map<String, MapMarker>>{};
+    for (final marker in widget.scene.markers) {
+      if (_failedImages.contains(marker.image.id)) continue;
+      (byLayer[marker.layer] ??= <String, MapMarker>{})[marker.id] = marker;
+    }
     for (final layer in MapMarkerLayer.values) {
-      await _attempt('layer ${layer.name}', () => _syncPointLayer(layer));
+      await _attempt(
+        'layer ${layer.name}',
+        () => _syncPointLayer(layer, byLayer[layer] ?? const {}),
+      );
     }
     await _attempt('checkpoints', _syncCheckpoints);
     for (final layer in MapPolylineLayer.values) {
@@ -749,50 +799,50 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
         : null;
   }
 
-  Future<void> _syncPointLayer(MapMarkerLayer layer) async {
+  Future<void> _syncPointLayer(
+    MapMarkerLayer layer,
+    Map<String, MapMarker> desired,
+  ) async {
     final manager = _pointManagers[layer];
     if (manager == null) return;
-    final desired = <String, MapMarker>{
-      for (final marker in widget.scene.markers)
-        if (marker.layer == layer && !_failedImages.contains(marker.image.id))
-          '${layer.name}:${marker.id}': marker,
-    };
-    final existingKeys = _annotations.keys
-        .where((key) => key.startsWith('${layer.name}:'))
-        .toList();
+    final annotations = _pointAnnotations.putIfAbsent(layer, () => {});
+    final specs = _pointSpecs.putIfAbsent(layer, () => {});
+    final existingKeys = annotations.keys.toList();
 
     for (final entry in desired.entries) {
       final key = entry.key;
       final marker = entry.value;
       final spec = _markerSpec(marker);
-      final annotation = _annotations[key];
+      final annotation = annotations[key];
       if (annotation == null) {
         final created = await manager.create(_pointOptions(marker));
-        _annotations[key] = created;
-        _annotationSpecs[key] = spec;
-      } else {
-        if (_annotationSpecs[key] != spec) {
-          _applyPoint(annotation, marker);
-          await manager.update(annotation);
-          _annotationSpecs[key] = spec;
-        }
+        annotations[key] = created;
+        specs[key] = spec;
+      } else if (specs[key] != spec) {
+        _applyPoint(annotation, marker);
+        await manager.update(annotation);
+        specs[key] = spec;
       }
     }
 
     for (final key in existingKeys) {
       if (desired.containsKey(key)) continue;
-      final annotation = _annotations.remove(key);
-      _annotationSpecs.remove(key);
+      final annotation = annotations.remove(key);
+      specs.remove(key);
       if (annotation == null) continue;
       await manager.delete(annotation);
     }
   }
 
-  String _markerSpec(MapMarker marker) {
-    return '${marker.position.latitude},${marker.position.longitude},'
-        '${marker.image.id},${marker.rotation},${marker.iconSize},'
-        '${marker.iconOffset.dx},${marker.iconOffset.dy}';
-  }
+  _MarkerSpec _markerSpec(MapMarker marker) => (
+    latitude: marker.position.latitude,
+    longitude: marker.position.longitude,
+    image: marker.image.id,
+    rotation: marker.rotation,
+    size: marker.iconSize,
+    offsetX: marker.iconOffset.dx,
+    offsetY: marker.iconOffset.dy,
+  );
 
   PointAnnotationOptions _pointOptions(MapMarker marker) {
     final anchored = marker.image.anchorOffsetY;
@@ -820,7 +870,9 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
       marker.iconOffset.dx,
       anchored + marker.iconOffset.dy,
     ];
-    annotation.customData = {'markerId': marker.id};
+    // `customData` carries the marker id, which is also the annotation's key
+    // and never changes. Rewriting it on every move only added a map to each
+    // channel message.
   }
 
   Future<void> _syncCheckpoints() async {
@@ -833,9 +885,12 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final existingKeys = _checkpointAnnotations.keys.toList();
     for (final entry in wanted.entries) {
       final overlay = entry.value;
-      final spec =
-          '${overlay.center.latitude},${overlay.center.longitude},'
-          '${overlay.radiusMeters},${overlay.color.toARGB32()}';
+      final spec = (
+        latitude: overlay.center.latitude,
+        longitude: overlay.center.longitude,
+        radius: overlay.radiusMeters,
+        color: overlay.color.toARGB32(),
+      );
       final annotation = _checkpointAnnotations[entry.key];
       if (annotation == null) {
         final created = await manager.create(
@@ -881,7 +936,7 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     final wantedCounts = <String, int>{};
     for (final line in widget.scene.polylines) {
       if (line.layer != layer) continue;
-      final count = _linePositions(line).length;
+      final count = _linePointCount(line.points);
       // A one-point run is not a line, and the native API rejects it.
       if (count > 1) {
         wanted['${layer.name}:${line.id}'] = line;
@@ -894,9 +949,13 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     for (final entry in wanted.entries) {
       final key = entry.key;
       final line = entry.value;
-      final spec =
-          '${line.color.toARGB32()},${line.opacity},'
-          '${line.emissiveStrength},${line.width},${wantedCounts[key]}';
+      final spec = (
+        color: line.color.toARGB32(),
+        opacity: line.opacity,
+        emissive: line.emissiveStrength,
+        width: line.width,
+        pointCount: wantedCounts[key] ?? 0,
+      );
       final annotation = _lineAnnotations[key];
       if (annotation == null) {
         try {
@@ -941,6 +1000,23 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
 
   LineString _lineGeometry(MapPolyline line) =>
       LineString(coordinates: _linePositions(line));
+
+  /// How many coordinates [_linePositions] would produce, without building the
+  /// list. A replay route can have thousands of fixes and its spec is checked
+  /// on every animation frame; allocating a `Position` for each one twice a
+  /// frame only to read `.length` was the single largest per-frame cost.
+  static int _linePointCount(List<LatLng> points) {
+    var count = 0;
+    double? lastLng;
+    double? lastLat;
+    for (final point in points) {
+      if (point.longitude == lastLng && point.latitude == lastLat) continue;
+      count++;
+      lastLng = point.longitude;
+      lastLat = point.latitude;
+    }
+    return count;
+  }
 
   /// Repeats the native line API chokes on, and a one-point run is not a line.
   List<Position> _linePositions(MapPolyline line) {

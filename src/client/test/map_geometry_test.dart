@@ -59,6 +59,60 @@ void main() {
       expect(group.center.latitude, closeTo(45.0702, 1e-9));
       expect(group.center.longitude, closeTo(7.6864, 1e-9));
     });
+
+    test('incremental centroids match the straightforward algorithm', () {
+      // The hot path keeps running sums and compares squared pixel distance
+      // instead of re-walking every group. Membership and bubble positions
+      // must stay identical across zooms, radii and dense arrangements.
+      var seed = 20261120;
+      double next() {
+        seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+        return seed / 0x7fffffff;
+      }
+
+      final entries = [
+        for (var i = 0; i < 60; i++)
+          ClusterInput(
+            value: i,
+            point: LatLng(
+              45 + (next() - 0.5) * 0.2,
+              7.6869 + (next() - 0.5) * 0.2,
+            ),
+          ),
+      ];
+
+      for (final zoom in [3.0, 8.0, 12.5, 17.0]) {
+        for (final pixelRadius in [2.0, 48.0, 96.0, 180.0]) {
+          final actual = clusterMarkers(
+            entries,
+            zoom: zoom,
+            pixelRadius: pixelRadius,
+          );
+          final expected = _referenceClusterMarkers(
+            entries,
+            zoom: zoom,
+            pixelRadius: pixelRadius,
+          );
+          expect(
+            actual.map((g) => g.members.map((m) => m.value).toList()).toList(),
+            expected
+                .map((g) => g.members.map((m) => m.value).toList())
+                .toList(),
+            reason: 'members at zoom $zoom, radius $pixelRadius',
+          );
+          for (var i = 0; i < actual.length; i++) {
+            expect(
+              actual[i].center.latitude,
+              closeTo(expected[i].center.latitude, 1e-12),
+            );
+            expect(
+              actual[i].center.longitude,
+              closeTo(expected[i].center.longitude, 1e-12),
+            );
+          }
+        }
+      }
+    });
   });
 
   group('circleRing', () {
@@ -114,6 +168,49 @@ void main() {
     expect(top, closeTo(limit, 1e-9));
     expect(top, closeTo(0, 1e-6));
   });
+}
+
+/// The clustering algorithm before the incremental-centroid optimisation,
+/// kept as a reference so the fast version has to agree with it exactly.
+List<MarkerGroup<T>> _referenceClusterMarkers<T>(
+  List<ClusterInput<T>> entries, {
+  required double zoom,
+  double pixelRadius = 96,
+  double maxMeters = 100,
+}) {
+  if (entries.length <= 1) {
+    return [
+      for (final entry in entries) MarkerGroup<T>([entry]),
+    ];
+  }
+  final groups = <MarkerGroup<T>>[];
+  final screenCentroids = <math.Point<double>>[];
+  for (final entry in entries) {
+    final px = math.Point(worldX(entry.point, zoom), worldY(entry.point, zoom));
+    var target = -1;
+    for (var i = 0; i < groups.length; i++) {
+      final centroid = groups[i].center;
+      final dx = px.x - screenCentroids[i].x;
+      final dy = px.y - screenCentroids[i].y;
+      if (math.sqrt(dx * dx + dy * dy) <= pixelRadius &&
+          distanceMeters(entry.point, centroid) <= maxMeters) {
+        target = i;
+        break;
+      }
+    }
+    if (target == -1) {
+      groups.add(MarkerGroup<T>([entry]));
+      screenCentroids.add(px);
+    } else {
+      groups[target].members.add(entry);
+      final centroid = groups[target].center;
+      screenCentroids[target] = math.Point(
+        worldX(centroid, zoom),
+        worldY(centroid, zoom),
+      );
+    }
+  }
+  return groups;
 }
 
 void _styleMappingTests() {
