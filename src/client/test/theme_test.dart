@@ -235,34 +235,27 @@ void main() {
     }
   });
 
-  test('pure-black surfaces get hairline edges so they stay legible', () {
+  test('containers use their fill, not outlines, to show elevation', () {
     BorderSide cardEdge(ThemeData data) =>
         (data.cardTheme.shape! as RoundedRectangleBorder).side;
     BorderSide fieldEdge(ThemeData data) =>
         (data.inputDecorationTheme.border! as OutlineInputBorder).borderSide;
 
-    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
-      final data = buildThemeFor(id);
-      expect(cardEdge(data), isNot(BorderSide.none), reason: id.name);
-      expect(fieldEdge(data), isNot(BorderSide.none), reason: id.name);
+    for (final option in appThemes) {
+      final data = buildThemeFor(option.id);
+      expect(cardEdge(data), BorderSide.none, reason: option.label);
+      expect(fieldEdge(data), BorderSide.none, reason: option.label);
       expect(
         (data.dialogTheme.shape! as RoundedRectangleBorder).side,
-        isNot(BorderSide.none),
-        reason: id.name,
+        BorderSide.none,
+        reason: option.label,
       );
       expect(
         (data.bottomSheetTheme.shape! as RoundedRectangleBorder).side,
-        isNot(BorderSide.none),
-        reason: id.name,
+        BorderSide.none,
+        reason: option.label,
       );
-      expect(cardEdge(data).color, data.colorScheme.outlineVariant);
-      expect(cardEdge(data).width, 0.5);
     }
-
-    // Tonal themes fill their surfaces with colour and need no edge.
-    final teal = buildThemeFor(AppThemeId.teal);
-    expect(cardEdge(teal), BorderSide.none);
-    expect(fieldEdge(teal), BorderSide.none);
   });
 
   test('the nav bar matches the people drawer in every theme', () {

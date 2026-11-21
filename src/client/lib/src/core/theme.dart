@@ -189,13 +189,8 @@ ThemeData buildAppTheme(ColorScheme scheme) {
   final dark = scheme.brightness == Brightness.dark;
   final rounded16 = RoundedRectangleBorder(borderRadius: AppShape.lg);
   // The OLED themes have a pure-black canvas and only very subtle steps
-  // above it. Give their containers a hairline edge so those near-black
-  // surfaces still read as layered. Other themes fill their surfaces with
-  // tones and need no edge.
+  // above it; their raised greys carry the layering, no outlines needed.
   final pureBlack = scheme.surface == const Color(0xFF000000);
-  final edge = pureBlack
-      ? BorderSide(color: scheme.outlineVariant, width: 0.5)
-      : BorderSide.none;
   final overlayStyle =
       (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
         statusBarColor: Colors.transparent,
@@ -237,7 +232,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       margin: EdgeInsets.zero,
       color: scheme.surfaceContainer,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: AppShape.md, side: edge),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.md),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: const AppTokens().navigationBarHeight,
@@ -279,7 +274,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       suffixIconColor: scheme.onSurfaceVariant,
       hintStyle: TextStyle(color: scheme.onSurfaceVariant),
       labelStyle: TextStyle(color: scheme.onSurfaceVariant),
-      border: OutlineInputBorder(borderRadius: AppShape.lg, borderSide: edge),
+      border: OutlineInputBorder(
+        borderRadius: AppShape.lg,
+        borderSide: BorderSide.none,
+      ),
       focusedBorder: OutlineInputBorder(
         borderRadius: AppShape.lg,
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
@@ -299,7 +297,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: AppShape.xl, side: edge),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.xl),
       // M3 headlineSmall: 24/32.
       titleTextStyle: TextStyle(
         fontSize: 24,
@@ -314,7 +312,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       ),
     ),
     popupMenuTheme: PopupMenuThemeData(
-      shape: RoundedRectangleBorder(borderRadius: AppShape.lg, side: edge),
+      shape: rounded16,
       color: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       textStyle: TextStyle(fontSize: 14, color: scheme.onSurface),
@@ -324,10 +322,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       surfaceTintColor: Colors.transparent,
       modalBackgroundColor: scheme.surfaceContainerLow,
       modalBarrierColor: Colors.black.withValues(alpha: dark ? 0.55 : 0.3),
-      shape: RoundedRectangleBorder(
-        borderRadius: AppShape.sheetTop,
-        side: edge,
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetTop),
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
     ),
@@ -359,10 +354,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
 /// surfaces under the phone's own palette.
 ///
 /// The ramp follows shadcn's dark theme: a true-black canvas with a short
-/// neutral-zinc scale for elevated surfaces, separated by half-pixel hairline
-/// borders rather than large jumps in lightness. The lowest levels stay #000000 so
-/// the bulk of the panel is genuinely off; cards, fields and pills keep just
-/// enough grey to read as raised. [buildAppTheme] adds the borders for us.
+/// neutral-zinc scale for elevated surfaces, separated by subtle steps in
+/// lightness rather than outlines. The lowest levels stay #000000 so the bulk
+/// of the panel is genuinely off; cards, fields and pills keep just enough
+/// grey to read as raised.
 ///
 /// Every grey is achromatic (R == G == B): the ramp was once lifted from the
 /// teal palette and carried a green cast that showed through OLED Adaptive
