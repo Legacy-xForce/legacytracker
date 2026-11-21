@@ -77,7 +77,7 @@ test("a due token is replaced, and the old one works until the new one is used",
   assert.deepEqual(reused, []);
 });
 
-test("the old token after the new one was used revokes the device", async () => {
+test("a copied old token rotates instead of revoking the device", async () => {
   const { auth, deviceId, token, reused } = await harness({
     rotateAfterMs: 0,
   });
@@ -87,9 +87,18 @@ test("the old token after the new one was used revokes the device", async () => 
   assert.ok(next);
   await auth.verify(next);
 
-  assert.equal(await auth.verify(token), null);
+  // The copy comes back. Tracking is accepted and reported, not locked out.
+  assert.deepEqual(await auth.verify(token), alice(deviceId));
   assert.deepEqual(reused, [{ deviceId, userId: "alice" }]);
-  assert.equal(await auth.verify(next), null);
+  const reissued = await auth.rotateIfDue(token);
+  assert.ok(reissued);
+  assert.notEqual(reissued, next);
+
+  // The copy is consumed, but the real phone's token and the fresh one still
+  // work — it keeps uploading in the background without opening the app.
+  assert.equal(await auth.verify(token), null);
+  assert.deepEqual(await auth.verify(next), alice(deviceId));
+  assert.deepEqual(await auth.verify(reissued), alice(deviceId));
 });
 
 test("a lost replacement is re-issued, and the lost one is retired", async () => {
@@ -108,10 +117,16 @@ test("a lost replacement is re-issued, and the lost one is retired", async () =>
   assert.deepEqual(await auth.verify(reissued), alice(deviceId));
   assert.deepEqual(reused, []);
 
-  // Someone presenting the token the phone never received holds a copy.
-  assert.equal(await auth.verify(lost), null);
+  // Someone presenting the token the phone never received holds a copy. It
+  // is reported and consumed by a further rotation, while the phone's token
+  // and the replacement keep working.
+  assert.deepEqual(await auth.verify(lost), alice(deviceId));
   assert.deepEqual(reused, [{ deviceId, userId: "alice" }]);
-  assert.equal(await auth.verify(reissued), null);
+  const rotated = await auth.rotateIfDue(lost);
+  assert.ok(rotated);
+  assert.notEqual(rotated, reissued);
+  assert.equal(await auth.verify(lost), null);
+  assert.deepEqual(await auth.verify(reissued), alice(deviceId));
 });
 
 test("revoking rejects both the current and the previous token", async () => {
@@ -135,8 +150,8 @@ test("only one of two concurrent rotations of a token wins", async () => {
   assert.equal(results.filter((value) => value !== null).length, 1);
 });
 
-test("a replaced token can't revoke another user's device", async () => {
-  const { auth, deviceId, token } = await harness({ rotateAfterMs: 0 });
+test("a reused token never affects another user's device", async () => {
+  const { auth, deviceId, token, reused } = await harness({ rotateAfterMs: 0 });
   await db.query("INSERT INTO users (id, name) VALUES ('bob', 'Bob')");
   const bob = await auth.register("bob", "ios", null);
 
@@ -144,7 +159,8 @@ test("a replaced token can't revoke another user's device", async () => {
   const next = await auth.rotateIfDue(token);
   assert.ok(next);
   await auth.verify(next);
-  assert.equal(await auth.verify(token), null);
+  assert.deepEqual(await auth.verify(token), alice(deviceId));
+  await auth.rotateIfDue(token);
 
   assert.deepEqual(await auth.verify(bob.token), {
     deviceId: bob.deviceId,
@@ -152,4 +168,5 @@ test("a replaced token can't revoke another user's device", async () => {
     userName: "Bob",
   });
   assert.notEqual(bob.deviceId, deviceId);
+  assert.deepEqual(reused, [{ deviceId, userId: "alice" }]);
 });

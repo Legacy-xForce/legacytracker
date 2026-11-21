@@ -40,8 +40,8 @@ object SharingPausedNotice {
         }
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_stat_tracking)
-            .setContentTitle("Location sharing paused")
-            .setContentText("Open Legacy Tracker to resume sharing your location.")
+            .setContentTitle("Location sharing")
+            .setContentText("We're refreshing your sharing credentials in the background. You don't need to do anything.")
             .setContentIntent(contentIntent)
             .setAutoCancel(true)
             .setOnlyAlertOnce(true)

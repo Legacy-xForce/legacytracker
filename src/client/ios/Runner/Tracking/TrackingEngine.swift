@@ -33,8 +33,8 @@ enum SharingPausedNotice {
 
     static func show() {
         let content = UNMutableNotificationContent()
-        content.title = "Location sharing paused"
-        content.body = "Open Legacy Tracker to resume sharing your location."
+        content.title = "Location sharing"
+        content.body = "We're refreshing your sharing credentials in the background. You don't need to do anything."
         content.sound = .default
         let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
         // Not delivered when notifications aren't allowed; the app still

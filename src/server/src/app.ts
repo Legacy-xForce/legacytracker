@@ -156,7 +156,7 @@ const deviceAuth = new DeviceAuth(pool, {
   onReuse: ({ deviceId, userId }) =>
     app.log.warn(
       { deviceId, userId },
-      "[devices] retired token reused; device revoked",
+      "[devices] retired token reused; rotating it and keeping the device live",
     ),
 });
 const apiTokens = new ApiTokens(pool);

@@ -135,11 +135,12 @@ red light, 12 m-radius junction turn, roundabout, highway bend, exit ramp):
   carries a replacement (`device_token`), stored before the next request. The
   previous token stays valid until the replacement is first used, so a lost
   response never locks the phone out (the server re-issues instead). A replaced
-  token coming back means a second copy of it exists: the server revokes
-  the device. The engine then shows a "Location sharing paused"
-  notification, and opening the app re-registers. Dart's stored token is only
-  the registration-time copy; `configure` keeps the engine's own token while
-  the device id is unchanged.
+  token coming back means a second copy of it exists: the server logs the
+  reuse and sends another fresh token in that upload's response, consuming the
+  copied one. Tracking carries on in the background — the user never has to
+  open the app; a local notification is informational only. Dart's stored
+  token is just the registration-time copy; `configure` keeps the engine's own
+  token while the device id is unchanged.
 
 ## Live mode ("someone opened the app")
 

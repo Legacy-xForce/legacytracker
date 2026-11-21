@@ -85,8 +85,10 @@ function newToken(): string {
  * racing: once a token is a day old, an upload's response carries its
  * replacement. The previous token keeps working until the replacement is
  * first used, in case that response never arrived. A token that comes back
- * after being replaced means a second copy exists, so the device is revoked;
- * the real phone re-registers with the user's login when the app next opens.
+ * after being replaced means a second copy exists: the server logs it and
+ * issues yet another replacement through the upload response, so the real
+ * phone keeps tracking in the background and the copy is consumed instead of
+ * locking the user out.
  */
 export class DeviceAuth {
   private readonly cache = new Map<string, CacheEntry>();
@@ -148,13 +150,21 @@ export class DeviceAuth {
 
     const row = await this.lookup(hash);
     if (!row) {
-      await this.revokeIfRetired(hash);
-      this.cache.set(hash, {
-        identity: null,
-        issuedAt: 0,
-        expiresAt: now + NEGATIVE_CACHE_TTL_MS,
-      });
-      return null;
+      // A retired token came back: a second copy of it exists. Keep the
+      // device alive and accept this upload — `rotateIfDue` gives the engine
+      // a fresh token in the response, so tracking continues in the
+      // background and the user never has to open the app. Do not cache the
+      // identity: the reuse must be seen (and the token consumed) on every
+      // presentation until it is replaced.
+      const reuse = await this.reusedIdentity(hash);
+      if (!reuse) {
+        this.cache.set(hash, {
+          identity: null,
+          issuedAt: 0,
+          expiresAt: now + NEGATIVE_CACHE_TTL_MS,
+        });
+      }
+      return reuse;
     }
 
     const identity = {
@@ -198,7 +208,9 @@ export class DeviceAuth {
     }
 
     const row = await this.lookup(hash);
-    if (!row) return null;
+    // No live token matches: either it is retired (a copy came back) or it
+    // was never ours. Only a retired token can be recovered in the background.
+    if (!row) return this.rotateAfterReuse(hash);
     const next = newToken();
     const nextHash = hashDeviceToken(next);
 
@@ -291,24 +303,78 @@ export class DeviceAuth {
   }
 
   /**
-   * A replaced token only comes back if a second copy of it exists. Whoever
-   * holds the newer token may be the one who copied it, so neither keeps
-   * access.
+   * A retired token only comes back if a second copy of it exists. Instead of
+   * locking the real phone out (which would force the user to open the app to
+   * re-register), keep the device alive and report the reuse. `rotateAfterReuse`
+   * then hands the uploader a fresh token in the response and consumes this
+   * one, so the copy stops working while tracking carries on.
    */
-  private async revokeIfRetired(hash: string): Promise<void> {
+  private async reusedIdentity(hash: string): Promise<DeviceIdentity | null> {
     const result = await this.pool.query<{
       device_id: string;
       user_id: string;
+      name: string;
     }>(
-      `SELECT h.device_id, d.user_id
+      `SELECT h.device_id, d.user_id, u.name
        FROM device_token_history h
        JOIN devices d ON d.id = h.device_id
+       JOIN users u ON u.id = d.user_id
        WHERE h.token_hash = $1 AND d.revoked_at IS NULL`,
       [hash],
     );
     const row = result.rows[0];
-    if (!row) return;
-    await this.revoke(row.device_id, row.user_id);
+    if (!row) return null;
     this.onReuse?.({ deviceId: row.device_id, userId: row.user_id });
+    return { deviceId: row.device_id, userId: row.user_id, userName: row.name };
+  }
+
+  /**
+   * Replace a token that was retired (a copy of it came back). The token that
+   * was current steps back to `prev` so the real phone is still accepted on
+   * its next upload; the presented token is consumed so its copy stops
+   * working. Whoever presented it receives the replacement in the upload
+   * response, which the engine stores before sending the next batch.
+   */
+  private async rotateAfterReuse(hash: string): Promise<string | null> {
+    const history = await this.pool.query<{ device_id: string }>(
+      "SELECT device_id FROM device_token_history WHERE token_hash = $1",
+      [hash],
+    );
+    const deviceId = history.rows[0]?.device_id;
+    if (!deviceId) return null;
+    const current = await this.pool.query<{
+      token_hash: string;
+      prev_token_hash: string | null;
+    }>(
+      "SELECT token_hash, prev_token_hash FROM devices WHERE id = $1 AND revoked_at IS NULL",
+      [deviceId],
+    );
+    const row = current.rows[0];
+    if (!row) return null;
+    const next = newToken();
+    // Compare-and-swap on the current hash: two copies using the same retired
+    // token at once must not both install a replacement.
+    const result = await this.pool.query(
+      `UPDATE devices
+       SET token_hash = $3, prev_token_hash = token_hash, token_issued_at = now()
+       WHERE id = $1 AND token_hash = $2 AND revoked_at IS NULL`,
+      [deviceId, row.token_hash, hashDeviceToken(next)],
+    );
+    if ((result.rowCount ?? 0) === 0) return null;
+    if (row.prev_token_hash) {
+      await this.pool.query(
+        `INSERT INTO device_token_history (token_hash, device_id)
+         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
+        [row.prev_token_hash, deviceId],
+      );
+      this.cache.delete(row.prev_token_hash);
+    }
+    // The presented token is now consumed: a copy of it no longer works.
+    await this.pool.query(
+      "DELETE FROM device_token_history WHERE token_hash = $1",
+      [hash],
+    );
+    this.cache.delete(row.token_hash);
+    return next;
   }
 }
