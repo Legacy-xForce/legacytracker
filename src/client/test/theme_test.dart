@@ -154,7 +154,7 @@ void main() {
         (data.dialogTheme.shape as RoundedRectangleBorder).borderRadius,
         AppShape.xl,
       );
-      expect(data.navigationBarTheme.height, 80);
+      expect(data.navigationBarTheme.height, 64);
     }
   });
 
@@ -182,6 +182,101 @@ void main() {
     expect(scheme.primary, phone.primary);
     expect(scheme.secondaryContainer, phone.secondaryContainer);
     expect(scheme.error, phone.error);
+  });
+
+  test('OLED surfaces are neutral, whatever the phone accents are', () {
+    // The ramp used to be green-tinted, which left a green cast over OLED
+    // Adaptive even when the wallpaper's accents were a different hue.
+    for (final seed in [Colors.purple, Colors.teal, Colors.deepOrange]) {
+      final scheme = oledSurfaces(
+        ColorScheme.fromSeed(seedColor: seed, brightness: Brightness.dark),
+      );
+      for (final role in [
+        scheme.surface,
+        scheme.surfaceDim,
+        scheme.surfaceBright,
+        scheme.surfaceContainerLowest,
+        scheme.surfaceContainerLow,
+        scheme.surfaceContainer,
+        scheme.surfaceContainerHigh,
+        scheme.surfaceContainerHighest,
+        scheme.onSurface,
+        scheme.onSurfaceVariant,
+        scheme.outline,
+        scheme.outlineVariant,
+        scheme.inverseSurface,
+        scheme.onInverseSurface,
+      ]) {
+        expect(role.r, role.g, reason: '$role is not neutral');
+        expect(role.g, role.b, reason: '$role is not neutral');
+      }
+    }
+  });
+
+  test('OLED keeps a black canvas with shadcn-style raised greys', () {
+    const black = Color(0xFF000000);
+    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
+      final data = buildThemeFor(id);
+      final scheme = data.colorScheme;
+      // The canvas stays fully off; only the raised levels carry a little grey.
+      for (final role in [
+        scheme.surface,
+        scheme.surfaceDim,
+        scheme.surfaceContainerLowest,
+        scheme.surfaceContainerLow,
+      ]) {
+        expect(role, black, reason: '${id.name} canvas should be black: $role');
+      }
+      expect(data.scaffoldBackgroundColor, black);
+      expect(scheme.surfaceContainer, const Color(0xFF141414));
+      expect(scheme.surfaceContainerHigh, const Color(0xFF1F1F1F));
+      expect(scheme.surfaceContainerHighest, const Color(0xFF2A2A2A));
+      expect(scheme.outlineVariant, const Color(0xFF2E2E2E));
+    }
+  });
+
+  test('pure-black surfaces get hairline edges so they stay legible', () {
+    BorderSide cardEdge(ThemeData data) =>
+        (data.cardTheme.shape! as RoundedRectangleBorder).side;
+    BorderSide fieldEdge(ThemeData data) =>
+        (data.inputDecorationTheme.border! as OutlineInputBorder).borderSide;
+
+    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
+      final data = buildThemeFor(id);
+      expect(cardEdge(data), isNot(BorderSide.none), reason: id.name);
+      expect(fieldEdge(data), isNot(BorderSide.none), reason: id.name);
+      expect(
+        (data.dialogTheme.shape! as RoundedRectangleBorder).side,
+        isNot(BorderSide.none),
+        reason: id.name,
+      );
+      expect(
+        (data.bottomSheetTheme.shape! as RoundedRectangleBorder).side,
+        isNot(BorderSide.none),
+        reason: id.name,
+      );
+      expect(cardEdge(data).color, data.colorScheme.outlineVariant);
+      expect(cardEdge(data).width, 0.5);
+    }
+
+    // Tonal themes fill their surfaces with colour and need no edge.
+    final teal = buildThemeFor(AppThemeId.teal);
+    expect(cardEdge(teal), BorderSide.none);
+    expect(fieldEdge(teal), BorderSide.none);
+  });
+
+  test('the nav bar matches the people drawer in every theme', () {
+    for (final option in appThemes) {
+      final data = buildThemeFor(option.id);
+      expect(
+        data.navigationBarTheme.backgroundColor,
+        data.colorScheme.surfaceContainerLow,
+        reason: '${option.label} nav bar should match the drawer',
+      );
+    }
+
+    final oled = buildThemeFor(AppThemeId.oled);
+    expect(oled.navigationBarTheme.backgroundColor, const Color(0xFF000000));
   });
 
   group('secondary roles follow the theme', () {

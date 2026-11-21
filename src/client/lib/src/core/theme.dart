@@ -188,6 +188,14 @@ ThemeData buildThemeFor(AppThemeId id) {
 ThemeData buildAppTheme(ColorScheme scheme) {
   final dark = scheme.brightness == Brightness.dark;
   final rounded16 = RoundedRectangleBorder(borderRadius: AppShape.lg);
+  // The OLED themes have a pure-black canvas and only very subtle steps
+  // above it. Give their containers a hairline edge so those near-black
+  // surfaces still read as layered. Other themes fill their surfaces with
+  // tones and need no edge.
+  final pureBlack = scheme.surface == const Color(0xFF000000);
+  final edge = pureBlack
+      ? BorderSide(color: scheme.outlineVariant, width: 0.5)
+      : BorderSide.none;
   final overlayStyle =
       (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
         statusBarColor: Colors.transparent,
@@ -229,11 +237,13 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       margin: EdgeInsets.zero,
       color: scheme.surfaceContainer,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: AppShape.md),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.md, side: edge),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: const AppTokens().navigationBarHeight,
-      backgroundColor: scheme.surfaceContainer,
+      // The people drawer paints itself with surfaceContainerLow too, so the
+      // bar and the sheet read as one surface in every theme.
+      backgroundColor: scheme.surfaceContainerLow,
       indicatorColor: scheme.secondaryContainer,
       surfaceTintColor: Colors.transparent,
       iconTheme: WidgetStateProperty.resolveWith(
@@ -269,10 +279,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       suffixIconColor: scheme.onSurfaceVariant,
       hintStyle: TextStyle(color: scheme.onSurfaceVariant),
       labelStyle: TextStyle(color: scheme.onSurfaceVariant),
-      border: OutlineInputBorder(
-        borderRadius: AppShape.lg,
-        borderSide: BorderSide.none,
-      ),
+      border: OutlineInputBorder(borderRadius: AppShape.lg, borderSide: edge),
       focusedBorder: OutlineInputBorder(
         borderRadius: AppShape.lg,
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
@@ -292,7 +299,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: AppShape.xl),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.xl, side: edge),
       // M3 headlineSmall: 24/32.
       titleTextStyle: TextStyle(
         fontSize: 24,
@@ -307,7 +314,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       ),
     ),
     popupMenuTheme: PopupMenuThemeData(
-      shape: rounded16,
+      shape: RoundedRectangleBorder(borderRadius: AppShape.lg, side: edge),
       color: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       textStyle: TextStyle(fontSize: 14, color: scheme.onSurface),
@@ -317,7 +324,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       surfaceTintColor: Colors.transparent,
       modalBackgroundColor: scheme.surfaceContainerLow,
       modalBarrierColor: Colors.black.withValues(alpha: dark ? 0.55 : 0.3),
-      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetTop),
+      shape: RoundedRectangleBorder(
+        borderRadius: AppShape.sheetTop,
+        side: edge,
+      ),
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
     ),
@@ -335,6 +345,8 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       trackColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? scheme.primary
+            : pureBlack
+            ? scheme.outline
             : scheme.surfaceContainerHighest,
       ),
     ),
@@ -342,28 +354,41 @@ ThemeData buildAppTheme(ColorScheme scheme) {
   );
 }
 
-/// [base] with the OLED's pure-black surface ramp pasted over it. The accents
-/// stay whatever [base] was seeded with, which is what lets OLED Adaptive reuse
-/// the same black surfaces under the phone's own palette.
+/// [base] with an OLED surface ramp pasted over it. The accents stay whatever
+/// [base] was seeded with, which is what lets OLED Adaptive reuse the same
+/// surfaces under the phone's own palette.
+///
+/// The ramp follows shadcn's dark theme: a true-black canvas with a short
+/// neutral-zinc scale for elevated surfaces, separated by half-pixel hairline
+/// borders rather than large jumps in lightness. The lowest levels stay #000000 so
+/// the bulk of the panel is genuinely off; cards, fields and pills keep just
+/// enough grey to read as raised. [buildAppTheme] adds the borders for us.
+///
+/// Every grey is achromatic (R == G == B): the ramp was once lifted from the
+/// teal palette and carried a green cast that showed through OLED Adaptive
+/// even when the phone's accents were another hue.
 ColorScheme oledSurfaces(ColorScheme base) {
   const black = Color(0xFF000000);
-  const onSurface = Color(0xFFDDE4E1);
+  const foreground = Color(0xFFF4F4F4);
   return base.copyWith(
     surface: black,
     surfaceDim: black,
-    surfaceBright: const Color(0xFF1A2120),
     surfaceContainerLowest: black,
-    surfaceContainerLow: const Color(0xFF070B0A),
-    surfaceContainer: const Color(0xFF0D1312),
-    surfaceContainerHigh: const Color(0xFF151C1A),
-    surfaceContainerHighest: const Color(0xFF1E2624),
-    onSurface: onSurface,
-    onSurfaceVariant: const Color(0xFFA8B4B1),
-    outline: const Color(0xFF5C6764),
-    outlineVariant: const Color(0xFF26302E),
-    inverseSurface: onSurface,
-    onInverseSurface: const Color(0xFF0E1513),
+    surfaceContainerLow: black,
+    // shadcn's zinc scale, neutralised: card / secondary / border tones.
+    surfaceContainer: const Color(0xFF141414),
+    surfaceContainerHigh: const Color(0xFF1F1F1F),
+    surfaceContainerHighest: const Color(0xFF2A2A2A),
+    surfaceBright: const Color(0xFF2A2A2A),
+    onSurface: foreground,
+    onSurfaceVariant: const Color(0xFFA1A1A1),
+    outline: const Color(0xFF6E6E6E),
+    outlineVariant: const Color(0xFF2E2E2E),
+    inverseSurface: const Color(0xFF2A2A2A),
+    onInverseSurface: foreground,
     surfaceTint: Colors.transparent,
+    shadow: black,
+    scrim: black,
   );
 }
 
