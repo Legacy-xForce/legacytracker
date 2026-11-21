@@ -188,6 +188,16 @@ ThemeData buildThemeFor(AppThemeId id) {
 ThemeData buildAppTheme(ColorScheme scheme) {
   final dark = scheme.brightness == Brightness.dark;
   final rounded16 = RoundedRectangleBorder(borderRadius: AppShape.lg);
+  // The OLED themes have no tonal steps for cards, sheets or fields to sit
+  // on: every surface is #000000. Give those containers a hairline edge
+  // instead, so a fully black UI still reads as layered. Other themes fill
+  // their surfaces with tones and need no edge.
+  final pureBlack =
+      scheme.surface == const Color(0xFF000000) &&
+      scheme.surfaceContainerHighest == const Color(0xFF000000);
+  final edge = pureBlack
+      ? BorderSide(color: scheme.outlineVariant)
+      : BorderSide.none;
   final overlayStyle =
       (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
         statusBarColor: Colors.transparent,
@@ -229,7 +239,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       margin: EdgeInsets.zero,
       color: scheme.surfaceContainer,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: AppShape.md),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.md, side: edge),
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: const AppTokens().navigationBarHeight,
@@ -269,10 +279,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       suffixIconColor: scheme.onSurfaceVariant,
       hintStyle: TextStyle(color: scheme.onSurfaceVariant),
       labelStyle: TextStyle(color: scheme.onSurfaceVariant),
-      border: OutlineInputBorder(
-        borderRadius: AppShape.lg,
-        borderSide: BorderSide.none,
-      ),
+      border: OutlineInputBorder(borderRadius: AppShape.lg, borderSide: edge),
       focusedBorder: OutlineInputBorder(
         borderRadius: AppShape.lg,
         borderSide: BorderSide(color: scheme.primary, width: 1.5),
@@ -292,7 +299,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
     dialogTheme: DialogThemeData(
       backgroundColor: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
-      shape: RoundedRectangleBorder(borderRadius: AppShape.xl),
+      shape: RoundedRectangleBorder(borderRadius: AppShape.xl, side: edge),
       // M3 headlineSmall: 24/32.
       titleTextStyle: TextStyle(
         fontSize: 24,
@@ -307,7 +314,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       ),
     ),
     popupMenuTheme: PopupMenuThemeData(
-      shape: rounded16,
+      shape: RoundedRectangleBorder(borderRadius: AppShape.lg, side: edge),
       color: scheme.surfaceContainerHigh,
       surfaceTintColor: Colors.transparent,
       textStyle: TextStyle(fontSize: 14, color: scheme.onSurface),
@@ -317,7 +324,10 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       surfaceTintColor: Colors.transparent,
       modalBackgroundColor: scheme.surfaceContainerLow,
       modalBarrierColor: Colors.black.withValues(alpha: dark ? 0.55 : 0.3),
-      shape: const RoundedRectangleBorder(borderRadius: AppShape.sheetTop),
+      shape: RoundedRectangleBorder(
+        borderRadius: AppShape.sheetTop,
+        side: edge,
+      ),
       showDragHandle: true,
       dragHandleColor: scheme.outlineVariant,
     ),
@@ -335,6 +345,8 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       trackColor: WidgetStateProperty.resolveWith(
         (states) => states.contains(WidgetState.selected)
             ? scheme.primary
+            : pureBlack
+            ? scheme.outline
             : scheme.surfaceContainerHighest,
       ),
     ),
@@ -342,28 +354,41 @@ ThemeData buildAppTheme(ColorScheme scheme) {
   );
 }
 
-/// [base] with the OLED's pure-black surface ramp pasted over it. The accents
+/// [base] with every surface in the ramp forced to true black. The accents
 /// stay whatever [base] was seeded with, which is what lets OLED Adaptive reuse
 /// the same black surfaces under the phone's own palette.
+///
+/// Every surface role is #000000 so an OLED panel can switch those pixels
+/// fully off — dark greys still draw current. A black card is invisible against
+/// a black canvas, so [buildAppTheme] gives pure-black schemes hairline edges
+/// to keep the hierarchy legible; those edges are the only non-accent pixels
+/// drawn on a surface.
+///
+/// The ramp is achromatic (R == G == B): it was once lifted from the teal
+/// palette and carried a green cast that showed through OLED Adaptive even
+/// when the phone's accents were another hue. Neutral greys keep the ramp
+/// untinted regardless of the seed.
 ColorScheme oledSurfaces(ColorScheme base) {
   const black = Color(0xFF000000);
-  const onSurface = Color(0xFFDDE4E1);
+  const onSurface = Color(0xFFE1E1E1);
   return base.copyWith(
     surface: black,
     surfaceDim: black,
-    surfaceBright: const Color(0xFF1A2120),
+    surfaceBright: black,
     surfaceContainerLowest: black,
-    surfaceContainerLow: const Color(0xFF070B0A),
-    surfaceContainer: const Color(0xFF0D1312),
-    surfaceContainerHigh: const Color(0xFF151C1A),
-    surfaceContainerHighest: const Color(0xFF1E2624),
+    surfaceContainerLow: black,
+    surfaceContainer: black,
+    surfaceContainerHigh: black,
+    surfaceContainerHighest: black,
     onSurface: onSurface,
-    onSurfaceVariant: const Color(0xFFA8B4B1),
-    outline: const Color(0xFF5C6764),
-    outlineVariant: const Color(0xFF26302E),
+    onSurfaceVariant: const Color(0xFFAFAFAF),
+    outline: const Color(0xFF6E6E6E),
+    outlineVariant: const Color(0xFF3A3A3A),
     inverseSurface: onSurface,
-    onInverseSurface: const Color(0xFF0E1513),
+    onInverseSurface: black,
     surfaceTint: Colors.transparent,
+    shadow: black,
+    scrim: black,
   );
 }
 
