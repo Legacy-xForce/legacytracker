@@ -231,7 +231,7 @@ void main() {
       expect(scheme.surfaceContainer, const Color(0xFF141414));
       expect(scheme.surfaceContainerHigh, const Color(0xFF1F1F1F));
       expect(scheme.surfaceContainerHighest, const Color(0xFF2A2A2A));
-      expect(scheme.outlineVariant, const Color(0xFF3F3F3F));
+      expect(scheme.outlineVariant, const Color(0xFF2E2E2E));
     }
   });
 
@@ -256,6 +256,7 @@ void main() {
         reason: id.name,
       );
       expect(cardEdge(data).color, data.colorScheme.outlineVariant);
+      expect(cardEdge(data).width, 0.5);
     }
 
     // Tonal themes fill their surfaces with colour and need no edge.

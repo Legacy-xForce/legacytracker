@@ -194,7 +194,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
   // tones and need no edge.
   final pureBlack = scheme.surface == const Color(0xFF000000);
   final edge = pureBlack
-      ? BorderSide(color: scheme.outlineVariant)
+      ? BorderSide(color: scheme.outlineVariant, width: 0.5)
       : BorderSide.none;
   final overlayStyle =
       (dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark).copyWith(
@@ -357,8 +357,8 @@ ThemeData buildAppTheme(ColorScheme scheme) {
 /// surfaces under the phone's own palette.
 ///
 /// The ramp follows shadcn's dark theme: a true-black canvas with a short
-/// neutral-zinc scale for elevated surfaces, separated by hairline borders
-/// rather than large jumps in lightness. The lowest levels stay #000000 so
+/// neutral-zinc scale for elevated surfaces, separated by half-pixel hairline
+/// borders rather than large jumps in lightness. The lowest levels stay #000000 so
 /// the bulk of the panel is genuinely off; cards, fields and pills keep just
 /// enough grey to read as raised. [buildAppTheme] adds the borders for us.
 ///
@@ -381,7 +381,7 @@ ColorScheme oledSurfaces(ColorScheme base) {
     onSurface: foreground,
     onSurfaceVariant: const Color(0xFFA1A1A1),
     outline: const Color(0xFF6E6E6E),
-    outlineVariant: const Color(0xFF3F3F3F),
+    outlineVariant: const Color(0xFF2E2E2E),
     inverseSurface: const Color(0xFF2A2A2A),
     onInverseSurface: foreground,
     surfaceTint: Colors.transparent,
