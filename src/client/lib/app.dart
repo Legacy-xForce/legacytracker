@@ -30,6 +30,8 @@ import 'src/features/tracking/map_settings.dart';
 import 'src/features/tracking/sharing_provider.dart';
 import 'src/features/tracking/tracking_controller.dart';
 import 'src/features/tracking/tracking_screen.dart';
+import 'src/features/updates/app_updater.dart';
+import 'src/features/updates/update_channel.dart';
 import 'src/features/updates/update_required_gate.dart';
 import 'src/data/models/user_model.dart';
 
@@ -61,6 +63,16 @@ class App extends StatelessWidget {
         // Above the MaterialApp so a theme picked in the profile repaints
         // every screen right away.
         ChangeNotifierProvider<ThemeSettings>(create: (_) => ThemeSettings()),
+        // Switching channels reconfigures the native updater: it drops cached
+        // builds from the old channel and checks the new one immediately.
+        ChangeNotifierProvider<UpdateChannelSettings>(
+          create: (_) => UpdateChannelSettings(
+            onChanged: (channel) => AppUpdater.configure(
+              AppConstants.backendBaseUrl,
+              channel: channel,
+            ),
+          ),
+        ),
         ChangeNotifierProvider<AuthProvider>(
           create: (_) => AuthProvider(
             authService: authService,

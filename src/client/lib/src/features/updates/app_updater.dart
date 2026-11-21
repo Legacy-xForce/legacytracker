@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+import 'update_channel.dart';
+
 /// Dart side of the Android self-updater (android/.../updates/AppUpdater.kt).
 ///
 /// Builds distributed outside the Play Store update themselves: the native
@@ -38,9 +40,15 @@ class AppUpdater {
         .asBroadcastStream();
   }
 
-  /// Call at every app start: schedules background checks against [baseUrl].
-  static Future<void> configure(String baseUrl) =>
-      _invoke<void>('configure', {'baseUrl': baseUrl});
+  /// Call at every app start and whenever the channel changes: schedules
+  /// background checks against [baseUrl] for the selected [channel].
+  static Future<void> configure(
+    String baseUrl, {
+    UpdateChannel channel = UpdateChannel.stable,
+  }) => _invoke<void>('configure', {
+    'baseUrl': baseUrl,
+    'channel': channel.name,
+  });
 
   static Future<AppUpdateStatus?> status() => _status('status');
 
@@ -91,6 +99,7 @@ class AppUpdateStatus {
     this.automatic = true,
     this.lastCheckAt,
     this.lastError,
+    this.channel = UpdateChannel.stable,
   });
 
   factory AppUpdateStatus.fromMap(Map<String, dynamic> map) {
@@ -116,6 +125,7 @@ class AppUpdateStatus {
       automatic: map['automatic'] as bool? ?? true,
       lastCheckAt: time('lastCheckAt'),
       lastError: map['lastError'] as String?,
+      channel: UpdateChannel.parse(map['channel'] as String?),
     );
   }
 
@@ -148,6 +158,9 @@ class AppUpdateStatus {
   final bool automatic;
   final DateTime? lastCheckAt;
   final String? lastError;
+
+  /// The channel the native updater is currently following.
+  final UpdateChannel channel;
 
   bool get updateAvailable => availableVersionCode != null;
   bool get updateRequired => currentVersionCode < minSupportedCode;

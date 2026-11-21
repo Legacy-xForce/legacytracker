@@ -1915,6 +1915,40 @@ app.get("/api/v1/app/android/latest", async (_request, reply) => {
   }
 });
 
+// Opt-in channel: the rolling `nightly` prerelease from CI. This is a separate
+// route so the stable endpoint above can keep refusing every prerelease; a
+// device must deliberately ask here (the app's profile setting does) to see
+// nightly builds. No FCM push is sent for them.
+app.get("/api/v1/app/android/nightly", async (_request, reply) => {
+  if (!androidReleases) {
+    return reply.code(204).send();
+  }
+  try {
+    const nightly = await androidReleases.latestNightly();
+    if (!nightly) {
+      return reply.code(204).send();
+    }
+    return reply.send({
+      version_code: nightly.versionCode,
+      version_name: nightly.versionName,
+      apk_url: nightly.apkUrl,
+      sha256: nightly.sha256,
+      size: nightly.size,
+      notes: nightly.notes,
+      published_at: nightly.publishedAt,
+      min_supported_code: ANDROID_MIN_SUPPORTED_CODE,
+      channel: "nightly",
+      commit: nightly.commit,
+    });
+  } catch (error) {
+    app.log.warn(
+      { error },
+      "[updates] unable to read the nightly Android build",
+    );
+    return reply.code(503).send({ error: "Release information unavailable" });
+  }
+});
+
 app.post("/api/v1/streams/ticket", async (request, reply) => {
   const identity = await authenticate(request, reply);
   if (!identity) return reply;

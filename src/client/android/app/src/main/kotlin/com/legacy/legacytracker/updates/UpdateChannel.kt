@@ -38,7 +38,8 @@ class UpdateChannel(context: Context, messenger: BinaryMessenger) :
                     result.error("bad_args", "baseUrl is required", null)
                     return
                 }
-                reply(result) { updater.configure(baseUrl) }
+                val channel = call.argument<String>("channel") ?: "stable"
+                reply(result) { updater.configure(baseUrl, channel) }
             }
             // Cheap, and must not wait behind a download on the updater thread.
             "status" -> result.success(updater.status())

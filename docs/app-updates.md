@@ -29,6 +29,43 @@ The app closes while it installs. Tracking resumes by itself
 (`BootReceiver` handles `MY_PACKAGE_REPLACED`), so a parked phone carries on
 sharing without anyone opening the app.
 
+## Channels
+
+The profile tab has a **Stable / Nightly** switch under *App updates*:
+
+| Channel | Source | Endpoint |
+|---|---|---|
+| Stable | GitHub releases tagged `android-v<name>+<code>` | `GET /api/v1/app/android/latest` |
+| Nightly | The rolling `nightly` prerelease published by CI | `GET /api/v1/app/android/nightly` |
+
+CI publishes the nightly prerelease after every successful push to `main`.
+It reuses the exact binaries from the `Build Android` and `Build iOS` jobs —
+the same `flutter build apk --release` / `flutter build ios --release
+--no-codesign` output releases are made from, never a debug build. The APK is
+signed with the release key (or switching channels would leave an
+un-installable build); the IPA stays unsigned for SideStore. The assets are raw
+files, attached to the release directly instead of wrapped in an Actions
+artifact ZIP:
+
+```
+https://github.com/Legacy-xForce/legacytracker/releases/download/nightly/legacytracker-<short sha>.apk
+https://github.com/Legacy-xForce/legacytracker/releases/download/nightly/LegacyTracker-<short sha>.ipa
+```
+
+The three newest builds are kept for rollback, and each asset's name says which
+commit it came from. Nightly version names carry the commit too
+(`1.8.0+nightly.0ef1325`); the native updater tracks it so every CI run is a
+distinct update even when the pubspec build number has not been bumped.
+
+A stable phone can never pick up a nightly by accident. The stable feed skips
+anything flagged `prerelease` **and** only accepts `android-v…` tags, so the
+`nightly` tag fails both checks. Nightlies also send no FCM push; phones on that
+channel find them on their normal checks. Switching channels discards cached
+builds from the old one and rechecks immediately. Android never downgrades, so
+moving back to a stable release with a lower build number than the nightly you
+installed needs a newer stable build first (the same applies to pulling a bad
+release).
+
 **Silent installs.** On Android 12+ the app installs its own updates with no
 prompt, provided the user has allowed it to install apps (Settings → Apps →
 Legacy Tracker → *Install unknown apps*). The profile tab's *App updates* card
@@ -80,13 +117,35 @@ them, and the server image it pushes to ghcr is attested by digest, so
 `gh attestation verify oci://ghcr.io/legacy-xforce/legacytracker:latest
 --owner Legacy-xForce` works on a pulled image.
 
-To try a build on a few phones first, pass `--prerelease`. The server ignores
-prereleases, so you can install the APK from the release page by hand. Roll it
-out with `gh release edit <tag> --prerelease=false`.
+To try a build on a few phones first, pass `--prerelease`. The stable feed
+ignores prereleases, so you can install the APK from the release page by hand;
+roll it out with `gh release edit <tag> --prerelease=false`. That is separate
+from the automatic `nightly` prerelease above, which is an opt-in channel for
+continuous CI builds and is never rolled out.
 
 **Pulling a bad release:** delete it, or mark it as a prerelease. Phones that
 already installed it keep it, because Android doesn't downgrade. Fix forward
 with a higher build number.
+
+## Testing a pull request
+
+For a PR from this repository, CI comments a direct link to the APK on the PR
+once the `Build Android` job succeeds:
+
+```
+https://github.com/Legacy-xForce/legacytracker/releases/download/pr-builds/legacytracker-pr-<number>-<short sha>.apk
+```
+
+Tap it on the phone and open the downloaded file — no Actions artifact ZIP to
+extract, and no uninstall first: PR APKs are signed with the release key, so
+they install right over the current app. The link is updated in place on every
+push, and old builds are pruned.
+
+These assets live on a dedicated `pr-builds` release created with
+`--latest=false`: it is **not** a prerelease and never becomes
+`releases/latest`, so phones and both update feeds ignore it. Only PRs from this
+repository get this treatment, since the signing secrets and a write token are
+needed; fork PRs keep their APK in the ordinary CI artifacts.
 
 ## Signing key
 
@@ -185,6 +244,11 @@ feed URL into an `sidestore://source?url=` deep link:
 ```
 https://altdirect.app/?url=https://github.com/Legacy-xForce/legacytracker/releases/latest/download/altstore-source.json&r=sidestore
 ```
+
+CI's `nightly` prerelease also carries a raw `LegacyTracker-<short sha>.ipa`.
+It is for sideloading by hand; there is no nightly source feed, and the stable
+feed above keeps pointing at `releases/latest/download/`, which ignores all
+prereleases.
 
 What a sideloaded install does not get:
 

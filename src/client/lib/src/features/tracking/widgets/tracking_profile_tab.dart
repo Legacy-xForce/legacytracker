@@ -11,6 +11,7 @@ import '../../auth/auth_provider.dart';
 import '../../debug/debug_log_screen.dart';
 import '../../updates/app_updater.dart';
 import '../../updates/app_updates_card.dart';
+import '../../updates/update_channel_card.dart';
 import '../local_avatar_store.dart';
 import '../map_settings.dart';
 import '../tracking_controller.dart';
@@ -113,6 +114,8 @@ class TrackingProfileTab extends StatelessWidget {
           if (AppUpdater.isSupported) ...[
             const SizedBox(height: 24),
             const _SectionLabel('App updates'),
+            const UpdateChannelCard(),
+            const SizedBox(height: 8),
             const AppUpdatesCard(),
           ],
           const SizedBox(height: 24),

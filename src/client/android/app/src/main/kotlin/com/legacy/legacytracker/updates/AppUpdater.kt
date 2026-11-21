@@ -53,9 +53,15 @@ class AppUpdater private constructor(context: Context) {
         val sha256: String,
         val size: Long,
         val notes: String,
+        /** Short commit hash, only on nightly builds. */
+        val commit: String? = null,
         /** Builds older than this must update before they can be used (0: none). */
         val minSupportedCode: Long = 0,
-    )
+    ) {
+        /** Stable builds are keyed by version code, nightlies by commit: two
+         * nightlies can share a version code but are different installs. */
+        val id: String get() = commit ?: "v$versionCode"
+    }
 
     private val app = context.applicationContext
     private val prefs = app.getSharedPreferences("lt_updates", Context.MODE_PRIVATE)
@@ -82,9 +88,16 @@ class AppUpdater private constructor(context: Context) {
 
     // ── Lifecycle ───────────────────────────────────────────────────────────
 
-    /** Called by Dart at every app start, before sign-in. */
-    fun configure(baseUrl: String) {
-        prefs.edit().putString(K_BASE_URL, baseUrl.trimEnd('/')).apply()
+    /** Called by Dart at every app start, and again when the channel changes. */
+    fun configure(baseUrl: String, channel: String = "stable") {
+        val selected = if (channel == "nightly") "nightly" else "stable"
+        val previous = prefs.getString(K_CHANNEL, "stable")
+        prefs.edit()
+            .putString(K_BASE_URL, baseUrl.trimEnd('/'))
+            .putString(K_CHANNEL, selected)
+            .apply()
+        // Never let a cached release (or its staged APK) jump between channels.
+        if (previous != selected) resetForChannelSwitch()
         cleanUp()
         if (!automatic) return
         UpdateWorker.schedule(app)
@@ -92,6 +105,9 @@ class AppUpdater private constructor(context: Context) {
             UpdateWorker.runNow(app, "app opened")
         }
     }
+
+    private fun currentChannel(): String =
+        if (prefs.getString(K_CHANNEL, null) == "nightly") "nightly" else "stable"
 
     /** MainActivity left the screen: a waiting update can go in shortly. */
     fun onAppBackgrounded() {
@@ -129,7 +145,14 @@ class AppUpdater private constructor(context: Context) {
         } catch (e: Exception) {
             throw IOException("Update check failed: ${e.message ?: e.javaClass.simpleName}", e)
         }
-        val newer = release?.takeIf { it.versionCode > installedVersionCode }
+        // A nightly is identified by its commit, not just its version code:
+        // every build from main has the pubspec code, which often equals the
+        // installed one. Stable keeps the stricter code comparison.
+        val installedCommit = prefs.getString(K_INSTALLED_COMMIT, null)
+        val newer = release?.takeIf {
+            it.versionCode > installedVersionCode ||
+                (it.commit != null && it.commit != installedCommit)
+        }
         val previous = prefs.getLong(K_AVAILABLE_CODE, 0L)
         saveAvailable(newer)
         prefs.edit()
@@ -148,7 +171,9 @@ class AppUpdater private constructor(context: Context) {
         val baseUrl = prefs.getString(K_BASE_URL, null)
             ?: EngineState(app).baseUrl
             ?: throw IOException("server address not configured yet")
-        val connection = URL("$baseUrl/api/v1/app/android/latest").openConnection() as HttpURLConnection
+        val path = if (currentChannel() == "nightly")
+            "/api/v1/app/android/nightly" else "/api/v1/app/android/latest"
+        val connection = URL("$baseUrl$path").openConnection() as HttpURLConnection
         try {
             connection.connectTimeout = 15_000
             connection.readTimeout = 30_000
@@ -165,7 +190,15 @@ class AppUpdater private constructor(context: Context) {
     /** The newer release found by the last [check], if any. */
     fun available(): Release? {
         val code = prefs.getLong(K_AVAILABLE_CODE, 0L)
-        if (code <= installedVersionCode) return null
+        if (code <= 0L) return null
+        val commit = prefs.getString(K_AVAILABLE_COMMIT, null)
+        // Stable: the cached code must still be newer than this build. Nightly:
+        // a different commit is an update even at the same version code.
+        if (commit == null) {
+            if (code <= installedVersionCode) return null
+        } else if (commit == prefs.getString(K_INSTALLED_COMMIT, null)) {
+            return null
+        }
         return Release(
             versionCode = code,
             versionName = prefs.getString(K_AVAILABLE_NAME, null) ?: code.toString(),
@@ -173,15 +206,16 @@ class AppUpdater private constructor(context: Context) {
             sha256 = prefs.getString(K_AVAILABLE_SHA, null) ?: return null,
             size = prefs.getLong(K_AVAILABLE_SIZE, 0L),
             notes = prefs.getString(K_AVAILABLE_NOTES, null) ?: "",
+            commit = commit,
         )
     }
 
     /** Whether installing [release] already failed in a way retrying won't fix. */
-    fun hasFailed(release: Release) = prefs.getLong(K_FAILED_CODE, 0L) == release.versionCode
+    fun hasFailed(release: Release) = prefs.getString(K_FAILED_ID, null) == release.id
 
     /** Downloads [release] unless already done, verifying size and SHA-256. Blocking. */
     fun download(release: Release): File = synchronized(installLock) {
-        val target = apkFile(release.versionCode)
+        val target = apkFile(release)
         if (isDownloaded(release)) return target
 
         dir.mkdirs()
@@ -226,7 +260,7 @@ class AppUpdater private constructor(context: Context) {
             connection.disconnect()
             setProgress(null)
         }
-        prefs.edit().putLong(K_DOWNLOADED_CODE, release.versionCode).apply()
+        prefs.edit().putString(K_DOWNLOADED_ID, release.id).apply()
         log("Downloaded ${release.versionName} (${release.versionCode})")
         notifyChanged()
         target
@@ -301,8 +335,8 @@ class AppUpdater private constructor(context: Context) {
 
     /** Result of a commit, from UpdateInstallReceiver. */
     fun onInstallStatus(status: Int, versionCode: Long, message: String?, confirm: Intent?) {
-        val version = available()?.takeIf { it.versionCode == versionCode }
-            ?.let { "${it.versionName} ($versionCode)" } ?: versionCode.toString()
+        val release = available()?.takeIf { it.versionCode == versionCode }
+        val version = release?.let { "${it.versionName} ($versionCode)" } ?: versionCode.toString()
         when (status) {
             PackageInstaller.STATUS_PENDING_USER_ACTION -> {
                 if (confirm != null && foreground) {
@@ -313,7 +347,14 @@ class AppUpdater private constructor(context: Context) {
                     available()?.let { notifyUpdateReady(it) }
                 }
             }
-            PackageInstaller.STATUS_SUCCESS -> cleanUp()
+            PackageInstaller.STATUS_SUCCESS -> {
+                // This is the nightly now running: remember it so the next
+                // check can tell a fresh build from the one already installed.
+                if (release?.commit != null) {
+                    prefs.edit().putString(K_INSTALLED_COMMIT, release.commit).apply()
+                }
+                cleanUp()
+            }
             PackageInstaller.STATUS_FAILURE_ABORTED -> log("Update to $version was cancelled")
             PackageInstaller.STATUS_FAILURE_CONFLICT,
             PackageInstaller.STATUS_FAILURE_INCOMPATIBLE,
@@ -322,8 +363,9 @@ class AppUpdater private constructor(context: Context) {
             -> {
                 // E.g. signed with a different key: this build will never
                 // install, so stop retrying it until a newer one is published.
-                prefs.edit().putLong(K_FAILED_CODE, versionCode).apply()
-                apkFile(versionCode).delete()
+                val id = release?.id ?: "v$versionCode"
+                prefs.edit().putString(K_FAILED_ID, id).apply()
+                apkFile(id).delete()
                 recordError("Update to $version can't be installed: ${message ?: "status $status"}")
             }
             else -> recordError("Update to $version failed: ${message ?: "status $status"}")
@@ -350,6 +392,7 @@ class AppUpdater private constructor(context: Context) {
             "automatic" to automatic,
             "lastCheckAt" to prefs.getLong(K_LAST_CHECK, 0L).takeIf { it > 0 },
             "lastError" to prefs.getString(K_LAST_ERROR, null),
+            "channel" to currentChannel(),
         )
     }
 
@@ -371,14 +414,21 @@ class AppUpdater private constructor(context: Context) {
 
     // ── Helpers ─────────────────────────────────────────────────────────────
 
-    private fun apkFile(versionCode: Long) = File(dir, "legacytracker-$versionCode.apk")
+    private fun apkFile(release: Release) = File(dir, "legacytracker-${release.id}.apk")
+
+    private fun apkFile(id: String) = File(dir, "legacytracker-$id.apk")
 
     private fun isDownloaded(release: Release): Boolean =
-        prefs.getLong(K_DOWNLOADED_CODE, 0L) == release.versionCode &&
-            apkFile(release.versionCode).length() == release.size
+        prefs.getString(K_DOWNLOADED_ID, null) == release.id &&
+            apkFile(release).length() == release.size
 
-    private fun parseRelease(body: String): Release {
+    private fun parseRelease(body: String): Release? {
         val json = JSONObject(body)
+        // Last line of defence: even a server regression must not make a phone
+        // on the stable channel install a nightly build.
+        if (json.optString("channel", "") == "nightly" && currentChannel() != "nightly") {
+            return null
+        }
         return Release(
             versionCode = json.getLong("version_code"),
             versionName = json.getString("version_name"),
@@ -386,6 +436,7 @@ class AppUpdater private constructor(context: Context) {
             sha256 = json.getString("sha256").lowercase(),
             size = json.getLong("size"),
             notes = json.optString("notes", ""),
+            commit = json.optString("commit", "").takeIf { it.isNotEmpty() },
             minSupportedCode = json.optLong("min_supported_code", 0L),
         )
     }
@@ -393,7 +444,7 @@ class AppUpdater private constructor(context: Context) {
     private fun saveAvailable(release: Release?) {
         val editor = prefs.edit()
         if (release == null) {
-            editor.remove(K_AVAILABLE_CODE)
+            editor.remove(K_AVAILABLE_CODE).remove(K_AVAILABLE_COMMIT)
         } else {
             editor.putLong(K_AVAILABLE_CODE, release.versionCode)
                 .putString(K_AVAILABLE_NAME, release.versionName)
@@ -401,6 +452,7 @@ class AppUpdater private constructor(context: Context) {
                 .putString(K_AVAILABLE_SHA, release.sha256)
                 .putLong(K_AVAILABLE_SIZE, release.size)
                 .putString(K_AVAILABLE_NOTES, release.notes)
+                .putString(K_AVAILABLE_COMMIT, release.commit)
         }
         editor.apply()
     }
@@ -408,13 +460,39 @@ class AppUpdater private constructor(context: Context) {
     /** Forgets releases and files this build has caught up with. */
     private fun cleanUp() {
         val editor = prefs.edit()
-        for (key in listOf(K_AVAILABLE_CODE, K_DOWNLOADED_CODE, K_FAILED_CODE)) {
-            if (prefs.getLong(key, 0L) <= installedVersionCode) editor.remove(key)
+        val installedCommit = prefs.getString(K_INSTALLED_COMMIT, null)
+        val availableCommit = prefs.getString(K_AVAILABLE_COMMIT, null)
+        val stableAvailableDone =
+            availableCommit == null && prefs.getLong(K_AVAILABLE_CODE, 0L) <= installedVersionCode
+        val nightlyAvailableDone =
+            availableCommit != null && availableCommit == installedCommit
+        if (stableAvailableDone || nightlyAvailableDone) {
+            editor.remove(K_AVAILABLE_CODE).remove(K_AVAILABLE_COMMIT)
+        }
+        for (key in listOf(K_DOWNLOADED_ID, K_FAILED_ID)) {
+            val id = prefs.getString(key, null) ?: continue
+            val done = id.removePrefix("v").toLongOrNull()?.let { it <= installedVersionCode }
+                ?: (id == installedCommit)
+            if (done) editor.remove(key)
         }
         editor.apply()
-        val keep = available()?.let { apkFile(it.versionCode) }
+        val keep = available()?.let { apkFile(it) }
         dir.listFiles()?.forEach { if (it != keep) it.delete() }
         if (keep == null) NotificationManagerCompat.from(app).cancel(NOTIFICATION_ID)
+    }
+
+    /** Switching channels must never install a cached APK from the other one. */
+    private fun resetForChannelSwitch() {
+        prefs.edit()
+            .remove(K_AVAILABLE_CODE).remove(K_AVAILABLE_COMMIT)
+            .remove(K_AVAILABLE_NAME).remove(K_AVAILABLE_URL)
+            .remove(K_AVAILABLE_SHA).remove(K_AVAILABLE_SIZE).remove(K_AVAILABLE_NOTES)
+            .remove(K_DOWNLOADED_ID).remove(K_FAILED_ID)
+            .remove(K_LAST_ERROR).remove(K_MIN_SUPPORTED)
+            .apply()
+        dir.listFiles()?.forEach { it.delete() }
+        NotificationManagerCompat.from(app).cancel(NOTIFICATION_ID)
+        notifyChanged()
     }
 
     private fun setProgress(value: Double?) {
@@ -479,6 +557,7 @@ class AppUpdater private constructor(context: Context) {
         private const val NOTIFICATION_ID = 4201
 
         private const val K_BASE_URL = "base_url"
+        private const val K_CHANNEL = "channel"
         private const val K_LAST_CHECK = "last_check"
         private const val K_LAST_ERROR = "last_error"
         private const val K_AVAILABLE_CODE = "available_code"
@@ -488,8 +567,11 @@ class AppUpdater private constructor(context: Context) {
         private const val K_AVAILABLE_SHA = "available_sha256"
         private const val K_AVAILABLE_SIZE = "available_size"
         private const val K_AVAILABLE_NOTES = "available_notes"
-        private const val K_DOWNLOADED_CODE = "downloaded_code"
-        private const val K_FAILED_CODE = "failed_code"
+        private const val K_AVAILABLE_COMMIT = "available_commit"
+        private const val K_DOWNLOADED_ID = "downloaded_id"
+        private const val K_FAILED_ID = "failed_id"
+        /** Commit of the nightly currently installed (stable installs leave it alone). */
+        private const val K_INSTALLED_COMMIT = "installed_commit"
 
         /** Whether MainActivity is on screen (set by it). Process-scoped. */
         @Volatile

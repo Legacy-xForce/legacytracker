@@ -226,11 +226,15 @@ an hour and are renewed ahead of time; see [`docs/mapbox.md`](../../docs/mapbox.
 
 | Method | Path                          | Auth | Description |
 |--------|-------------------------------|------|-------------|
-| `GET`  | `/api/v1/app/android/latest`  | none | The current Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at", "min_supported_code" }` (builds below `min_supported_code` must update first), or 204 when none is published. |
+| `GET`  | `/api/v1/app/android/latest`  | none | The current stable Android release: `{ "version_code", "version_name", "apk_url", "sha256", "size", "notes", "published_at", "min_supported_code" }` (builds below `min_supported_code` must update first), or 204 when none is published. Never returns a prerelease. |
+| `GET`  | `/api/v1/app/android/nightly` | none | The newest CI build from the rolling `nightly` prerelease. Same fields, plus `"channel": "nightly"` and `"commit": "<short sha>"`; `version_name` also carries the commit. 204 when the prerelease has no complete build. Only a device whose owner chose the nightly channel calls this. |
 
-Releases are GitHub releases tagged `android-v<name>+<code>`, read every five
-minutes; a new one is announced to every device with an FCM `lt_cmd: update`
-push. See [`docs/app-updates.md`](../../docs/app-updates.md).
+Stable releases are GitHub releases tagged `android-v<name>+<code>`, read every
+five minutes; a new one is announced to every device with an FCM
+`lt_cmd: update` push. Nightly builds are raw `--release` APKs published by CI
+to the `nightly` prerelease, named `legacytracker-<short sha>.apk`; they are
+never pushed and the stable endpoint ignores them twice over (prerelease flag
+and tag). See [`docs/app-updates.md`](../../docs/app-updates.md).
 
 ### Location
 

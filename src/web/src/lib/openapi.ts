@@ -962,6 +962,41 @@ export const openApiDocument = {
                 }
             }
         },
+        '/api/v1/app/android/nightly': {
+            get: {
+                tags: ['Devices and app updates'],
+                operationId: 'android-nightly',
+                summary: 'The newest nightly CI build',
+                description:
+                    'Opt-in channel: the raw --release APK from the rolling nightly prerelease. 204 when no complete build is published. Never pushed; only devices whose owner selected the nightly channel call it.',
+                security: [],
+                responses: {
+                    '200': {
+                        description: 'The newest nightly build.',
+                        content: {
+                            'application/json': {
+                                schema: { $ref: '#/components/schemas/AndroidRelease' },
+                                example: {
+                                    version_code: 29,
+                                    version_name: '1.8.0+nightly.0ef1325',
+                                    apk_url:
+                                        'https://github.com/Legacy-xForce/legacytracker/releases/download/nightly/legacytracker-0ef1325.apk',
+                                    sha256: '…',
+                                    size: 129000000,
+                                    notes: 'Nightly build from commit 0ef1325.',
+                                    published_at: iso,
+                                    min_supported_code: 0,
+                                    channel: 'nightly',
+                                    commit: '0ef1325'
+                                }
+                            }
+                        }
+                    },
+                    '204': { description: 'No nightly build is published yet.' },
+                    ...commonErrors
+                }
+            }
+        },
         '/api/v1/api-tokens': {
             get: {
                 tags: ['Managing API tokens'],
@@ -1537,7 +1572,16 @@ export const openApiDocument = {
                     size: { type: 'integer' },
                     notes: { type: 'string' },
                     published_at: { type: 'string', format: 'date-time' },
-                    min_supported_code: { type: 'integer' }
+                    min_supported_code: { type: 'integer' },
+                    channel: {
+                        type: 'string',
+                        enum: ['stable', 'nightly'],
+                        description: 'Only set on the nightly endpoint.'
+                    },
+                    commit: {
+                        type: 'string',
+                        description: 'Short commit hash of the nightly build; only on the nightly endpoint.'
+                    }
                 }
             },
             ApiTokenSummary: {

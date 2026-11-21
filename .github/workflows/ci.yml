@@ -120,6 +120,275 @@ jobs:
             -destination "id=$udid" -only-testing:RunnerTests/TrackingVectorsTests \
             CODE_SIGNING_ALLOWED=NO | tail -n 80
 
+  # A rolling prerelease with the exact --release binaries from the two jobs
+  # above, named after the commit they came from. Assets are raw files (not the
+  # ZIP-wrapped Actions artifacts), so they can be downloaded and installed
+  # straight from the release page. Stable releases stay untouched: this tag is
+  # not android-v<name>+<code> and the release is a prerelease, so the server's
+  # stable feed rejects it twice over.
+  nightly:
+    name: Publish nightly prerelease
+    runs-on: ubuntu-24.04
+    needs: [android, ios]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    # Two pushes close together must not fight over the one rolling release.
+    concurrency:
+      group: nightly-prerelease
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download the CI release APK
+        uses: actions/download-artifact@v8
+        with:
+          name: android-apk
+          path: ${{ runner.temp }}/nightly
+      - name: Download the CI release IPA
+        uses: actions/download-artifact@v8
+        with:
+          name: ios-unsigned-ipa
+          path: ${{ runner.temp }}/nightly
+
+      - name: Restore Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/nightly-release.jks"
+          chmod 600 "$RUNNER_TEMP/nightly-release.jks"
+
+      # Nightly must be installable over a stable build (and back), so it uses
+      # the same key as releases. Only this job — never PR builds — sees the
+      # secret, and it signs a copy of CI's artifact; the artifact itself stays
+      # unchanged for the release workflow to re-sign on its own.
+      - name: Sign and name the nightly APK
+        id: assets
+        env:
+          COMMIT: ${{ github.sha }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for var in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            test -n "${!var}"
+          done
+          short="${COMMIT:0:7}"
+          version="$(sed -n 's/^version:[[:space:]]*\([^[:space:]]*\).*/\1/p' src/client/pubspec.yaml)"
+          name="${version%+*}"
+          code="${version##*+}"
+
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -1)"
+          zipalign="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name zipalign | sort -V | tail -1)"
+          test -x "$apksigner" && test -x "$zipalign"
+
+          aligned="$RUNNER_TEMP/nightly/aligned.apk"
+          signed="$RUNNER_TEMP/nightly/legacytracker-$short.apk"
+          "$zipalign" -f -p 4 "$RUNNER_TEMP/nightly/app-release.apk" "$aligned"
+          "$apksigner" sign --ks "$RUNNER_TEMP/nightly-release.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+            --out "$signed" "$aligned"
+          rm -f "$aligned"
+
+          # The published APK must use the same key as stable releases, or
+          # switching channels would leave phones with an un-installable build.
+          certs="$("$apksigner" verify --print-certs "$signed" 2>&1)"
+          fingerprint="$(sed -n -E 's/^(Signer #[0-9]+|V[0-9.]+ Signer):? certificate SHA-256 digest: //p' <<<"$certs" | head -n 1)"
+          expected="$(tr -d '[:space:]' < src/client/android/release-signing-cert.sha256)"
+          test "$fingerprint" = "$expected"
+
+          ipa="$RUNNER_TEMP/nightly/LegacyTracker-$short.ipa"
+          mv "$RUNNER_TEMP/nightly/LegacyTracker.ipa" "$ipa"
+
+          {
+            echo "short=$short"
+            echo "apk=$signed"
+            echo "ipa=$ipa"
+            echo "version_name=$name"
+            echo "version_code=$code"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Attest the published nightly binaries
+        uses: actions/attest@v4
+        with:
+          subject-path: |
+            ${{ steps.assets.outputs.apk }}
+            ${{ steps.assets.outputs.ipa }}
+
+      # One rolling release, rewritten on every push. Naming assets after the
+      # commit makes each build distinguishable; pruning keeps old builds
+      # downloadable for a while without letting the release grow forever.
+      - name: Publish to the nightly prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.sha }}
+          SHORT: ${{ steps.assets.outputs.short }}
+          APK: ${{ steps.assets.outputs.apk }}
+          IPA: ${{ steps.assets.outputs.ipa }}
+          VERSION_NAME: ${{ steps.assets.outputs.version_name }}
+          VERSION_CODE: ${{ steps.assets.outputs.version_code }}
+        run: |
+          set -euo pipefail
+          notes=$(cat <<EOF
+          Nightly build from commit $COMMIT. Replaced after every successful CI run on main.
+
+          <!-- legacytracker-nightly {"version_name":"$VERSION_NAME","version_code":$VERSION_CODE,"commit":"$SHORT"} -->
+          EOF
+          )
+          if gh release view nightly -R "$REPO" >/dev/null 2>&1; then
+            gh release edit nightly -R "$REPO" --prerelease --notes "$notes"
+          else
+            gh release create nightly -R "$REPO" --prerelease --target "$COMMIT" \
+              --title "Nightly build" --notes "$notes"
+          fi
+          gh release upload nightly "$APK" "$IPA" -R "$REPO" --clobber
+
+          # Keep the three newest builds (two assets each), for rollback.
+          gh release view nightly -R "$REPO" --json assets \
+            --jq '.assets | map(select(.name | test("^(legacytracker|LegacyTracker)-[0-9a-f]{7}\\.(apk|ipa)$")))
+                  | sort_by(.createdAt) | .[:-6] | .[].name' |
+            while IFS= read -r old; do
+              [[ -n "$old" ]] && gh release delete-asset nightly "$old" -R "$REPO" --yes
+            done
+
+          echo "Published https://github.com/$REPO/releases/tag/nightly (commit $SHORT)"
+
+  # Same-repo PRs get a tappable, raw APK link instead of a ZIP-wrapped Actions
+  # artifact. A dedicated non-prerelease release with --latest=false serves the
+  # bytes directly: it never becomes `releases/latest` and its tag does not
+  # match either update feed. Fork PRs (and Dependabot) get no signing secrets
+  # or write token, so they keep using the ordinary artifacts above.
+  pr-link:
+    name: Post a direct APK link on the PR
+    runs-on: ubuntu-24.04
+    needs: android
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'dependabot[bot]'
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Download the PR release APK
+        uses: actions/download-artifact@v8
+        with:
+          name: android-apk
+          path: ${{ runner.temp }}/pr-apk
+
+      - name: Restore Android signing key
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          test -n "$ANDROID_KEYSTORE_BASE64"
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/pr-release.jks"
+          chmod 600 "$RUNNER_TEMP/pr-release.jks"
+
+      # Same key as releases/nightlies: the APK installs right over the
+      # current build, so testing a PR needs no uninstall and no data loss.
+      # This job only runs for PRs from this repository, where the secrets are
+      # available; fork PRs keep the unsigned CI artifact.
+      - name: Sign and name the PR APK
+        id: sign
+        env:
+          COMMIT: ${{ github.sha }}
+          PR: ${{ github.event.pull_request.number }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          for var in ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            test -n "${!var}"
+          done
+          asset="legacytracker-pr-$PR-${COMMIT:0:7}.apk"
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}"
+          apksigner="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name apksigner | sort -V | tail -1)"
+          zipalign="$(find "$sdk/build-tools" -mindepth 2 -maxdepth 2 -name zipalign | sort -V | tail -1)"
+          test -x "$apksigner" && test -x "$zipalign"
+
+          aligned="$RUNNER_TEMP/pr-apk/aligned.apk"
+          signed="$RUNNER_TEMP/pr-apk/$asset"
+          "$zipalign" -f -p 4 "$RUNNER_TEMP/pr-apk/app-release.apk" "$aligned"
+          "$apksigner" sign --ks "$RUNNER_TEMP/pr-release.jks" \
+            --ks-key-alias "$ANDROID_KEY_ALIAS" \
+            --ks-pass env:ANDROID_KEYSTORE_PASSWORD --key-pass env:ANDROID_KEY_PASSWORD \
+            --v1-signing-enabled false --v2-signing-enabled true --v3-signing-enabled true \
+            --out "$signed" "$aligned"
+          rm -f "$aligned"
+
+          certs="$("$apksigner" verify --print-certs "$signed" 2>&1)"
+          fingerprint="$(sed -n -E 's/^(Signer #[0-9]+|V[0-9.]+ Signer):? certificate SHA-256 digest: //p' <<<"$certs" | head -n 1)"
+          expected="$(tr -d '[:space:]' < src/client/android/release-signing-cert.sha256)"
+          test "$fingerprint" = "$expected"
+
+          echo "asset=$asset" >> "$GITHUB_OUTPUT"
+
+      - name: Publish the APK and comment its link
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          PR: ${{ github.event.pull_request.number }}
+          COMMIT: ${{ github.sha }}
+          ASSET: ${{ steps.sign.outputs.asset }}
+        run: |
+          set -euo pipefail
+          asset="$ASSET"
+          short="${COMMIT:0:7}"
+          if ! gh release view pr-builds -R "$REPO" >/dev/null 2>&1; then
+            gh release create pr-builds -R "$REPO" --latest=false \
+              --target "$COMMIT" --title "PR builds" \
+              --notes "Unreviewed release APKs built by CI for pull requests. Do not use as a daily driver."
+          fi
+          gh release upload pr-builds "$RUNNER_TEMP/pr-apk/$asset" -R "$REPO" --clobber
+
+          # Keep the twenty newest PR builds so the release cannot grow forever.
+          gh release view pr-builds -R "$REPO" --json assets \
+            --jq '.assets | sort_by(.createdAt) | .[:-20] | .[].name' |
+            while IFS= read -r old; do
+              [[ -n "$old" ]] && gh release delete-asset pr-builds "$old" -R "$REPO" --yes
+            done
+
+          url="https://github.com/$REPO/releases/download/pr-builds/$asset"
+          marker='<!-- legacytracker-pr-build -->'
+          body=$(cat <<EOF
+          ### PR build ready
+
+          [Download the Android APK]($url) (commit \`$short\`). Open the file on your
+          phone to install — no ZIP to extract, no uninstall first. PR builds use
+          the release signing key, so this installs right over your current app.
+
+          $marker
+          EOF
+          )
+          # Replace the previous comment instead of piling one up per push.
+          existing="$(gh api "repos/$REPO/issues/$PR/comments" \
+            --jq ".[] | select(.body | contains(\"$marker\")) | .id" | head -n 1)"
+          if [[ -n "$existing" ]]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$existing" -f body="$body"
+          else
+            gh api -X POST "repos/$REPO/issues/$PR/comments" -f body="$body"
+          fi
+          echo "Posted $url on PR #$PR"
+
   web:
     name: Check web app
     runs-on: ubuntu-24.04

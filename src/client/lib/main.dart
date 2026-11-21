@@ -3,11 +3,13 @@ import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'app.dart';
 import 'firebase_options.dart';
 import 'src/core/constants.dart';
 import 'src/features/updates/app_updater.dart';
+import 'src/features/updates/update_channel.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -26,8 +28,14 @@ void main() async {
   }
 
   // Outside the Play Store the app updates itself; checks run natively in
-  // the background from here on.
-  unawaited(AppUpdater.configure(AppConstants.backendBaseUrl));
+  // the background from here on, against the channel saved on this device.
+  final prefs = await SharedPreferences.getInstance();
+  final channel = UpdateChannel.parse(
+    prefs.getString(UpdateChannelSettings.storageKey),
+  );
+  unawaited(
+    AppUpdater.configure(AppConstants.backendBaseUrl, channel: channel),
+  );
 
   runApp(App());
 }
