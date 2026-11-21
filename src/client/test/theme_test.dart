@@ -265,6 +265,29 @@ void main() {
     expect(fieldEdge(teal), BorderSide.none);
   });
 
+  test('OLED nav bar matches the black people drawer', () {
+    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
+      final data = buildThemeFor(id);
+      expect(
+        data.navigationBarTheme.backgroundColor,
+        data.colorScheme.surfaceContainerLow,
+        reason: '${id.name} nav bar should match the drawer',
+      );
+      expect(
+        data.navigationBarTheme.backgroundColor,
+        const Color(0xFF000000),
+        reason: id.name,
+      );
+    }
+
+    // Tonal themes keep the raised container under the bar.
+    final teal = buildThemeFor(AppThemeId.teal);
+    expect(
+      teal.navigationBarTheme.backgroundColor,
+      teal.colorScheme.surfaceContainer,
+    );
+  });
+
   group('secondary roles follow the theme', () {
     // Counters, tab switchers, segmented buttons and pills are built on the
     // secondary container; Catppuccin's used to be teal in every variant.
