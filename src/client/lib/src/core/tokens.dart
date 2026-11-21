@@ -73,8 +73,9 @@ abstract final class AppType {
 class AppTokens extends ThemeExtension<AppTokens> {
   const AppTokens();
 
-  /// Height of the bottom navigation bar (M3: 80).
-  double get navigationBarHeight => 80;
+  /// Height of the bottom navigation bar. Kept below M3's 80 dp so the bar
+  /// takes less room from the map and sits closer to the people drawer.
+  double get navigationBarHeight => 64;
 
   /// Cards.
   BorderRadius get cardRadius => AppShape.md;

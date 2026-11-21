@@ -154,7 +154,7 @@ void main() {
         (data.dialogTheme.shape as RoundedRectangleBorder).borderRadius,
         AppShape.xl,
       );
-      expect(data.navigationBarTheme.height, 80);
+      expect(data.navigationBarTheme.height, 64);
     }
   });
 
@@ -265,27 +265,18 @@ void main() {
     expect(fieldEdge(teal), BorderSide.none);
   });
 
-  test('OLED nav bar matches the black people drawer', () {
-    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
-      final data = buildThemeFor(id);
+  test('the nav bar matches the people drawer in every theme', () {
+    for (final option in appThemes) {
+      final data = buildThemeFor(option.id);
       expect(
         data.navigationBarTheme.backgroundColor,
         data.colorScheme.surfaceContainerLow,
-        reason: '${id.name} nav bar should match the drawer',
-      );
-      expect(
-        data.navigationBarTheme.backgroundColor,
-        const Color(0xFF000000),
-        reason: id.name,
+        reason: '${option.label} nav bar should match the drawer',
       );
     }
 
-    // Tonal themes keep the raised container under the bar.
-    final teal = buildThemeFor(AppThemeId.teal);
-    expect(
-      teal.navigationBarTheme.backgroundColor,
-      teal.colorScheme.surfaceContainer,
-    );
+    final oled = buildThemeFor(AppThemeId.oled);
+    expect(oled.navigationBarTheme.backgroundColor, const Color(0xFF000000));
   });
 
   group('secondary roles follow the theme', () {

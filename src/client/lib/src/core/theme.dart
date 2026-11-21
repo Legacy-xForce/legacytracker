@@ -241,11 +241,9 @@ ThemeData buildAppTheme(ColorScheme scheme) {
     ),
     navigationBarTheme: NavigationBarThemeData(
       height: const AppTokens().navigationBarHeight,
-      // On OLED the people drawer paints itself with surfaceContainerLow
-      // (pure black). Match it so the bar and the sheet read as one surface.
-      backgroundColor: pureBlack
-          ? scheme.surfaceContainerLow
-          : scheme.surfaceContainer,
+      // The people drawer paints itself with surfaceContainerLow too, so the
+      // bar and the sheet read as one surface in every theme.
+      backgroundColor: scheme.surfaceContainerLow,
       indicatorColor: scheme.secondaryContainer,
       surfaceTintColor: Colors.transparent,
       iconTheme: WidgetStateProperty.resolveWith(
