@@ -213,24 +213,25 @@ void main() {
     }
   });
 
-  test('every OLED surface is true black', () {
+  test('OLED keeps a black canvas with shadcn-style raised greys', () {
     const black = Color(0xFF000000);
     for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
       final data = buildThemeFor(id);
       final scheme = data.colorScheme;
+      // The canvas stays fully off; only the raised levels carry a little grey.
       for (final role in [
         scheme.surface,
         scheme.surfaceDim,
-        scheme.surfaceBright,
         scheme.surfaceContainerLowest,
         scheme.surfaceContainerLow,
-        scheme.surfaceContainer,
-        scheme.surfaceContainerHigh,
-        scheme.surfaceContainerHighest,
       ]) {
-        expect(role, black, reason: '${id.name} left a lit surface: $role');
+        expect(role, black, reason: '${id.name} canvas should be black: $role');
       }
       expect(data.scaffoldBackgroundColor, black);
+      expect(scheme.surfaceContainer, const Color(0xFF141414));
+      expect(scheme.surfaceContainerHigh, const Color(0xFF1F1F1F));
+      expect(scheme.surfaceContainerHighest, const Color(0xFF2A2A2A));
+      expect(scheme.outlineVariant, const Color(0xFF3F3F3F));
     }
   });
 

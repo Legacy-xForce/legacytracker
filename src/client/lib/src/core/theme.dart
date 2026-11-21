@@ -188,13 +188,11 @@ ThemeData buildThemeFor(AppThemeId id) {
 ThemeData buildAppTheme(ColorScheme scheme) {
   final dark = scheme.brightness == Brightness.dark;
   final rounded16 = RoundedRectangleBorder(borderRadius: AppShape.lg);
-  // The OLED themes have no tonal steps for cards, sheets or fields to sit
-  // on: every surface is #000000. Give those containers a hairline edge
-  // instead, so a fully black UI still reads as layered. Other themes fill
-  // their surfaces with tones and need no edge.
-  final pureBlack =
-      scheme.surface == const Color(0xFF000000) &&
-      scheme.surfaceContainerHighest == const Color(0xFF000000);
+  // The OLED themes have a pure-black canvas and only very subtle steps
+  // above it. Give their containers a hairline edge so those near-black
+  // surfaces still read as layered. Other themes fill their surfaces with
+  // tones and need no edge.
+  final pureBlack = scheme.surface == const Color(0xFF000000);
   final edge = pureBlack
       ? BorderSide(color: scheme.outlineVariant)
       : BorderSide.none;
@@ -354,38 +352,38 @@ ThemeData buildAppTheme(ColorScheme scheme) {
   );
 }
 
-/// [base] with every surface in the ramp forced to true black. The accents
-/// stay whatever [base] was seeded with, which is what lets OLED Adaptive reuse
-/// the same black surfaces under the phone's own palette.
+/// [base] with an OLED surface ramp pasted over it. The accents stay whatever
+/// [base] was seeded with, which is what lets OLED Adaptive reuse the same
+/// surfaces under the phone's own palette.
 ///
-/// Every surface role is #000000 so an OLED panel can switch those pixels
-/// fully off — dark greys still draw current. A black card is invisible against
-/// a black canvas, so [buildAppTheme] gives pure-black schemes hairline edges
-/// to keep the hierarchy legible; those edges are the only non-accent pixels
-/// drawn on a surface.
+/// The ramp follows shadcn's dark theme: a true-black canvas with a short
+/// neutral-zinc scale for elevated surfaces, separated by hairline borders
+/// rather than large jumps in lightness. The lowest levels stay #000000 so
+/// the bulk of the panel is genuinely off; cards, fields and pills keep just
+/// enough grey to read as raised. [buildAppTheme] adds the borders for us.
 ///
-/// The ramp is achromatic (R == G == B): it was once lifted from the teal
-/// palette and carried a green cast that showed through OLED Adaptive even
-/// when the phone's accents were another hue. Neutral greys keep the ramp
-/// untinted regardless of the seed.
+/// Every grey is achromatic (R == G == B): the ramp was once lifted from the
+/// teal palette and carried a green cast that showed through OLED Adaptive
+/// even when the phone's accents were another hue.
 ColorScheme oledSurfaces(ColorScheme base) {
   const black = Color(0xFF000000);
-  const onSurface = Color(0xFFE1E1E1);
+  const foreground = Color(0xFFF4F4F4);
   return base.copyWith(
     surface: black,
     surfaceDim: black,
-    surfaceBright: black,
     surfaceContainerLowest: black,
     surfaceContainerLow: black,
-    surfaceContainer: black,
-    surfaceContainerHigh: black,
-    surfaceContainerHighest: black,
-    onSurface: onSurface,
-    onSurfaceVariant: const Color(0xFFAFAFAF),
+    // shadcn's zinc scale, neutralised: card / secondary / border tones.
+    surfaceContainer: const Color(0xFF141414),
+    surfaceContainerHigh: const Color(0xFF1F1F1F),
+    surfaceContainerHighest: const Color(0xFF2A2A2A),
+    surfaceBright: const Color(0xFF2A2A2A),
+    onSurface: foreground,
+    onSurfaceVariant: const Color(0xFFA1A1A1),
     outline: const Color(0xFF6E6E6E),
-    outlineVariant: const Color(0xFF3A3A3A),
-    inverseSurface: onSurface,
-    onInverseSurface: black,
+    outlineVariant: const Color(0xFF3F3F3F),
+    inverseSurface: const Color(0xFF2A2A2A),
+    onInverseSurface: foreground,
     surfaceTint: Colors.transparent,
     shadow: black,
     scrim: black,
