@@ -213,6 +213,56 @@ void main() {
     }
   });
 
+  test('every OLED surface is true black', () {
+    const black = Color(0xFF000000);
+    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
+      final data = buildThemeFor(id);
+      final scheme = data.colorScheme;
+      for (final role in [
+        scheme.surface,
+        scheme.surfaceDim,
+        scheme.surfaceBright,
+        scheme.surfaceContainerLowest,
+        scheme.surfaceContainerLow,
+        scheme.surfaceContainer,
+        scheme.surfaceContainerHigh,
+        scheme.surfaceContainerHighest,
+      ]) {
+        expect(role, black, reason: '${id.name} left a lit surface: $role');
+      }
+      expect(data.scaffoldBackgroundColor, black);
+    }
+  });
+
+  test('pure-black surfaces get hairline edges so they stay legible', () {
+    BorderSide cardEdge(ThemeData data) =>
+        (data.cardTheme.shape! as RoundedRectangleBorder).side;
+    BorderSide fieldEdge(ThemeData data) =>
+        (data.inputDecorationTheme.border! as OutlineInputBorder).borderSide;
+
+    for (final id in [AppThemeId.oled, AppThemeId.oledAdaptive]) {
+      final data = buildThemeFor(id);
+      expect(cardEdge(data), isNot(BorderSide.none), reason: id.name);
+      expect(fieldEdge(data), isNot(BorderSide.none), reason: id.name);
+      expect(
+        (data.dialogTheme.shape! as RoundedRectangleBorder).side,
+        isNot(BorderSide.none),
+        reason: id.name,
+      );
+      expect(
+        (data.bottomSheetTheme.shape! as RoundedRectangleBorder).side,
+        isNot(BorderSide.none),
+        reason: id.name,
+      );
+      expect(cardEdge(data).color, data.colorScheme.outlineVariant);
+    }
+
+    // Tonal themes fill their surfaces with colour and need no edge.
+    final teal = buildThemeFor(AppThemeId.teal);
+    expect(cardEdge(teal), BorderSide.none);
+    expect(fieldEdge(teal), BorderSide.none);
+  });
+
   group('secondary roles follow the theme', () {
     // Counters, tab switchers, segmented buttons and pills are built on the
     // secondary container; Catppuccin's used to be teal in every variant.
