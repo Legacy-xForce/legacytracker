@@ -136,9 +136,11 @@ red light, 12 m-radius junction turn, roundabout, highway bend, exit ramp):
   previous token stays valid until the replacement is first used, so a lost
   response never locks the phone out (the server re-issues instead). A replaced
   token coming back means a second copy of it exists: the server logs the
-  reuse and sends another fresh token in that upload's response, consuming the
-  copied one. Tracking carries on in the background with no notification and
-  no need for the user to open the app. Dart's stored token is just the
+  reuse and consumes that hash without issuing any replacement, so the copy
+  stops working while the phone keeps its current token. No credential is
+  handed to whoever triggered the warning. Tracking carries on in the
+  background with no notification and no need for the user to open the app.
+  Dart's stored token is just the
   registration-time copy; `configure` keeps the engine's own token while the
   device id is unchanged.
 

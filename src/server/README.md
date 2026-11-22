@@ -209,10 +209,10 @@ Device tokens rotate: an upload that sends `Authorization: Device <token>` and
 `X-Token-Rotation: 1` gets `device_token` (the replacement) in its response once
 the token is 24 hours old. The old token keeps working until the replacement is
 first used. If a replaced token comes back it means a second copy exists: the
-reuse is logged with the device and user id, the response carries another fresh
-token, and the presented copy is consumed — the device is not revoked, so the
-real phone keeps tracking in the background without any user action. Clients
-that don't send the header keep their token unchanged.
+reuse is logged with the device and user id, and that hash is consumed — no new
+token is issued to whoever presented it, and the device is not revoked. The
+real phone keeps tracking with its current token without any user action.
+Clients that don't send the header keep their token unchanged.
 
 Only `sha256(token)` is stored.
 

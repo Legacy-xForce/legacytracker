@@ -1434,7 +1434,7 @@ export const openApiDocument = {
                     device_token: {
                         type: 'string',
                         description:
-                            'Replacement device token when the presented one was due for rotation or had been copied. Only present for opted-in uploads.'
+                            'Replacement device token when the presented one was due for rotation. A copied retired token is consumed instead, with no replacement issued. Only present for opted-in uploads.'
                     }
                 }
             },

@@ -86,9 +86,9 @@ function newToken(): string {
  * replacement. The previous token keeps working until the replacement is
  * first used, in case that response never arrived. A token that comes back
  * after being replaced means a second copy exists: the server logs it and
- * issues yet another replacement through the upload response, so the real
- * phone keeps tracking in the background and the copy is consumed instead of
- * locking the user out.
+ * consumes that hash without issuing a replacement, so the copy stops
+ * working while the real phone keeps tracking with its current token. No
+ * credential is ever handed to whoever triggered a reuse warning.
  */
 export class DeviceAuth {
   private readonly cache = new Map<string, CacheEntry>();
@@ -198,8 +198,10 @@ export class DeviceAuth {
   /**
    * Replaces [token] once it is due, or again when the phone still presents
    * the previous token (the response carrying the replacement was lost).
-   * Returns the new token, or null when nothing changed. Only for uploads
-   * from an engine that stores the replacement, after [verify] accepted it.
+   * Returns the new token, or null when nothing changed. A retired token is
+   * consumed instead of replaced: the upload is accepted but no credential is
+   * issued to whoever presented it. Only for opted-in uploads after [verify]
+   * accepted the token.
    */
   async rotateIfDue(token: string): Promise<string | null> {
     const hash = hashDeviceToken(token);
@@ -215,8 +217,12 @@ export class DeviceAuth {
 
     const row = await this.lookup(hash);
     // No live token matches: either it is retired (a copy came back) or it
-    // was never ours. Only a retired token can be recovered in the background.
-    if (!row) return this.rotateAfterReuse(hash);
+    // was never ours. Kill the copy; never hand out a replacement here, since
+    // the server cannot tell the victim from whoever duplicated the token.
+    if (!row) {
+      await this.consumeRetired(hash);
+      return null;
+    }
     const next = newToken();
     const nextHash = hashDeviceToken(next);
 
@@ -341,59 +347,21 @@ export class DeviceAuth {
   }
 
   /**
-   * Replace a token that was retired (a copy of it came back). The token that
-   * was current steps back to `prev` so the real phone is still accepted on
-   * its next upload; the presented token is consumed so its copy stops
-   * working. Whoever presented it receives the replacement in the upload
-   * response, which the engine stores before sending the next batch.
+   * A retired token came back, so a copy of it exists. Consume that hash: the
+   * upload is accepted (no lockout), the reuse is logged by [reusedIdentity],
+   * but whoever presented it gets no replacement and cannot use it again.
+   *
+   * The real phone does not need a replacement here. It always holds either
+   * `token_hash` or `prev_token_hash`, and the rotation path above already
+   * re-issues a fresh token when the phone presents the previous one. Leaving
+   * the device row untouched also means a copy-holder cannot rotate the
+   * device out from under the phone.
    */
-  private async rotateAfterReuse(hash: string): Promise<string | null> {
-    const history = await this.pool.query<{ device_id: string }>(
-      "SELECT device_id FROM device_token_history WHERE token_hash = $1",
+  private async consumeRetired(hash: string): Promise<void> {
+    await this.pool.query(
+      "DELETE FROM device_token_history WHERE token_hash = $1",
       [hash],
     );
-    const deviceId = history.rows[0]?.device_id;
-    if (!deviceId) return null;
-    const next = newToken();
-    // One statement: compare-and-swap the current hash, retire the old prev,
-    // and consume the presented hash. A crash can never leave a half-applied
-    // rotation where the copy is still accepted. `SET prev = token_hash` uses
-    // the OLD row value, so the live phone's token steps back into the grace
-    // slot while it is replaced by `next`.
-    const result = await this.pool.query<{
-      old_hash: string;
-      old_prev: string | null;
-      rotated: number;
-    }>(
-      `WITH target AS (
-         SELECT token_hash, prev_token_hash FROM devices WHERE id = $1 AND revoked_at IS NULL
-       ), rotated AS (
-         UPDATE devices
-         SET token_hash = $3, prev_token_hash = token_hash, token_issued_at = now()
-         WHERE id = $1 AND revoked_at IS NULL AND token_hash = (SELECT token_hash FROM target)
-         RETURNING id
-       ), retired AS (
-         INSERT INTO device_token_history (token_hash, device_id)
-         SELECT (SELECT prev_token_hash FROM target), $1
-         WHERE (SELECT prev_token_hash FROM target) IS NOT NULL
-           AND EXISTS (SELECT 1 FROM rotated)
-         ON CONFLICT DO NOTHING
-         RETURNING token_hash
-       ), consumed AS (
-         DELETE FROM device_token_history
-         WHERE token_hash = $2 AND device_id = $1 AND EXISTS (SELECT 1 FROM rotated)
-         RETURNING token_hash
-       )
-       SELECT (SELECT token_hash FROM target) AS old_hash,
-              (SELECT prev_token_hash FROM target) AS old_prev,
-              (SELECT count(*)::int FROM rotated) AS rotated`,
-      [deviceId, hash, hashDeviceToken(next)],
-    );
-    const row = result.rows[0];
-    if (!row || row.rotated === 0) return null;
-    this.cache.delete(row.old_hash);
-    if (row.old_prev) this.cache.delete(row.old_prev);
     this.cache.delete(hash);
-    return next;
   }
 }
