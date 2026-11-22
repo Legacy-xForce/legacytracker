@@ -152,7 +152,6 @@ class TrackingEngine private constructor(context: Context) {
         val wasRejected = state.authFailed
         state.saveConfig(baseUrl, authHeader, userId, batterySaver, deviceId)
         if (wasRejected) log("upload", "Upload credentials refreshed")
-        SharingPausedNotice.cancel(app)
         trip?.refreshProfile()
         maybeFlush(force = true)
         return state.authHeader
@@ -209,7 +208,6 @@ class TrackingEngine private constructor(context: Context) {
             // Read after the final upload, which may have rotated it.
             discarded = state.authHeader
             state.clearCredentials()
-            SharingPausedNotice.cancel(app)
         } else {
             maybeFlush(force = true)
         }
@@ -234,8 +232,6 @@ class TrackingEngine private constructor(context: Context) {
         } else {
             stopForegroundSession()
             trip?.refreshProfile()
-            // Opening the app didn't get new credentials (e.g. offline).
-            if (state.authFailed && state.hasCredentials) SharingPausedNotice.show(app)
         }
     }
 
@@ -859,11 +855,7 @@ class TrackingEngine private constructor(context: Context) {
                 emit(mapOf("type" to "upload", "ok" to false, "error" to reason))
             }
             Uploader.Result.AuthRejected -> {
-                if (!state.authFailed) {
-                    log("upload", "Server rejected the upload credentials")
-                    // While visible the app re-registers right away instead.
-                    if (!appVisible) SharingPausedNotice.show(app)
-                }
+                if (!state.authFailed) log("upload", "Server rejected the upload credentials")
                 state.authFailed = true
                 emit(mapOf("type" to "auth_required"))
             }

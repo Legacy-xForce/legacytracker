@@ -2,7 +2,6 @@ import BackgroundTasks
 import CoreLocation
 import Network
 import UIKit
-import UserNotifications
 
 
 // Native location engine — the iOS counterpart of
@@ -21,33 +20,6 @@ import UserNotifications
 // JSON encoding, delete after the server took it) runs on the uploader's serial queue; the SQLite
 // connection is opened in serialized mode, so both threads may use it.
 
-
-// MARK: - Sharing paused notice
-
-/// Tells the user background sharing stopped because the server rejected the
-/// upload credentials (revoked, or a copied token was detected). Only the app
-/// can fix that — it re-registers with the user's login when opened — so
-/// without this the marker would go stale with no sign on the phone.
-enum SharingPausedNotice {
-    private static let identifier = "lt.sharing-paused"
-
-    static func show() {
-        let content = UNMutableNotificationContent()
-        content.title = "Location sharing"
-        content.body = "We're refreshing your sharing credentials in the background. You don't need to do anything."
-        content.sound = .default
-        let request = UNNotificationRequest(identifier: identifier, content: content, trigger: nil)
-        // Not delivered when notifications aren't allowed; the app still
-        // re-registers when opened.
-        UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
-    }
-
-    static func cancel() {
-        let center = UNUserNotificationCenter.current()
-        center.removePendingNotificationRequests(withIdentifiers: [identifier])
-        center.removeDeliveredNotifications(withIdentifiers: [identifier])
-    }
-}
 
 // MARK: - Engine
 
@@ -223,7 +195,6 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         }
         state.saveConfig(baseUrl: baseUrl, authHeader: authHeader, userId: userId, batterySaver: batterySaver,
                          deviceId: deviceId)
-        SharingPausedNotice.cancel()
         applyGpsProfile()
         maybeFlush(force: true)
         return state.authHeader
@@ -278,7 +249,6 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             // Read after the final upload, which may have rotated it.
             let discarded = self.state.authHeader
             self.state.clearCredentials()
-            SharingPausedNotice.cancel()
             self.endBackgroundWork()
             completion(discarded)
         }
@@ -294,8 +264,6 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         if !visible { foregroundPing = nil }
         updateGps()
         if visible { maybeFlush(force: true) }
-        // Opening the app didn't get new credentials (e.g. offline).
-        if !visible && state.authFailed && state.hasCredentials { SharingPausedNotice.show() }
     }
 
     func flush() {
@@ -814,11 +782,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             log("upload", "Upload deferred: \(reason)")
             emit(["type": "upload", "ok": false, "error": reason])
         case .authRejected:
-            if !state.authFailed {
-                log("upload", "Server rejected the upload credentials")
-                // While visible the app re-registers right away instead.
-                if !appVisible { SharingPausedNotice.show() }
-            }
+            if !state.authFailed { log("upload", "Server rejected the upload credentials") }
             state.authFailed = true
             emit(["type": "auth_required"])
         case .nothingToSend, .notConfigured:
