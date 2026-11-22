@@ -88,6 +88,47 @@ void main() {
     expect(calls[1].arguments, {'clearData': true});
   });
 
+  test('configure passes deviceId; engine headers come back', () async {
+    TrackingEngine.debugSupportedOverride = true;
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      // The engine kept its rotated token: configure and stop both report it.
+      return 'Device rotated';
+    });
+
+    final effective = await TrackingEngine.configure(
+      baseUrl: 'https://tracker.example',
+      authHeader: 'Device abc',
+      userId: 'user-1',
+      deviceId: 'dev-1',
+    );
+    final discarded = await TrackingEngine.stop(clearData: true);
+
+    expect(calls[0].arguments, {
+      'baseUrl': 'https://tracker.example',
+      'authHeader': 'Device abc',
+      'userId': 'user-1',
+      'batterySaver': false,
+      'deviceId': 'dev-1',
+    });
+    expect(effective, 'Device rotated');
+    expect(discarded, 'Device rotated');
+  });
+
+  test('currentAuthHeader reads the live token without an upload', () async {
+    TrackingEngine.debugSupportedOverride = true;
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return 'Device live';
+    });
+
+    expect(await TrackingEngine.currentAuthHeader(), 'Device live');
+    expect(calls.single.method, 'currentAuthHeader');
+    expect(calls.single.arguments, isNull);
+  });
+
   test('calls are no-ops without a native side', () async {
     TrackingEngine.debugSupportedOverride = false;
     await TrackingEngine.start();

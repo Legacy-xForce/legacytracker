@@ -334,9 +334,20 @@ export const openApiDocument = {
                 description: [
                     'Send one point or an array, in any order. Points are stored idempotently on their timestamp, so',
                     're-sending a batch is safe. `source: "live"` points are broadcast to viewers but never stored.',
-                    '`live_ttl_s` above zero means someone is watching and the uploader should report in realtime for that long.'
+                    '`live_ttl_s` above zero means someone is watching and the uploader should report in realtime for that long.',
+                    'Native engines authenticate with `Authorization: Device <token>`; an opted-in upload whose token',
+                    'is due for rotation also receives a `device_token` to use for subsequent uploads.'
                 ].join(' '),
                 security: tokenOrSession,
+                parameters: [
+                    {
+                        name: 'X-Token-Rotation',
+                        in: 'header',
+                        description:
+                            'Set to `1` to opt into device-token rotation. Clients that omit it keep their token unchanged.',
+                        schema: { type: 'string', enum: ['1'] }
+                    }
+                ],
                 requestBody: {
                     required: true,
                     content: {
@@ -400,6 +411,12 @@ export const openApiDocument = {
                 responses: {
                     '200': {
                         description: 'How many points were accepted and stored.',
+                        headers: {
+                            'Cache-Control': {
+                                description: '`no-store` when the response contains a rotated `device_token`.',
+                                schema: { type: 'string' }
+                            }
+                        },
                         content: {
                             'application/json': {
                                 schema: { $ref: '#/components/schemas/LocationUploadResult' },
@@ -1413,6 +1430,11 @@ export const openApiDocument = {
                     live_ttl_s: {
                         type: 'integer',
                         description: 'Seconds to stay in realtime mode; `0` when nobody is watching.'
+                    },
+                    device_token: {
+                        type: 'string',
+                        description:
+                            'Replacement device token when the presented one was due for rotation. A copied retired token is consumed instead, with no replacement issued. Only present for opted-in uploads.'
                     }
                 }
             },

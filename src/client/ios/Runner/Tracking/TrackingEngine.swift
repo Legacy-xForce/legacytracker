@@ -185,15 +185,19 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
 
     // MARK: Commands from Dart
 
-    func configure(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool) {
+    /// Returns the header uploads will use: ours if the server rotated it since `deviceId` registered.
+    @discardableResult
+    func configure(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool, deviceId: String?) -> String? {
         if let previous = state.userId, previous != userId {
             log("config", "Account changed — discarding \(store.pendingCount()) unsent point(s)")
             store.clearPoints()
             state.clearRuntime()
         }
-        state.saveConfig(baseUrl: baseUrl, authHeader: authHeader, userId: userId, batterySaver: batterySaver)
+        state.saveConfig(baseUrl: baseUrl, authHeader: authHeader, userId: userId, batterySaver: batterySaver,
+                         deviceId: deviceId)
         applyGpsProfile()
         maybeFlush(force: true)
+        return state.authHeader
     }
 
     func start() {
@@ -215,7 +219,11 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         emitState()
     }
 
-    func stop(clearData: Bool, completion: @escaping () -> Void) {
+    /// The header uploads use right now, without awaiting an upload.
+    func currentAuthHeader() -> String? { state.authHeader }
+
+    /// With `clearData`, hands the completion the upload header it discarded so sign-out can revoke it.
+    func stop(clearData: Bool, completion: @escaping (String?) -> Void) {
         let previous = state.mode
         state.mode = .off
         if let current = session {
@@ -231,7 +239,7 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         emitState()
         guard clearData else {
             maybeFlush(force: true)
-            completion()
+            completion(nil)
             return
         }
         // Last chance to deliver what was recorded under these credentials.
@@ -241,9 +249,11 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
             self.log("lifecycle", "Final upload before sign-out: \(self.describe(outcome))")
             self.store.clearPoints()
             self.state.clearRuntime()
+            // Read after the final upload, which may have rotated it.
+            let discarded = self.state.authHeader
             self.state.clearCredentials()
             self.endBackgroundWork()
-            completion()
+            completion(discarded)
         }
     }
 

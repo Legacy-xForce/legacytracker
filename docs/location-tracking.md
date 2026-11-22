@@ -130,6 +130,19 @@ red light, 12 m-radius junction turn, roundabout, highway bend, exit ramp):
   Background uploads therefore never depend on a short-lived JWT or on
   refreshing a rotating refresh token from two places. Sign-out uploads what's
   left, wipes the queue and revokes the token.
+- Rotation: the engine alone owns the token after registration. Its uploads
+  send `X-Token-Rotation: 1`, and once the token is 24 h old the response
+  carries a replacement (`device_token`), stored before the next request. The
+  previous token stays valid until the replacement is first used, so a lost
+  response never locks the phone out (the server re-issues instead). A replaced
+  token coming back means a second copy of it exists: the server logs the
+  reuse and consumes that hash without issuing any replacement, so the copy
+  stops working while the phone keeps its current token. No credential is
+  handed to whoever triggered the warning. Tracking carries on in the
+  background with no notification and no need for the user to open the app.
+  Dart's stored token is just the
+  registration-time copy; `configure` keeps the engine's own token while the
+  device id is unchanged.
 
 ## Live mode ("someone opened the app")
 
@@ -247,11 +260,11 @@ drawer. Admins get no exception.
 |---|---|
 | `POST /api/v1/devices` (JWT) | `{platform, replaces?}` → `{device_id, device_token}` |
 | `DELETE /api/v1/devices/:id` | JWT, or the device's own token |
-| `POST /api/v1/location` | Also accepts `Authorization: Device <token>`; `coords.accuracy`; `source` ∈ `move`, `trip_start`, `trip_end`, `ping`, `heartbeat`, `live` (not stored); response adds `stored`, `live_ttl_s`; broadcast only moves a marker forward in time |
+| `POST /api/v1/location` | Also accepts `Authorization: Device <token>` (plus `X-Token-Rotation: 1` to opt into rotation); `coords.accuracy`; `source` ∈ `move`, `trip_start`, `trip_end`, `ping`, `heartbeat`, `live` (not stored); response adds `stored`, `live_ttl_s`, and `device_token` when the token was rotated; broadcast only moves a marker forward in time |
 | FCM data | `lt_cmd` (`live`/`idle`/`refresh`), `lt_ttl`; `pacing` kept for older builds |
 | `POST /api/v1/users/:userId/location-refresh` (JWT) | Wakes that user's phone; `200` roster entry / `504 device_unreachable` / `403 not_sharing` / `409 no_device` / `404` |
 | History | `trip_start`/`trip_end` delimit sessions; silent stops (≥ 10 min, < 75 m) split; `heartbeat`/`ping` excluded; average speed = distance / time |
-| Schema | `location_history.accuracy`, `users.battery_level/is_charging/tracking_issues`, `devices` (created by `ensureBackendSchema()` on boot) |
+| Schema | `location_history.accuracy`, `users.battery_level/is_charging/tracking_issues`, `devices` + `device_token_history` (`prev_token_hash`, `token_issued_at`), created by `ensureBackendSchema()` on boot |
 
 ## Rollout
 

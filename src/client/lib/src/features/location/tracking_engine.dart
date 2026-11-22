@@ -169,24 +169,37 @@ class TrackingEngine {
         .asBroadcastStream();
   }
 
-  static Future<void> configure({
+  /// [deviceId] names the registration [authHeader] belongs to (null for the
+  /// session-token fallback). The server rotates device tokens through the
+  /// engine's uploads, so while [deviceId] is unchanged the engine keeps its
+  /// own, newer token. Returns the header the engine will upload with.
+  static Future<String?> configure({
     required String baseUrl,
     required String authHeader,
     required String userId,
     bool batterySaver = false,
-  }) => _invoke<void>('configure', {
+    String? deviceId,
+  }) => _invoke<String>('configure', {
     'baseUrl': baseUrl,
     'authHeader': authHeader,
     'userId': userId,
     'batterySaver': batterySaver,
+    'deviceId': ?deviceId,
   });
 
   static Future<void> start() => _invoke<void>('start');
 
   /// Disarms everything. [clearData] (sign-out) first attempts a final upload,
-  /// then wipes the local queue and the upload credentials.
-  static Future<void> stop({bool clearData = false}) =>
-      _invoke<void>('stop', {'clearData': clearData});
+  /// then wipes the local queue and the upload credentials, returning the
+  /// header it discarded so the token can be revoked.
+  static Future<String?> stop({bool clearData = false}) =>
+      _invoke<String>('stop', {'clearData': clearData});
+
+  /// The header the engine is uploading with right now, without awaiting an
+  /// upload. Used when `stop` times out so sign-out can still revoke the token
+  /// that is actually live rather than the registration-time copy.
+  static Future<String?> currentAuthHeader() =>
+      _invoke<String>('currentAuthHeader');
 
   /// While visible the engine streams fixes to [events] and uploads promptly.
   static Future<void> setAppVisible(bool visible) =>

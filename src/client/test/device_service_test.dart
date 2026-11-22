@@ -83,6 +83,23 @@ void main() {
     expect(sent.headers['authorization'], 'Device secret');
   });
 
+  test('unregister prefers the engine\'s rotated token', () async {
+    late http.Request sent;
+    final service = DeviceService(
+      baseUrl: 'https://tracker.example',
+      httpClient: MockClient((request) async {
+        sent = request;
+        return http.Response('{"revoked":true}', 200);
+      }),
+    );
+    await service.unregister(
+      const DeviceCredentials(deviceId: 'dev-1', token: 'old', userId: 'u'),
+      authHeader: 'Device rotated',
+    );
+    expect(sent.url.path, '/api/v1/devices/dev-1');
+    expect(sent.headers['authorization'], 'Device rotated');
+  });
+
   test('credential store round-trips and clears', () async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();

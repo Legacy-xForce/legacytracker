@@ -141,7 +141,8 @@ class TrackingEngine private constructor(context: Context) {
 
     // ── Commands from Dart ──────────────────────────────────────────────────
 
-    fun configure(baseUrl: String, authHeader: String, userId: String, batterySaver: Boolean) {
+    /** Returns the header uploads will use: ours if the server rotated it since [deviceId] registered. */
+    fun configure(baseUrl: String, authHeader: String, userId: String, batterySaver: Boolean, deviceId: String?): String? {
         val previousUser = state.userId
         if (previousUser != null && previousUser != userId) {
             log("config", "Account changed — discarding ${store.pendingCount()} unsent point(s)")
@@ -149,10 +150,11 @@ class TrackingEngine private constructor(context: Context) {
             state.clearRuntime()
         }
         val wasRejected = state.authFailed
-        state.saveConfig(baseUrl, authHeader, userId, batterySaver)
+        state.saveConfig(baseUrl, authHeader, userId, batterySaver, deviceId)
         if (wasRejected) log("upload", "Upload credentials refreshed")
         trip?.refreshProfile()
         maybeFlush(force = true)
+        return state.authHeader
     }
 
     fun start() {
@@ -177,7 +179,12 @@ class TrackingEngine private constructor(context: Context) {
         emitState()
     }
 
-    fun stop(clearData: Boolean) {
+    /** The header uploads use right now, without awaiting an upload. */
+    fun currentAuthHeader(): String? = state.authHeader
+
+    /** With [clearData], returns the upload header it discarded so sign-out can revoke it. */
+    fun stop(clearData: Boolean): String? {
+        var discarded: String? = null
         val previous = state.mode
         state.mode = TrackingMode.OFF
         trip?.let { session ->
@@ -201,12 +208,15 @@ class TrackingEngine private constructor(context: Context) {
             UploadWorker.cancel(app)
             store.clearPoints()
             state.clearRuntime()
+            // Read after the final upload, which may have rotated it.
+            discarded = state.authHeader
             state.clearCredentials()
         } else {
             maybeFlush(force = true)
         }
         log("lifecycle", "Tracking disabled (was ${previous.name.lowercase()})")
         emitState()
+        return discarded
     }
 
     fun setAppVisible(visible: Boolean) {

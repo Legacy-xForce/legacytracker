@@ -37,17 +37,19 @@ class TrackingChannel(context: Context, messenger: BinaryMessenger) :
                 val authHeader = call.argument<String>("authHeader")
                 val userId = call.argument<String>("userId")
                 val batterySaver = call.argument<Boolean>("batterySaver") ?: false
+                val deviceId = call.argument<String>("deviceId")
                 if (baseUrl == null || authHeader == null || userId == null) {
                     result.error("bad_args", "baseUrl, authHeader and userId are required", null)
                     return
                 }
-                reply(result) { engine.configure(baseUrl, authHeader, userId, batterySaver) }
+                reply(result) { engine.configure(baseUrl, authHeader, userId, batterySaver, deviceId) }
             }
             "start" -> reply(result) { engine.start() }
             "stop" -> {
                 val clearData = call.argument<Boolean>("clearData") ?: false
                 reply(result) { engine.stop(clearData) }
             }
+            "currentAuthHeader" -> reply(result) { engine.currentAuthHeader() }
             "setAppVisible" -> {
                 val visible = call.argument<Boolean>("visible") ?: false
                 reply(result) { engine.setAppVisible(visible) }

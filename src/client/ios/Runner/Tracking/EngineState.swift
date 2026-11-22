@@ -15,21 +15,42 @@ final class EngineState {
     var baseUrl: String? { defaults.string(forKey: prefix + "baseUrl") }
     var authHeader: String? { defaults.string(forKey: prefix + "authHeader") }
     var userId: String? { defaults.string(forKey: prefix + "userId") }
+    var deviceId: String? { defaults.string(forKey: prefix + "deviceId") }
     var batterySaver: Bool { defaults.bool(forKey: prefix + "batterySaver") }
     var hasCredentials: Bool { baseUrl != nil && authHeader != nil }
 
-    func saveConfig(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool) {
+    /// `deviceId` identifies the registration `authHeader` came from (nil for
+    /// the session-token fallback). The server rotates the device token
+    /// through our uploads, so Dart's copy is only current right after it
+    /// registers; while the device stays the same, keep our own.
+    func saveConfig(baseUrl: String, authHeader: String, userId: String, batterySaver: Bool, deviceId: String?) {
         var url = baseUrl
         while url.hasSuffix("/") { url.removeLast() }
+        let sameDevice = deviceId != nil && deviceId == self.deviceId
         defaults.set(url, forKey: prefix + "baseUrl")
-        defaults.set(authHeader, forKey: prefix + "authHeader")
+        if !(sameDevice && self.authHeader != nil) {
+            defaults.set(authHeader, forKey: prefix + "authHeader")
+        }
+        if let deviceId = deviceId {
+            defaults.set(deviceId, forKey: prefix + "deviceId")
+        } else {
+            defaults.removeObject(forKey: prefix + "deviceId")
+        }
         defaults.set(userId, forKey: prefix + "userId")
         defaults.set(batterySaver, forKey: prefix + "batterySaver")
         defaults.set(false, forKey: prefix + "authFailed")
     }
 
+    /// Replacement token from an upload response. Commit it like Android's
+    /// `commit()` so a background suspension cannot lose the rotation.
+    func saveRotatedAuth(_ authHeader: String) {
+        defaults.set(authHeader, forKey: prefix + "authHeader")
+        defaults.synchronize()
+    }
+
     func clearCredentials() {
         defaults.removeObject(forKey: prefix + "authHeader")
+        defaults.removeObject(forKey: prefix + "deviceId")
         defaults.removeObject(forKey: prefix + "userId")
         defaults.removeObject(forKey: prefix + "authFailed")
     }
