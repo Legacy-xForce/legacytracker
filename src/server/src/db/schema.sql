@@ -49,8 +49,8 @@ CREATE TABLE IF NOT EXISTS devices (
 CREATE INDEX IF NOT EXISTS devices_user_idx ON devices (user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS devices_prev_token_hash_idx ON devices (prev_token_hash);
 
--- Replaced tokens. One coming back means a second copy exists, and the
--- device is revoked.
+-- Replaced tokens. One coming back means a second copy exists: the reuse is
+-- logged and that hash is consumed, while the device keeps tracking.
 CREATE TABLE IF NOT EXISTS device_token_history (
   token_hash text PRIMARY KEY,
   device_id text NOT NULL REFERENCES devices(id),

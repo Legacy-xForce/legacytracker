@@ -49,6 +49,7 @@ class TrackingChannel(context: Context, messenger: BinaryMessenger) :
                 val clearData = call.argument<Boolean>("clearData") ?: false
                 reply(result) { engine.stop(clearData) }
             }
+            "currentAuthHeader" -> reply(result) { engine.currentAuthHeader() }
             "setAppVisible" -> {
                 val visible = call.argument<Boolean>("visible") ?: false
                 reply(result) { engine.setAppVisible(visible) }

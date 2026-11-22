@@ -179,6 +179,9 @@ class TrackingEngine private constructor(context: Context) {
         emitState()
     }
 
+    /** The header uploads use right now, without awaiting an upload. */
+    fun currentAuthHeader(): String? = state.authHeader
+
     /** With [clearData], returns the upload header it discarded so sign-out can revoke it. */
     fun stop(clearData: Boolean): String? {
         var discarded: String? = null

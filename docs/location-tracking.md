@@ -262,7 +262,7 @@ drawer. Admins get no exception.
 | FCM data | `lt_cmd` (`live`/`idle`/`refresh`), `lt_ttl`; `pacing` kept for older builds |
 | `POST /api/v1/users/:userId/location-refresh` (JWT) | Wakes that user's phone; `200` roster entry / `504 device_unreachable` / `403 not_sharing` / `409 no_device` / `404` |
 | History | `trip_start`/`trip_end` delimit sessions; silent stops (≥ 10 min, < 75 m) split; `heartbeat`/`ping` excluded; average speed = distance / time |
-| Schema | `location_history.accuracy`, `users.battery_level/is_charging/tracking_issues`, `devices` (created by `ensureBackendSchema()` on boot) |
+| Schema | `location_history.accuracy`, `users.battery_level/is_charging/tracking_issues`, `devices` + `device_token_history` (`prev_token_hash`, `token_issued_at`), created by `ensureBackendSchema()` on boot |
 
 ## Rollout
 

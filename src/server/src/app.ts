@@ -765,19 +765,24 @@ function deviceTokenOf(request: FastifyRequest): string | null {
 }
 
 /**
- * Identity for location ingest: the native tracking engine authenticates
+ * Identity for device-token routes: the native tracking engine authenticates
  * with its long-lived device token (`Authorization: Device <token>`); older
  * clients and the app itself still use the user's JWT.
+ *
+ * Only the upload route may accept a retired token (and immediately replace
+ * it). Credential-mutating routes such as `DELETE /devices/:id` must keep
+ * strict verification, or a copied retired token could revoke the real phone.
  */
 async function getIngestIdentity(
   request: FastifyRequest,
+  allowRetired = false,
 ): Promise<IngestIdentity> {
   const token = deviceTokenOf(request);
   if (token !== null) {
     if (!token) {
       return { ok: false, reason: "empty device token" };
     }
-    const device = await deviceAuth.verify(token);
+    const device = await deviceAuth.verify(token, allowRetired);
     if (!device) {
       return { ok: false, reason: "unknown or revoked device token" };
     }
@@ -1976,7 +1981,10 @@ app.post("/api/v1/streams/ticket", async (request, reply) => {
 });
 
 app.post("/api/v1/location", async (request, reply) => {
-  const identity = await getIngestIdentity(request);
+  // A retired token is only usable by an engine that opts into rotation:
+  // that is the only path that consumes it and hands back a replacement.
+  const optsInToRotation = request.headers["x-token-rotation"] === "1";
+  const identity = await getIngestIdentity(request, optsInToRotation);
   if (!identity.ok) {
     return rejectRequest(request, reply, "/api/v1/location", identity);
   }
@@ -2020,11 +2028,7 @@ app.post("/api/v1/location", async (request, reply) => {
   // in; any other client keeps its token unchanged.
   let rotatedToken: string | null = null;
   const deviceToken = deviceTokenOf(request);
-  if (
-    identity.deviceId !== null &&
-    deviceToken &&
-    request.headers["x-token-rotation"] === "1"
-  ) {
+  if (identity.deviceId !== null && deviceToken && optsInToRotation) {
     try {
       rotatedToken = await deviceAuth.rotateIfDue(deviceToken);
     } catch (error) {

@@ -119,15 +119,15 @@ final class Uploader {
                 }
                 return
             }
-            // Saved before the next batch goes out: the server keeps
-            // accepting the old token only until this one is used.
-            if let token = Uploader.parseDeviceToken(data) { self.state.saveRotatedAuth("Device " + token) }
             let ttl = Uploader.parseLiveTtl(data) ?? liveTtl
             let store = self.store
             self.work.async { [weak self] in
                 if let lastId = batch.last?.id { store.deleteUpTo(lastId) }
                 DispatchQueue.main.async {
                     guard let self = self else { return }
+                    // Saved on main, before the next batch reads it: the server
+                    // accepts the old token only until this one is used.
+                    if let token = Uploader.parseDeviceToken(data) { self.state.saveRotatedAuth("Device " + token) }
                     let total = sent + batch.count
                     if batch.count < Tuning.uploadBatchSize {
                         completion(.sent(count: total, liveTtl: ttl))

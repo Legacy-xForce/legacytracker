@@ -39,6 +39,8 @@ final class TrackingChannel: NSObject, FlutterStreamHandler {
             result(nil)
         case "stop":
             engine.stop(clearData: args["clearData"] as? Bool ?? false) { discarded in result(discarded) }
+        case "currentAuthHeader":
+            result(engine.currentAuthHeader())
         case "setAppVisible":
             engine.setAppVisible(args["visible"] as? Bool ?? false)
             result(nil)

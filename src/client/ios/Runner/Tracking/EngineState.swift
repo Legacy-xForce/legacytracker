@@ -41,9 +41,11 @@ final class EngineState {
         defaults.set(false, forKey: prefix + "authFailed")
     }
 
-    /// Replacement token from an upload response.
+    /// Replacement token from an upload response. Commit it like Android's
+    /// `commit()` so a background suspension cannot lose the rotation.
     func saveRotatedAuth(_ authHeader: String) {
         defaults.set(authHeader, forKey: prefix + "authHeader")
+        defaults.synchronize()
     }
 
     func clearCredentials() {

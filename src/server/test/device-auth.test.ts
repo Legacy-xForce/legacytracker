@@ -57,7 +57,8 @@ test("a registered token verifies; an unknown one doesn't", async () => {
 
 test("a token younger than a day is not rotated", async () => {
   const { auth, token } = await harness();
-  await auth.verify(token);
+  // No verify() first: that would serve the rotation check from the cache and
+  // skip the token_issued_at guard we mean to exercise.
   assert.equal(await auth.rotateIfDue(token), null);
 });
 
@@ -88,7 +89,7 @@ test("a copied old token rotates instead of revoking the device", async () => {
   await auth.verify(next);
 
   // The copy comes back. Tracking is accepted and reported, not locked out.
-  assert.deepEqual(await auth.verify(token), alice(deviceId));
+  assert.deepEqual(await auth.verify(token, true), alice(deviceId));
   assert.deepEqual(reused, [{ deviceId, userId: "alice" }]);
   const reissued = await auth.rotateIfDue(token);
   assert.ok(reissued);
@@ -99,6 +100,20 @@ test("a copied old token rotates instead of revoking the device", async () => {
   assert.equal(await auth.verify(token), null);
   assert.deepEqual(await auth.verify(next), alice(deviceId));
   assert.deepEqual(await auth.verify(reissued), alice(deviceId));
+});
+
+test("a retired token is only accepted by the upload path", async () => {
+  const { auth, deviceId, token } = await harness({ rotateAfterMs: 0 });
+  await auth.verify(token);
+  const next = await auth.rotateIfDue(token);
+  assert.ok(next);
+  await auth.verify(next); // first use of the replacement retires `token`
+
+  // Credential-mutating routes use strict verification: a copied retired
+  // token must not be able to revoke the device.
+  assert.equal(await auth.verify(token), null);
+  // The upload route opts in and immediately replaces it.
+  assert.deepEqual(await auth.verify(token, true), alice(deviceId));
 });
 
 test("a lost replacement is re-issued, and the lost one is retired", async () => {
@@ -120,7 +135,7 @@ test("a lost replacement is re-issued, and the lost one is retired", async () =>
   // Someone presenting the token the phone never received holds a copy. It
   // is reported and consumed by a further rotation, while the phone's token
   // and the replacement keep working.
-  assert.deepEqual(await auth.verify(lost), alice(deviceId));
+  assert.deepEqual(await auth.verify(lost, true), alice(deviceId));
   assert.deepEqual(reused, [{ deviceId, userId: "alice" }]);
   const rotated = await auth.rotateIfDue(lost);
   assert.ok(rotated);
@@ -159,7 +174,7 @@ test("a reused token never affects another user's device", async () => {
   const next = await auth.rotateIfDue(token);
   assert.ok(next);
   await auth.verify(next);
-  assert.deepEqual(await auth.verify(token), alice(deviceId));
+  assert.deepEqual(await auth.verify(token, true), alice(deviceId));
   await auth.rotateIfDue(token);
 
   assert.deepEqual(await auth.verify(bob.token), {

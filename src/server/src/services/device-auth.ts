@@ -10,7 +10,7 @@ export interface DeviceIdentity {
 export interface DeviceAuthOptions {
   /** Token age after which an opted-in upload gets a replacement. */
   rotateAfterMs?: number;
-  /** A replaced token came back, so the device has been revoked. */
+  /** A replaced token came back — log it; the device itself stays live. */
   onReuse?: (device: { deviceId: string; userId: string }) => void;
 }
 
@@ -140,7 +140,15 @@ export class DeviceAuth {
     return (result.rowCount ?? 0) > 0;
   }
 
-  async verify(token: string): Promise<DeviceIdentity | null> {
+  /**
+   * @param allowRetired only the upload route may accept a retired token,
+   * and only because it immediately replaces it. Routes that revoke or
+   * otherwise mutate device state must use the default, strict behaviour.
+   */
+  async verify(
+    token: string,
+    allowRetired = false,
+  ): Promise<DeviceIdentity | null> {
     const hash = hashDeviceToken(token);
     const now = Date.now();
     const cached = this.cache.get(hash);
@@ -150,21 +158,19 @@ export class DeviceAuth {
 
     const row = await this.lookup(hash);
     if (!row) {
+      if (!allowRetired) {
+        // Do not cache the refusal: a strict route (e.g. revoke) may see a
+        // retired token moments before the upload path, which must still be
+        // able to recognise and replace it.
+        return null;
+      }
       // A retired token came back: a second copy of it exists. Keep the
       // device alive and accept this upload — `rotateIfDue` gives the engine
       // a fresh token in the response, so tracking continues in the
       // background and the user never has to open the app. Do not cache the
       // identity: the reuse must be seen (and the token consumed) on every
       // presentation until it is replaced.
-      const reuse = await this.reusedIdentity(hash);
-      if (!reuse) {
-        this.cache.set(hash, {
-          identity: null,
-          issuedAt: 0,
-          expiresAt: now + NEGATIVE_CACHE_TTL_MS,
-        });
-      }
-      return reuse;
+      return this.reusedIdentity(hash);
     }
 
     const identity = {
@@ -295,11 +301,17 @@ export class DeviceAuth {
       [deviceId, currentHash, previousHash],
     );
     if ((result.rowCount ?? 0) === 0) return;
-    await this.pool.query(
-      `DELETE FROM device_token_history
-       WHERE device_id = $1 AND retired_at < now() - $2 * interval '1 day'`,
-      [deviceId, HISTORY_RETENTION_DAYS],
-    );
+    // Retention is best effort: the token is already retired and the upload
+    // has been accepted, so a cleanup failure must not turn it into a 500.
+    try {
+      await this.pool.query(
+        `DELETE FROM device_token_history
+         WHERE device_id = $1 AND retired_at < now() - $2 * interval '1 day'`,
+        [deviceId, HISTORY_RETENTION_DAYS],
+      );
+    } catch {
+      // Leftover rows are harmless; the next retirement tries again.
+    }
   }
 
   /**
@@ -342,39 +354,46 @@ export class DeviceAuth {
     );
     const deviceId = history.rows[0]?.device_id;
     if (!deviceId) return null;
-    const current = await this.pool.query<{
-      token_hash: string;
-      prev_token_hash: string | null;
-    }>(
-      "SELECT token_hash, prev_token_hash FROM devices WHERE id = $1 AND revoked_at IS NULL",
-      [deviceId],
-    );
-    const row = current.rows[0];
-    if (!row) return null;
     const next = newToken();
-    // Compare-and-swap on the current hash: two copies using the same retired
-    // token at once must not both install a replacement.
-    const result = await this.pool.query(
-      `UPDATE devices
-       SET token_hash = $3, prev_token_hash = token_hash, token_issued_at = now()
-       WHERE id = $1 AND token_hash = $2 AND revoked_at IS NULL`,
-      [deviceId, row.token_hash, hashDeviceToken(next)],
+    // One statement: compare-and-swap the current hash, retire the old prev,
+    // and consume the presented hash. A crash can never leave a half-applied
+    // rotation where the copy is still accepted. `SET prev = token_hash` uses
+    // the OLD row value, so the live phone's token steps back into the grace
+    // slot while it is replaced by `next`.
+    const result = await this.pool.query<{
+      old_hash: string;
+      old_prev: string | null;
+      rotated: number;
+    }>(
+      `WITH target AS (
+         SELECT token_hash, prev_token_hash FROM devices WHERE id = $1 AND revoked_at IS NULL
+       ), rotated AS (
+         UPDATE devices
+         SET token_hash = $3, prev_token_hash = token_hash, token_issued_at = now()
+         WHERE id = $1 AND revoked_at IS NULL AND token_hash = (SELECT token_hash FROM target)
+         RETURNING id
+       ), retired AS (
+         INSERT INTO device_token_history (token_hash, device_id)
+         SELECT (SELECT prev_token_hash FROM target), $1
+         WHERE (SELECT prev_token_hash FROM target) IS NOT NULL
+           AND EXISTS (SELECT 1 FROM rotated)
+         ON CONFLICT DO NOTHING
+         RETURNING token_hash
+       ), consumed AS (
+         DELETE FROM device_token_history
+         WHERE token_hash = $2 AND device_id = $1 AND EXISTS (SELECT 1 FROM rotated)
+         RETURNING token_hash
+       )
+       SELECT (SELECT token_hash FROM target) AS old_hash,
+              (SELECT prev_token_hash FROM target) AS old_prev,
+              (SELECT count(*)::int FROM rotated) AS rotated`,
+      [deviceId, hash, hashDeviceToken(next)],
     );
-    if ((result.rowCount ?? 0) === 0) return null;
-    if (row.prev_token_hash) {
-      await this.pool.query(
-        `INSERT INTO device_token_history (token_hash, device_id)
-         VALUES ($1, $2) ON CONFLICT DO NOTHING`,
-        [row.prev_token_hash, deviceId],
-      );
-      this.cache.delete(row.prev_token_hash);
-    }
-    // The presented token is now consumed: a copy of it no longer works.
-    await this.pool.query(
-      "DELETE FROM device_token_history WHERE token_hash = $1",
-      [hash],
-    );
-    this.cache.delete(row.token_hash);
+    const row = result.rows[0];
+    if (!row || row.rotated === 0) return null;
+    this.cache.delete(row.old_hash);
+    if (row.old_prev) this.cache.delete(row.old_prev);
+    this.cache.delete(hash);
     return next;
   }
 }

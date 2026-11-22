@@ -195,6 +195,12 @@ class TrackingEngine {
   static Future<String?> stop({bool clearData = false}) =>
       _invoke<String>('stop', {'clearData': clearData});
 
+  /// The header the engine is uploading with right now, without awaiting an
+  /// upload. Used when `stop` times out so sign-out can still revoke the token
+  /// that is actually live rather than the registration-time copy.
+  static Future<String?> currentAuthHeader() =>
+      _invoke<String>('currentAuthHeader');
+
   /// While visible the engine streams fixes to [events] and uploads promptly.
   static Future<void> setAppVisible(bool visible) =>
       _invoke<void>('setAppVisible', {'visible': visible});

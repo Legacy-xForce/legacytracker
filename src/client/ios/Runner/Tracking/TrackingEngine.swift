@@ -219,6 +219,9 @@ final class TrackingEngine: NSObject, CLLocationManagerDelegate {
         emitState()
     }
 
+    /// The header uploads use right now, without awaiting an upload.
+    func currentAuthHeader() -> String? { state.authHeader }
+
     /// With `clearData`, hands the completion the upload header it discarded so sign-out can revoke it.
     func stop(clearData: Bool, completion: @escaping (String?) -> Void) {
         let previous = state.mode

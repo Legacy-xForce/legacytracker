@@ -116,6 +116,19 @@ void main() {
     expect(discarded, 'Device rotated');
   });
 
+  test('currentAuthHeader reads the live token without an upload', () async {
+    TrackingEngine.debugSupportedOverride = true;
+    final calls = <MethodCall>[];
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      calls.add(call);
+      return 'Device live';
+    });
+
+    expect(await TrackingEngine.currentAuthHeader(), 'Device live');
+    expect(calls.single.method, 'currentAuthHeader');
+    expect(calls.single.arguments, isNull);
+  });
+
   test('calls are no-ops without a native side', () async {
     TrackingEngine.debugSupportedOverride = false;
     await TrackingEngine.start();
