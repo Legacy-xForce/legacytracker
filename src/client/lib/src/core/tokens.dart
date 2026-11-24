@@ -67,28 +67,6 @@ abstract final class AppType {
   static const double emojiMd = 14;
 }
 
-/// The design tokens a [ThemeData] carries, for component themes and widgets
-/// that read them from the context.
-@immutable
-class AppTokens extends ThemeExtension<AppTokens> {
-  const AppTokens();
-
-  /// Height of the bottom navigation bar. Kept below M3's 80 dp so the bar
-  /// takes less room from the map and sits closer to the people drawer.
-  double get navigationBarHeight => 64;
-
-  /// Cards.
-  BorderRadius get cardRadius => AppShape.md;
-
-  /// Dialogs, sheets and other large surfaces.
-  BorderRadius get largeSurfaceRadius => AppShape.xl;
-
-  static AppTokens of(BuildContext context) =>
-      Theme.of(context).extension<AppTokens>() ?? const AppTokens();
-
-  @override
-  AppTokens copyWith() => const AppTokens();
-
-  @override
-  AppTokens lerp(ThemeExtension<AppTokens>? other, double t) => this;
-}
+/// Height of the bottom navigation bar. Kept below M3's 80 dp so the bar
+/// takes less room from the map and sits closer to the people drawer.
+const double kNavigationBarHeight = 64;

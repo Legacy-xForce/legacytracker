@@ -145,7 +145,7 @@ void main() {
   test('component themes take their corners and heights from the tokens', () {
     for (final option in appThemes) {
       final data = buildThemeFor(option.id);
-      expect(data.extension<AppTokens>(), isNotNull);
+      expect(data.navigationBarTheme.height, kNavigationBarHeight);
       expect(
         (data.cardTheme.shape as RoundedRectangleBorder).borderRadius,
         AppShape.md,

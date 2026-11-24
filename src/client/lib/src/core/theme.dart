@@ -202,7 +202,6 @@ ThemeData buildAppTheme(ColorScheme scheme) {
 
   return ThemeData(
     useMaterial3: true,
-    extensions: const [AppTokens()],
     brightness: scheme.brightness,
     colorScheme: scheme,
     scaffoldBackgroundColor: scheme.surface,
@@ -235,7 +234,7 @@ ThemeData buildAppTheme(ColorScheme scheme) {
       shape: RoundedRectangleBorder(borderRadius: AppShape.md),
     ),
     navigationBarTheme: NavigationBarThemeData(
-      height: const AppTokens().navigationBarHeight,
+      height: kNavigationBarHeight,
       // The people drawer paints itself with surfaceContainerLow too, so the
       // bar and the sheet read as one surface in every theme.
       backgroundColor: scheme.surfaceContainerLow,
