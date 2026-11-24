@@ -397,7 +397,8 @@ describe('API docs', () => {
     it('are reachable without signing in', async () => {
         await router.push('/docs');
         expect(router.currentRoute.value.name).toBe('docs');
-    });
+        // Loading @scalar/api-reference can take well over 5 s on a busy runner.
+    }, 30_000);
 
     it('publish an OpenAPI document for the API', () => {
         expect(openApiDocument.openapi).toBe('3.1.0');
