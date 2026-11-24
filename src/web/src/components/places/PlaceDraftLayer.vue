@@ -6,7 +6,7 @@ import type { GeoJSONSource } from 'mapbox-gl';
 import { onBeforeUnmount, watch } from 'vue';
 import { centerShowing, visibleCenter } from '../../lib/camera';
 import { circlePolygon } from '../../lib/geo';
-import { isStyleNotLoaded } from '../../lib/mapbox';
+import { redrawAfterStyleLoad } from '../../lib/mapbox';
 import { useInsets, useMap } from '../../lib/mapContext';
 
 export interface PlaceDraft {
@@ -76,12 +76,7 @@ function paint() {
 }
 
 function draw() {
-    try {
-        paint();
-    } catch (error) {
-        // A style change removes the layers; style.load draws them again once it is ready.
-        if (!isStyleNotLoaded(error)) throw error;
-    }
+    redrawAfterStyleLoad(paint);
 }
 
 // The point is whatever sits under the crosshair, in the middle of the part of the map the panels

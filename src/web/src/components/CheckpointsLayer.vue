@@ -6,7 +6,7 @@ import { useAppearanceStore } from '../stores/appearance';
 import { circlePolygon } from '../lib/geo';
 import { escapeHtml } from '../lib/format';
 import { icons } from '../lib/icons';
-import { isStyleNotLoaded } from '../lib/mapbox';
+import { redrawAfterStyleLoad } from '../lib/mapbox';
 import { useMap } from '../lib/mapContext';
 import type { Checkpoint } from '../stores/checkpoints';
 
@@ -68,12 +68,7 @@ function clearLabels() {
 
 // The app's place circle (as in its checkpoint editor) with a compact name pill.
 function draw() {
-    try {
-        paint();
-    } catch (error) {
-        // A style change removes the layers; style.load draws them again once it is ready.
-        if (!isStyleNotLoaded(error)) throw error;
-    }
+    redrawAfterStyleLoad(paint);
 }
 
 function paint() {
