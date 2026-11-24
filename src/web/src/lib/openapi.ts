@@ -420,7 +420,7 @@ export const openApiDocument = {
                         content: {
                             'application/json': {
                                 schema: { $ref: '#/components/schemas/LocationUploadResult' },
-                                example: { received: 1, stored: 1, pacing: 'PASSIVE', live_ttl_s: 0 }
+                                example: { received: 1, stored: 1, live_ttl_s: 0 }
                             }
                         }
                     },
@@ -1419,15 +1419,10 @@ export const openApiDocument = {
             },
             LocationUploadResult: {
                 type: 'object',
-                required: ['received', 'stored', 'pacing', 'live_ttl_s'],
+                required: ['received', 'stored', 'live_ttl_s'],
                 properties: {
                     received: { type: 'integer' },
                     stored: { type: 'integer' },
-                    pacing: {
-                        type: 'string',
-                        enum: ['PASSIVE', 'ACTIVE', 'AGGRESSIVE'],
-                        description: 'How often the phone should keep reporting.'
-                    },
                     live_ttl_s: {
                         type: 'integer',
                         description: 'Seconds to stay in realtime mode; `0` when nobody is watching.'

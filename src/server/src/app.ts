@@ -94,9 +94,13 @@ const AUTH_ALLOWED_CLIENTS = (
   .split(",")
   .map((client) => client.trim())
   .filter((client) => client.length > 0);
-// Android builds older than this must update before they can be used.
-const ANDROID_MIN_SUPPORTED_CODE =
-  Number(process.env.ANDROID_MIN_SUPPORTED_CODE ?? 0) || 0;
+// Android builds older than this must update before they can be used. 13 was
+// the first OIDC release (1.6.0+13, 2026-10-22); older builds sign in with
+// ROPC, which the server no longer accepts. Override only for a staged rollout.
+const ANDROID_MIN_SUPPORTED_CODE = (() => {
+  const value = Number(process.env.ANDROID_MIN_SUPPORTED_CODE ?? 13);
+  return Number.isFinite(value) && value >= 0 ? value : 13;
+})();
 // The only client that may register devices (mint device tokens) and ask for
 // Mapbox temporary tokens. The web uses a URL-restricted public token instead.
 const AUTH_MOBILE_CLIENT = process.env.AUTH_MOBILE_CLIENT ?? "tracker-mobile";
@@ -222,15 +226,6 @@ const ANDROID_RELEASES_REPO =
 const RELEASE_CHECK_INTERVAL_MS = 5 * 60_000;
 // Just under the check interval, so every check sees fresh data.
 const RELEASE_CACHE_TTL_MS = 4 * 60_000;
-
-// Phase 4 (docs/oidc-migration.md): PacingMode, X-Pacing-Mode and the FCM
-// `pacing` field go once min_supported_code passes the builds that read them.
-const PacingMode = {
-  AGGRESSIVE: "AGGRESSIVE",
-  PASSIVE: "PASSIVE",
-} as const;
-
-type PacingMode = (typeof PacingMode)[keyof typeof PacingMode];
 
 interface TicketEntry {
   userId: string;
@@ -456,10 +451,6 @@ async function announceNewAndroidRelease(): Promise<void> {
   }
 }
 
-function getPacingMode(): PacingMode {
-  return liveController.isActive ? PacingMode.AGGRESSIVE : PacingMode.PASSIVE;
-}
-
 /** Live mode and the viewer list follow the in-memory connection registry. */
 function updateViewers(): void {
   liveController.update(connectionManager.activeMapCount);
@@ -485,8 +476,8 @@ type IdentityFailure = {
 };
 
 // `readOnly` callers (read API tokens, `tracker.read` sessions) can't write.
-// `clientId` is the OIDC client of a session token (null for API tokens and
-// legacy password-login tokens) and `sid` its OP session.
+// `clientId` is the OIDC client of a session token (null for API tokens) and
+// `sid` its OP session.
 type IdentityResult =
   | {
       ok: true;
@@ -564,11 +555,10 @@ async function authenticate(
 
 /**
  * Routes that mint app-only credentials refuse sessions from another OIDC
- * client (the web). Phase 4 (docs/oidc-migration.md): drop the
- * `clientId !== null` escape that still lets legacy password-login tokens by.
+ * client (the web), including API tokens, which have no client at all.
  */
 function notMobileClient(identity: IdentityOk): boolean {
-  return identity.clientId !== null && identity.clientId !== AUTH_MOBILE_CLIENT;
+  return identity.clientId !== AUTH_MOBILE_CLIENT;
 }
 
 function rejectMobileOnly(
@@ -707,11 +697,6 @@ async function getCurrentUserIdentity(
 
   const verified = await verifyAccessToken(token, authVerifier);
   if (!verified.ok) {
-    if (verified.lostTrackerScope && verified.sub) {
-      // The account lost access: its API tokens go with it.
-      // Phase 4 (docs/oidc-migration.md): delete with the legacy token branch.
-      purgeApiTokens(verified.sub, "a token without the tracker scope");
-    }
     return verified;
   }
   if (
@@ -2050,15 +2035,11 @@ app.post("/api/v1/location", async (request, reply) => {
     }
   }
 
-  const pacingMode = getPacingMode();
-  reply.header("X-Pacing-Mode", pacingMode);
-
   // `live_ttl_s` piggybacks the live state on every upload, so a device that
   // missed the push still converges within one upload.
   return reply.send({
     received: points.length,
     stored,
-    pacing: pacingMode,
     live_ttl_s: liveController.ttlSeconds,
     ...(rotatedToken !== null ? { device_token: rotatedToken } : {}),
   });

@@ -91,10 +91,7 @@ The image exposes port `3000` and defines a `HEALTHCHECK` against `/health` for 
 
 ## API reference
 
-All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against Legacy Auth's JWKS (`AUTH_JWKS_URI`), must be ES256 with `iss` = `AUTH_ISSUER`, and comes in one of two shapes while the apps move to OpenID Connect (see `docs/oidc-migration.md`):
-
-- **OpenID Provider tokens** (header `typ: at+jwt`): `aud` must be `tracker` and `client_id` one of `AUTH_ALLOWED_CLIENTS` (otherwise `401`). The RFC 9068 `scope` decides access: `tracker.write` may do anything, `tracker.read` only what a read API token may (otherwise `403 { "error": "This session is read-only" }`), neither is `403`.
-- **Legacy password-login tokens**: `type: "access"`, `scopes.tracker: true` (otherwise `403`) and `tracker` in `aud` (otherwise `401`, e.g. for a token issued for the calendar). They have full access.
+All REST endpoints require an `Authorization: Bearer <access_token>` header or an `X-API-Token` header (see [API tokens](#api-tokens)). The access token is verified against Legacy Auth's JWKS (`AUTH_JWKS_URI`), must be ES256 with `iss` = `AUTH_ISSUER`, and has the OpenID Provider shape (header `typ: at+jwt`): `aud` must be `tracker` and `client_id` one of `AUTH_ALLOWED_CLIENTS` (otherwise `401`). The RFC 9068 `scope` decides access: `tracker.write` may do anything, `tracker.read` only what a read API token may (otherwise `403 { "error": "This session is read-only" }`), neither is `403`. Legacy password-login tokens are no longer accepted (Phase 4 of `docs/oidc-migration.md`).
 
 The user identity is taken from the `sub` claim. When a user row is created, the server stores the human-readable display name from the token claims (`display_name`, then `name`, then the login username) when available, instead of defaulting to the UUID subject.
 
@@ -285,15 +282,14 @@ redacted entry of a user who hides from the viewer). See
 fix), `heartbeat` (parked liveness), `live` (realtime while watched — broadcast
 only, **never stored**). Inserts are idempotent on `(user_id, recorded_at)`.
 
-Response: `{ "received", "stored", "pacing", "live_ttl_s" }` — `live_ttl_s > 0`
+Response: `{ "received", "stored", "live_ttl_s" }` — `live_ttl_s > 0`
 tells the device to stream realtime for that long. A rotated device token adds
-`"device_token"` (sent with `Cache-Control: no-store`). The `X-Pacing-Mode` header
-is kept for older builds.
+`"device_token"` (sent with `Cache-Control: no-store`).
 
 ### Tracking commands (FCM)
 
 Data-only messages sent to every registered token when live mode changes:
-`{ "type": "tracking_command", "lt_cmd": "live" | "idle" | "refresh" | "update", "lt_ttl": "600", "pacing": … }`.
+`{ "type": "tracking_command", "lt_cmd": "live" | "idle" | "refresh" | "update", "lt_ttl": "600" }`.
 `refresh` asks one device for a fresh fix (`location-refresh`); `update` announces a new Android release.
 `live` goes out at high priority (60 s TTL) when the first viewer opens the
 map and is renewed every 4 min; `idle` follows 45 s after the last viewer

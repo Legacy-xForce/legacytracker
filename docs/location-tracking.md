@@ -261,15 +261,16 @@ drawer. Admins get no exception.
 | `POST /api/v1/devices` (JWT) | `{platform, replaces?}` → `{device_id, device_token}` |
 | `DELETE /api/v1/devices/:id` | JWT, or the device's own token |
 | `POST /api/v1/location` | Also accepts `Authorization: Device <token>` (plus `X-Token-Rotation: 1` to opt into rotation); `coords.accuracy`; `source` ∈ `move`, `trip_start`, `trip_end`, `ping`, `heartbeat`, `live` (not stored); response adds `stored`, `live_ttl_s`, and `device_token` when the token was rotated; broadcast only moves a marker forward in time |
-| FCM data | `lt_cmd` (`live`/`idle`/`refresh`), `lt_ttl`; `pacing` kept for older builds |
+| FCM data | `lt_cmd` (`live`/`idle`/`refresh`), `lt_ttl` |
 | `POST /api/v1/users/:userId/location-refresh` (JWT) | Wakes that user's phone; `200` roster entry / `504 device_unreachable` / `403 not_sharing` / `409 no_device` / `404` |
 | History | `trip_start`/`trip_end` delimit sessions; silent stops (≥ 10 min, < 75 m) split; `heartbeat`/`ping` excluded; average speed = distance / time |
 | Schema | `location_history.accuracy`, `users.battery_level/is_charging/tracking_issues`, `devices` + `device_token_history` (`prev_token_hash`, `token_issued_at`), created by `ensureBackendSchema()` on boot |
 
 ## Rollout
 
-1. Deploy the server first. It stays compatible with current app builds (JWT
-   uploads, WS `location` messages and the `pacing` push field still work).
+1. Deploy the server first. It stays compatible with the OIDC app builds
+   (build 13 and later); older ROPC builds are forced to update via
+   `ANDROID_MIN_SUPPORTED_CODE`.
 2. Ship the app. On first launch it uploads anything left in the old
    SharedPreferences outbox and removes the old keys; the old notification
    channel is deleted.

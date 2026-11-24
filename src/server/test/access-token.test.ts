@@ -127,7 +127,6 @@ test("an OP token without a tracker scope is forbidden", async () => {
   assert.equal(result.ok, false);
   assert.equal(!result.ok && result.forbidden, true);
   // The OP never issues such a token, so it says nothing about API tokens.
-  assert.equal(!result.ok && result.lostTrackerScope, undefined);
 });
 
 test("an OP token for the calendar is refused", async () => {
@@ -157,34 +156,18 @@ test("the legacy scopes claim doesn't decide for OP tokens", async () => {
   assert.equal(result.ok, true);
 });
 
-test("a legacy token keeps working with full access", async () => {
-  const result = await verifyAccessToken(await legacyToken(), config);
-  assert.equal(result.ok, true);
-  if (!result.ok) return;
-  assert.equal(result.scope, "write");
-  assert.equal(result.clientId, null);
-  assert.equal(result.sid, null);
-});
-
-test("a legacy token without the tracker scope reports lost access", async () => {
-  const result = await verifyAccessToken(
-    await legacyToken({ scopes: { tracker: false }, aud: ["calendar"] }),
-    config,
-  );
-  assert.equal(result.ok, false);
-  if (result.ok) return;
-  assert.equal(result.forbidden, true);
-  assert.equal(result.lostTrackerScope, true);
-  assert.equal(result.sub, "user-1");
-});
-
-test("a legacy token for another app is refused", async () => {
-  const result = await verifyAccessToken(
-    await legacyToken({ aud: ["calendar"] }),
-    config,
-  );
-  assert.equal(result.ok, false);
-  assert.equal(!result.ok && result.forbidden, undefined);
+test("a legacy password-login token is refused whatever it claims", async () => {
+  for (const claims of [
+    {},
+    { scopes: { tracker: false }, aud: ["calendar"] },
+    { aud: ["calendar"] },
+  ]) {
+    const result = await verifyAccessToken(await legacyToken(claims), config);
+    assert.equal(result.ok, false);
+    assert.equal(!result.ok && result.reason, "not an access token");
+    // Such a token cannot report lost access any more; the OP does that.
+    assert.equal(!result.ok && result.forbidden, undefined);
+  }
 });
 
 test("ID tokens, refresh tokens and logout tokens are not access tokens", async () => {
