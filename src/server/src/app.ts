@@ -57,7 +57,7 @@ import {
   MapboxTokenService,
 } from "./services/mapbox-tokens";
 import { ViewerPresence } from "./services/viewer-presence";
-import { parseHistoryRange } from "./services/history-range";
+import { capHistoryRows, parseHistoryRange } from "./services/history-range";
 import {
   rankLeaderboard,
   summarizeTravel,
@@ -185,6 +185,10 @@ const API_TOKEN_REQUEST_RETENTION_DAYS = 90;
 const DWELL_SEED_CONCURRENCY = 3;
 const DEFAULT_HISTORY_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_HISTORY_WINDOW_MS = 30 * 24 * 60 * 60 * 1000;
+// The time caps bound the window, not the amount of data in it: a dense month
+// would still materialise millions of points. One request never holds more
+// than this many; a truncated answer says so instead of looking complete.
+const MAX_HISTORY_ROWS = 100_000;
 // Without points (calendar summaries) a request is cheap to answer, so a
 // whole calendar month — or a few — fits in one call.
 const MAX_SUMMARY_WINDOW_MS = 93 * 24 * 60 * 60 * 1000;
@@ -2096,6 +2100,8 @@ app.get("/api/v1/history", async (request, reply) => {
     Math.max(from.getTime(), to.getTime() - maxWindowMs),
   );
 
+  // Fetch newest-first (plus one) so a capped window can be reported without
+  // a COUNT; capHistoryRows puts the kept rows back in chronological order.
   const result = await pool.query(
     `SELECT recorded_at,
             ST_Y(location::geometry) AS latitude,
@@ -2103,11 +2109,13 @@ app.get("/api/v1/history", async (request, reply) => {
             speed, heading, accuracy, source
      FROM location_history
      WHERE user_id = $1 AND recorded_at >= $2 AND recorded_at <= $3
-     ORDER BY recorded_at ASC`,
-    [userId, clampedFrom.toISOString(), to.toISOString()],
+     ORDER BY recorded_at DESC
+     LIMIT $4`,
+    [userId, clampedFrom.toISOString(), to.toISOString(), MAX_HISTORY_ROWS + 1],
   );
 
-  const points: HistoryPoint[] = result.rows.map((row) => ({
+  const capped = capHistoryRows(result.rows, MAX_HISTORY_ROWS);
+  const points: HistoryPoint[] = capped.rows.map((row) => ({
     recordedAt: new Date(row.recorded_at).toISOString(),
     latitude: Number(row.latitude),
     longitude: Number(row.longitude),
@@ -2124,6 +2132,7 @@ app.get("/api/v1/history", async (request, reply) => {
       requestedBy: identity.userId,
       pointCount: points.length,
       sessionCount: sessions.length,
+      truncated: capped.truncated,
       includePoints,
       from: clampedFrom.toISOString(),
       to: to.toISOString(),
@@ -2135,6 +2144,7 @@ app.get("/api/v1/history", async (request, reply) => {
     user_id: userId,
     from: clampedFrom.toISOString(),
     to: to.toISOString(),
+    truncated: capped.truncated,
     sessions: sessions.map((session) => ({
       start_at: session.startAt,
       end_at: session.endAt,

@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { parseHistoryRange } from "../src/services/history-range";
+import {
+  capHistoryRows,
+  parseHistoryRange,
+} from "../src/services/history-range";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const valid = {
@@ -49,4 +52,22 @@ test("a single instant is a valid range (a trip of one point)", () => {
     parseHistoryRange({ from: valid.from, to: valid.from }, 30 * DAY_MS).ok,
     true,
   );
+});
+
+test("capped rows keep the newest ones in chronological order", () => {
+  const result = capHistoryRows([5, 4, 3, 2, 1], 3);
+  assert.deepEqual(result.rows, [3, 4, 5]);
+  assert.equal(result.truncated, true);
+});
+
+test("a complete result reports no truncation", () => {
+  assert.deepEqual(capHistoryRows([2, 1], 3), {
+    rows: [1, 2],
+    truncated: false,
+  });
+  assert.deepEqual(capHistoryRows([3, 2, 1], 3), {
+    rows: [1, 2, 3],
+    truncated: false,
+  });
+  assert.deepEqual(capHistoryRows([], 3), { rows: [], truncated: false });
 });

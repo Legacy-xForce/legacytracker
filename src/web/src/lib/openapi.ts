@@ -472,6 +472,7 @@ export const openApiDocument = {
                                     user_id: userId,
                                     from: '2026-10-13T08:15:00.000Z',
                                     to: iso,
+                                    truncated: false,
                                     sessions: [
                                         {
                                             start_at: '2026-10-19T17:02:10.000Z',
@@ -1467,11 +1468,16 @@ export const openApiDocument = {
             },
             HistoryResponse: {
                 type: 'object',
-                required: ['user_id', 'from', 'to', 'sessions'],
+                required: ['user_id', 'from', 'to', 'truncated', 'sessions'],
                 properties: {
                     user_id: { type: 'string', format: 'uuid' },
                     from: { type: 'string', format: 'date-time' },
                     to: { type: 'string', format: 'date-time' },
+                    truncated: {
+                        type: 'boolean',
+                        description:
+                            'True when the window held more than 100000 points, so only the newest ones are returned.'
+                    },
                     sessions: {
                         type: 'array',
                         items: { $ref: '#/components/schemas/Trip' }
