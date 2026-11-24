@@ -7,6 +7,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../../core/battery_icon.dart';
 import '../../../core/formatters.dart';
 import '../../../core/navigation.dart';
 import '../../../data/models/location_model.dart';
@@ -908,11 +909,7 @@ class _BatteryPill extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(
-          charging ? Icons.bolt_rounded : _batteryIcon(level),
-          size: 16,
-          color: color,
-        ),
+        Icon(batteryIcon(level, charging), size: 16, color: color),
         const SizedBox(width: 2),
         Text(
           '$level%',
@@ -924,14 +921,6 @@ class _BatteryPill extends StatelessWidget {
       ],
     );
   }
-}
-
-IconData _batteryIcon(int level) {
-  if (level >= 90) return Icons.battery_full_rounded;
-  if (level >= 60) return Icons.battery_5_bar_rounded;
-  if (level >= 40) return Icons.battery_3_bar_rounded;
-  if (level >= 20) return Icons.battery_2_bar_rounded;
-  return Icons.battery_alert_rounded;
 }
 
 class _StatusChip extends StatelessWidget {

@@ -31,10 +31,10 @@ interface TokenRow {
 }
 
 // Live mode uploads a point every few seconds per device; caching keeps that
-// from costing a DB round-trip each. Unknown tokens are cached briefly so a
-// revoked device that keeps retrying doesn't hammer the table either.
+// from costing a DB round-trip each. Unknown tokens are deliberately not
+// cached: a strict route may see a retired token just before the upload path,
+// which must still be able to recognise and replace it.
 const CACHE_TTL_MS = 5 * 60_000;
-const NEGATIVE_CACHE_TTL_MS = 30_000;
 const TOUCH_INTERVAL_MS = 5 * 60_000;
 const ROTATE_AFTER_MS = 24 * 60 * 60_000;
 // Long enough to cover a phone's next upload after someone else swapped its

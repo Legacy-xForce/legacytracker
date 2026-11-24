@@ -53,8 +53,6 @@ export async function sendTrackingCommand(
       type: "tracking_command",
       lt_cmd: command,
       lt_ttl: String(ttlSeconds),
-      // Read by older app builds that still poll on a pacing mode.
-      pacing: live ? "AGGRESSIVE" : "PASSIVE",
     },
     android: {
       priority: live ? "high" : "normal",

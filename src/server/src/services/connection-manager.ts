@@ -8,7 +8,7 @@ interface ClientEntry {
   // Whether the socket answered the last heartbeat ping.
   alive: boolean;
   // The OP session (`sid`) of the sign-in that opened the socket; null for
-  // API tokens and legacy password-login sessions.
+  // API tokens.
   sid: string | null;
 }
 

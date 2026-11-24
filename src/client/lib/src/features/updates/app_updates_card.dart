@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'app_updater.dart';
 import '../../core/dialogs.dart';
+import '../../core/formatters.dart';
 import '../../core/wavy_progress_indicator.dart';
 
 /// Installed version, update state, and the one setting that makes updates
@@ -199,14 +200,6 @@ class _AppUpdatesCardState extends State<AppUpdatesCard>
     final checked = status.lastCheckAt;
     return checked == null
         ? 'Up to date'
-        : 'Up to date · checked ${_ago(checked)}';
-  }
-
-  String _ago(DateTime time) {
-    final d = DateTime.now().difference(time);
-    if (d.inSeconds < 60) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
-    if (d.inHours < 24) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
+        : 'Up to date · checked ${formatUpdatedAgoCompact(checked)}';
   }
 }

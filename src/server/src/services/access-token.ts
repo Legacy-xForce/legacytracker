@@ -6,7 +6,7 @@ import {
 } from "jose";
 
 import type { ApiTokenScope } from "./api-tokens";
-import { hasTrackerScope, isForTracker } from "./tracker-scope";
+import { isForTracker } from "./tracker-scope";
 
 export type VerifierConfig = {
   jwks: JWTVerifyGetKey;
@@ -24,9 +24,8 @@ export type AccessTokenResult =
       // What the token may do here: `read` is turned away from writes the
       // same way a read-only API token is.
       scope: ApiTokenScope;
-      // Set for tokens from Legacy Auth's OpenID Provider; null for the
-      // legacy password-login tokens.
-      clientId: string | null;
+      // The OIDC client the token was issued to.
+      clientId: string;
       // The OP session the token belongs to, for back-channel logout.
       sid: string | null;
     }
@@ -35,8 +34,6 @@ export type AccessTokenResult =
       reason: string;
       detail?: string;
       forbidden?: boolean;
-      // A legacy token reports that its account lost the tracker scope.
-      lostTrackerScope?: boolean;
       sub?: string;
     };
 
@@ -89,13 +86,10 @@ export function trackerScopeOf(payload: JWTPayload): ApiTokenScope | null {
 }
 
 /**
- * Verifies a bearer access token from Legacy Auth. Two shapes are accepted
- * while the apps move to OpenID Connect:
- *
- * - OP tokens (`typ: at+jwt`): `aud` must be the tracker, `client_id` one of
- *   ours, and `scope` decides between read and write.
- * - Legacy password-login tokens (`type: access`): the `scopes.tracker` flag
- *   grants everything, as before.
+ * Verifies a bearer access token from Legacy Auth's OpenID Provider.
+ * `typ` must be `at+jwt`, `aud` the tracker, `client_id` one of ours, and
+ * `scope` decides between read and write. Legacy password-login tokens are
+ * no longer accepted (Phase 4 of docs/oidc-migration.md).
  */
 export async function verifyAccessToken(
   token: string,
@@ -157,30 +151,9 @@ export async function verifyAccessToken(
     };
   }
 
-  // Phase 4 (docs/oidc-migration.md): delete with the legacy token branch.
-  if (payload.type !== "access") {
-    return { ok: false, reason: "not an access token" };
-  }
-  if (!hasTrackerScope(payload)) {
-    return {
-      ok: false,
-      reason: "account lacks the tracker scope",
-      detail: `user ${sub}`,
-      forbidden: true,
-      lostTrackerScope: true,
-      sub,
-    };
-  }
-  // Checked after the scope: a token without the scope has no tracker `aud`
-  // either, and should keep getting the 403 above.
-  if (!isForTracker(payload)) {
-    return {
-      ok: false,
-      reason: "token was not issued for the tracker",
-      detail: `aud ${JSON.stringify(payload.aud ?? null)}`,
-    };
-  }
-  return { ok: true, sub, payload, scope: "write", clientId: null, sid: null };
+  // Anything else (including a legacy password-login token) is not an access
+  // token this resource server accepts.
+  return { ok: false, reason: "not an access token" };
 }
 
 export type LogoutTokenResult =

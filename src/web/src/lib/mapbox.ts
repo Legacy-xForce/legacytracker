@@ -19,3 +19,15 @@ export function assertMapboxConfigured(): void {
 export function isStyleNotLoaded(error: unknown): boolean {
     return error instanceof Error && /Style is not done loading/i.test(error.message);
 }
+
+/**
+ * Paints a layer, treating "style not done loading" as a no-op: `style.load`
+ * will draw it once the style is ready. Any other error must still surface.
+ */
+export function redrawAfterStyleLoad(paint: () => void): void {
+    try {
+        paint();
+    } catch (error) {
+        if (!isStyleNotLoaded(error)) throw error;
+    }
+}

@@ -420,7 +420,7 @@ export const openApiDocument = {
                         content: {
                             'application/json': {
                                 schema: { $ref: '#/components/schemas/LocationUploadResult' },
-                                example: { received: 1, stored: 1, pacing: 'PASSIVE', live_ttl_s: 0 }
+                                example: { received: 1, stored: 1, live_ttl_s: 0 }
                             }
                         }
                     },
@@ -472,6 +472,7 @@ export const openApiDocument = {
                                     user_id: userId,
                                     from: '2026-10-13T08:15:00.000Z',
                                     to: iso,
+                                    truncated: false,
                                     sessions: [
                                         {
                                             start_at: '2026-10-19T17:02:10.000Z',
@@ -1418,15 +1419,10 @@ export const openApiDocument = {
             },
             LocationUploadResult: {
                 type: 'object',
-                required: ['received', 'stored', 'pacing', 'live_ttl_s'],
+                required: ['received', 'stored', 'live_ttl_s'],
                 properties: {
                     received: { type: 'integer' },
                     stored: { type: 'integer' },
-                    pacing: {
-                        type: 'string',
-                        enum: ['PASSIVE', 'ACTIVE', 'AGGRESSIVE'],
-                        description: 'How often the phone should keep reporting.'
-                    },
                     live_ttl_s: {
                         type: 'integer',
                         description: 'Seconds to stay in realtime mode; `0` when nobody is watching.'
@@ -1467,11 +1463,16 @@ export const openApiDocument = {
             },
             HistoryResponse: {
                 type: 'object',
-                required: ['user_id', 'from', 'to', 'sessions'],
+                required: ['user_id', 'from', 'to', 'truncated', 'sessions'],
                 properties: {
                     user_id: { type: 'string', format: 'uuid' },
                     from: { type: 'string', format: 'date-time' },
                     to: { type: 'string', format: 'date-time' },
+                    truncated: {
+                        type: 'boolean',
+                        description:
+                            'True when the window held more than 100000 points, so only the newest ones are returned.'
+                    },
                     sessions: {
                         type: 'array',
                         items: { $ref: '#/components/schemas/Trip' }

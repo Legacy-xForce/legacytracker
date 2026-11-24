@@ -1,21 +1,27 @@
 # Moving Legacy Tracker to OAuth2 / OpenID Connect
 
-Status (2026-11-01): **shipped.** Phases 1-3 are live: the web app and the phone sign in with Authorization Code +
-PKCE (`tracker-spa`, `tracker-mobile`) and the server authorises OP access tokens by `scope`. **Remaining: Phase 4**
-(cleanup once old builds are gone), listed with file and line below. Tracks the legacytracker part of
+Status (2026-11-24): **shipped, including Phase 4.** The web app and the phone sign in with Authorization Code +
+PKCE (`tracker-spa`, `tracker-mobile`), the server authorises OP access tokens by `scope`, and the legacy ROPC
+branches have been removed. Tracks the legacytracker part of
 [legacy-auth#4](https://github.com/Legacy-xForce/legacy-auth/issues/4).
 
-## Still-live legacy branches (delete at Phase 4)
+## Phase 4 (done)
 
-Each carries a `// Phase 4 (docs/oidc-migration.md)` marker in the code.
+`ANDROID_MIN_SUPPORTED_CODE` defaults to **13** (`1.6.0+13`, 2026-10-22), the first OIDC release; older builds are
+forced to update. With that floor in place:
 
-| Where | What | Removal |
-|---|---|---|
-| `src/server/src/services/access-token.ts` | accepts non-`at+jwt` tokens (`payload.type === "access"` + `hasTrackerScope`, `services/tracker-scope.ts`) | after `min_supported_code` passes the pre-OIDC builds |
-| `src/server/src/app.ts` (`clientId !== null &&` on `/api/v1/mapbox/token` and `/api/v1/devices`) | exempts legacy-shaped tokens from the mobile-only rule | drop the `!== null` |
-| `src/server/src/app.ts` (`purgeApiTokens` for a legacy JWT without `scopes.tracker`) | duplicates the OP back-channel signal | delete |
-| `src/server/src/services/fcm-service.ts` (`pacing` field), `app.ts` (`X-Pacing-Mode`) | read only by pre-OIDC app builds and the simulator | delete with the minimum raised |
-| `src/web/src/api/auth.ts` (`AccountDisabledError`) | **still used by the OIDC path**, keep | n/a |
+- `services/access-token.ts` accepts only `typ: at+jwt` tokens. The `type: "access"` / `scopes.tracker` branch and
+  `hasTrackerScope` in `services/tracker-scope.ts` are gone.
+- `app.ts` no longer exempts tokens with no OIDC client from the mobile-only rule on `/api/v1/devices` and
+  `/api/v1/mapbox/token`.
+- API tokens are still purged on a back-channel logout reporting lost access; the duplicate purge driven by a
+  scope-less legacy JWT is gone.
+- `X-Pacing-Mode`, the `pacing` upload-response field and the FCM `pacing` field are gone, as are their entries in
+  the server README and the OpenAPI document.
+- `AccountDisabledError` in `src/web/src/api/auth.ts` stays: the OIDC path still uses it.
+
+The server no longer calls `/auth/login`, `/auth/refresh` or `/auth/passkey/*`, so ROPC can be removed at Legacy Auth
+and `REQUIRE_AUDIENCE=true` enabled.
 
 ## Where we were (before the migration)
 
@@ -255,16 +261,14 @@ refusal), provider state transitions, legacy-session migration. Manual: emulator
 (`issuer http://10.0.2.2:4000`), password + passkey via Custom Tab, SSO with the phone browser, cancel,
 `access_denied`, logout. Release via `scripts/release-android.sh` with a build-number bump.
 
-## Phase 4: cleanup (after the mobile release has soaked)
+## Phase 4: cleanup (done, 2026-11-24)
 
-- Raise `min_supported_code` to the OIDC release.
-- Server: stop accepting legacy ROPC tokens (no `client_id`) and the `scopes` object.
-- Clients: delete the legacy refresh path and the old storage migration.
-- Close PR #56 as superseded (the OP sets `aud` per resource). Tell legacy-auth that the tracker no longer
-  calls `/auth/login`, `/auth/refresh`, `/auth/passkey/*`, so `REQUIRE_AUDIENCE=true` and ROPC removal are unblocked
-  for the tracker.
-- Docs: `CLAUDE.md` (auth paragraph, scope screens, gotchas), `docs/web-app.md`, server README, `openapi.ts`.
-  Update the local-dev memory: local OP instead of the fake Legacy Auth.
+- `min_supported_code` now defaults to 13; the older ROPC builds are forced to update.
+- Server: legacy ROPC tokens and the `scopes` object are no longer accepted (see the Phase 4 section above).
+- Clients: the legacy refresh path and old storage migration were already removed with the OIDC clients.
+- PR #56 is superseded (the OP sets `aud` per resource); legacy-auth has been told ROPC removal is unblocked.
+- Docs: `CLAUDE.md`, `docs/location-tracking.md`, server README and `openapi.ts` now describe only the OIDC
+  contract. Local development still uses a local OP rather than the old fake Legacy Auth.
 
 ## Rollout order
 
@@ -276,7 +280,8 @@ refusal), provider state transitions, legacy-session migration. Manual: emulator
 | 3 | app release (OIDC + min-version screen) | app: browser sign-in at next sign-in | old APK still works (ROPC alive) |
 | 4 | cleanup | old builds forced to update | raise/lower `min_supported_code` |
 
-Each step is independently deployable; ROPC stays alive at legacy-auth until step 4.
+Each step was independently deployable; ROPC stayed alive at legacy-auth until step 4, after which the tracker
+stopped calling it entirely.
 
 ## Local development
 

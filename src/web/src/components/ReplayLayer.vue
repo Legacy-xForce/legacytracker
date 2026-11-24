@@ -11,7 +11,7 @@ import { framePadding, holdAt, visibleCenter, type Insets } from '../lib/camera'
 import { PEER_MARKER_SIZE } from '../lib/clusters';
 import { boundsOf, type LatLng } from '../lib/geo';
 import { formatClock, formatLongDay, formatSpeed, msToKmh } from '../lib/format';
-import { isStyleNotLoaded } from '../lib/mapbox';
+import { redrawAfterStyleLoad } from '../lib/mapbox';
 import { useInsets, useMap } from '../lib/mapContext';
 import { MOVING_SPEED } from '../lib/peers';
 import { BASE_SPEED, PLAYBACK_SPEEDS, speedSegments, type ReplayTrack } from '../lib/replay';
@@ -89,12 +89,7 @@ function removeLayers(): void {
 }
 
 function draw() {
-    try {
-        paint();
-    } catch (error) {
-        // A style change removes the layers; style.load draws them again once it is ready.
-        if (!isStyleNotLoaded(error)) throw error;
-    }
+    redrawAfterStyleLoad(paint);
 }
 
 function paint() {

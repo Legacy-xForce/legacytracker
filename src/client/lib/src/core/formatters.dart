@@ -29,6 +29,17 @@ String formatUpdatedAgo(Duration duration) {
   return d.inDays == 1 ? '1 day ago' : '${d.inDays} days ago';
 }
 
+/// The terse form used on status cards: "just now", "5 min ago", "3 h ago",
+/// "2 d ago". [time] is null when nothing has been recorded yet.
+String formatUpdatedAgoCompact(DateTime? time) {
+  if (time == null) return 'pending';
+  final d = DateTime.now().difference(time);
+  if (d.inSeconds < 60) return 'just now';
+  if (d.inMinutes < 60) return '${d.inMinutes} min ago';
+  if (d.inHours < 24) return '${d.inHours} h ago';
+  return '${d.inDays} d ago';
+}
+
 /// A trip's length: whole minutes are precise enough ("8m", "1h 5m").
 String formatTripDuration(Duration d) {
   final hours = d.inHours;

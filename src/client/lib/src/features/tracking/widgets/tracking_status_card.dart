@@ -8,6 +8,7 @@ import '../../location/tracking_permissions.dart';
 import '../tracking_controller.dart';
 import '../../../core/tokens.dart';
 import '../../../core/palette.dart';
+import '../../../core/formatters.dart';
 
 /// What location sharing is doing right now, plus anything that silently
 /// degrades it in the background — each with a one-tap fix.
@@ -151,7 +152,7 @@ class TrackingStatusCard extends StatelessWidget {
     } else if (status.lastUploadError != null && status.pending > 0) {
       parts.add('${status.pending} point(s) waiting for a connection');
     } else {
-      parts.add('Last update ${_ago(status.lastUploadAt)}');
+      parts.add('Last update ${formatUpdatedAgoCompact(status.lastUploadAt)}');
       if (status.pending > 0) parts.add('${status.pending} waiting');
     }
     if (status.lowPower) parts.add('battery saver');
@@ -186,15 +187,6 @@ class TrackingStatusCard extends StatelessWidget {
           TrackingPermissions.requestIgnoreBatteryOptimizations,
         ),
     ];
-  }
-
-  String _ago(DateTime? time) {
-    if (time == null) return 'pending';
-    final d = DateTime.now().difference(time);
-    if (d.inSeconds < 60) return 'just now';
-    if (d.inMinutes < 60) return '${d.inMinutes} min ago';
-    if (d.inHours < 24) return '${d.inHours} h ago';
-    return '${d.inDays} d ago';
   }
 }
 
