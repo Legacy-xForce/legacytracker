@@ -47,6 +47,33 @@ void main() {
     });
   });
 
+  group('formatUpdatedAgoCompact', () {
+    final now = DateTime.now();
+
+    test('uses the same wording as the status cards', () {
+      expect(
+        formatUpdatedAgoCompact(now.subtract(const Duration(seconds: 5))),
+        'just now',
+      );
+      expect(
+        formatUpdatedAgoCompact(now.subtract(const Duration(minutes: 5))),
+        '5 min ago',
+      );
+      expect(
+        formatUpdatedAgoCompact(now.subtract(const Duration(hours: 5))),
+        '5 h ago',
+      );
+      expect(
+        formatUpdatedAgoCompact(now.subtract(const Duration(days: 3))),
+        '3 d ago',
+      );
+    });
+
+    test('says pending when nothing has happened yet', () {
+      expect(formatUpdatedAgoCompact(null), 'pending');
+    });
+  });
+
   test('formatShortDate shows the year only when it differs', () {
     final now = DateTime(2026, 10, 10);
     expect(formatShortDate(DateTime(2026, 10, 8, 23), now: now), '8 Oct');
