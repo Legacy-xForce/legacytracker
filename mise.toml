@@ -4,7 +4,7 @@
 [tools]
 node = "22"          # matches CI (web) and is new enough for the server
 java = "21"          # AGP 9 / Gradle 9 for the Android app
-flutter = "3.44.0"   # matches CI; brings Dart 3.12
+flutter = "3.44.0"   # keep in step with .github/actions/flutter-env/action.yml
 
 [env]
 ANDROID_HOME = "{{env.HOME}}/Android/Sdk"
