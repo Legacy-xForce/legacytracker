@@ -287,11 +287,9 @@ class _MapboxMapWidgetState extends State<MapboxMapWidget> {
     }
     _surface = MapWidget(
       styleUri: mapboxStyleUri(widget.style),
-      // The initial camera must be `cameraOptions`: a viewport state is
-      // resolved asynchronously by the viewport system, which is how the map
-      // flashed the whole globe before jumping to the requested view.
-      // ignore: deprecated_member_use
-      cameraOptions: CameraOptions(
+      // Supported initial-camera API; the scene's camera is applied again in
+      // _onMapCreated once the map exists.
+      viewport: CameraViewportState(
         center: _point(widget.initialCenter),
         zoom: widget.initialZoom,
       ),
